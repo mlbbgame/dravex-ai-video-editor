@@ -353,16 +353,16 @@ export default function App() {
       </main>
       <nav className="mobile-nav" aria-label="Main navigation">
         <button className={mode === "ai" ? "mobile-nav-item active" : "mobile-nav-item"} onClick={() => setMode("ai")} aria-label="AI Creator">
-          <WandSparkles size={19} /><span>AI</span>
+          <WandSparkles size={19} /><span>{language === "ru" ? "ИИ" : "AI"}</span>
         </button>
         <button className={mode === "manual" ? "mobile-nav-item active" : "mobile-nav-item"} onClick={() => setMode("manual")} aria-label="Manual Studio">
-          <Layers3 size={19} /><span>Studio</span>
+          <Layers3 size={19} /><span>{language === "ru" ? "Студия" : "Studio"}</span>
         </button>
         <button className="mobile-nav-item" onClick={() => uploadRef.current?.click()} aria-label="Import media">
-          <Upload size={19} /><span>Import</span>
+          <Upload size={19} /><span>{language === "ru" ? "Импорт" : "Import"}</span>
         </button>
         <button className="mobile-nav-item" onClick={saveProject} aria-label="Save project">
-          <Download size={19} /><span>Save</span>
+          <Download size={19} /><span>{language === "ru" ? "Сохранить" : "Save"}</span>
         </button>
       </nav>
       {notice && <div className="toast" role="status"><Check size={16} /> {notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={15} /></button></div>}
