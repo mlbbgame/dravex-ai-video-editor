@@ -225,7 +225,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.3)");
     context.fillStyle = vignette;
     context.fillRect(0, 0, width, height);
-    const cleanTitle = title.trim().replace(/\\s+/g, " ").slice(0, 48);
+    const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 48);
     if (cleanTitle) {
       const fontSize = Math.max(24, Math.round(width * 0.045));
       context.font = `700 ${fontSize}px system-ui, sans-serif`;
@@ -236,7 +236,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.shadowBlur = 8;
       const lines: string[] = [];
       let line = "";
-      for (const word of cleanTitle.split(/\\s+/)) {
+      for (const word of cleanTitle.split(/\s+/)) {
         const candidate = line ? `${line} ${word}` : word;
         if (context.measureText(candidate).width > width * 0.84 && line) {
           lines.push(line);
