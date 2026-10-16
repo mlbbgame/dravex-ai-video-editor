@@ -83,11 +83,8 @@ export async function renderImageSlideshow({
 
   const loadedImages = await Promise.all(images.map((image) => loadImage(image.url)));
   const ranked = loadedImages.map((image, originalIndex) => ({ image, originalIndex, score: visualScore(image) }));
-  // Keep the user's chosen order for the body, but promote the strongest visual to the opening hook.
-  const strongest = [...ranked].sort((a, b) => b.score - a.score)[0];
-  const sequence = strongest
-    ? [strongest, ...ranked.filter((item) => item.originalIndex !== strongest.originalIndex)]
-    : ranked;
+  // Preserve the user's chosen story order. Color/contrast scores cannot understand story relevance.
+  const sequence = ranked;
   const stream = canvas.captureStream(24);
   const recorder = new MediaRecorder(stream, {
     mimeType,
