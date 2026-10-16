@@ -30,6 +30,7 @@ type SequenceOptions = {
   aspectRatio: string;
   quality?: string;
   style?: SequenceRenderStyle;
+  targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
 };
 
@@ -104,7 +105,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -122,8 +123,23 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
     return { kind: "video", name: segment.name, video, start, end, duration: end - start };
   }));
+  const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
+  if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
+  // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
+  if (targetDurationSeconds && Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0) {
+    if (sourceDuration > targetDurationSeconds) {
+      const scale = targetDurationSeconds / sourceDuration;
+      for (const item of loaded) {
+        item.duration *= scale;
+        if (item.kind === "video") item.end = item.start + item.duration;
+      }
+    } else if (loaded.every((item) => item.kind === "image")) {
+      // A still-image sequence can hold on its images to fill the requested duration, including when audio is present.
+      const scale = targetDurationSeconds / sourceDuration;
+      for (const item of loaded) item.duration *= scale;
+    }
+  }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  if (totalDuration <= 0) throw new Error("The selected trim ranges are empty.");
   const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
     segment,
     audio: await loadAudio(segment)

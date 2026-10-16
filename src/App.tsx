@@ -356,13 +356,14 @@ export default function App() {
             aspectRatio: aspect,
             quality,
             style: editStyle,
+            targetDurationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
             onProgress: setRenderProgress
           })
         : await renderImageSlideshow({
             images,
             title: showTitleOverlay ? (prompt || projectName) : "",
             aspectRatio: aspect,
-            durationSeconds: Math.min(30, targetLength.includes("minutes") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15)),
+            durationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
             style: editStyle,
             quality,
             onProgress: setRenderProgress
