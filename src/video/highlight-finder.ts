@@ -99,8 +99,8 @@ export async function analyzeVideoForHighlights(
   try {
     await waitForMetadata(video);
     const duration = video.duration;
-    if (!Number.isFinite(duration) || duration < 8) {
-      throw new Error("This video is too short for highlight analysis (minimum 8 seconds).");
+    if (!Number.isFinite(duration) || duration < 0.25) {
+      throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
@@ -170,8 +170,8 @@ export async function analyzeVideoForHighlights(
       if (selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;
       selectedPeaks.push(peak);
     }
-    const candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
-      const half = Math.max(1.2, Math.min(2.4, interval * 0.8));
+    let candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
+      const half = Math.max(0.25, Math.min(2.4, interval * 0.8));
       return {
         time: peak.time,
         start: Math.max(0, peak.time - half),
@@ -181,7 +181,24 @@ export async function analyzeVideoForHighlights(
         contrast: peak.contrast
       };
     }).sort((a, b) => a.time - b.time);
-    if (!candidates.length) throw new Error("No usable visual moments were found in this file.");
+
+    // Very short clips may not contain a local peak away from the edges.
+    // Keep them usable by ranking the sampled frames instead of rejecting the file.
+    if (!candidates.length) {
+      candidates = [...samples]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, Math.min(4, samples.length))
+        .map((sample) => ({
+          time: sample.time,
+          start: Math.max(0, sample.time - Math.min(0.8, duration / 3)),
+          end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
+          score: sample.score,
+          motion: sample.motion,
+          contrast: sample.contrast
+        }))
+        .sort((a, b) => a.time - b.time);
+    }
+    if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
     return { duration, samples, candidates };
   } finally {
     video.pause();
