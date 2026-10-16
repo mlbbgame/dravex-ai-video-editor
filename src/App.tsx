@@ -26,7 +26,7 @@ function translateText(value: string, language: Language): string {
 }
 function localize(node: ReactNode, language: Language): ReactNode {
   if (typeof node === "string") return translateText(node, language);
-  if (Array.isArray(node)) return node.map((child, index) => <span key={index}>{localize(child, language)}</span>);
+  if (Array.isArray(node)) return node.map((child) => localize(child, language));
   if (!isValidElement(node)) return node;
   const props = node.props as Record<string, unknown>;
   const nextProps: Record<string, unknown> = {};
