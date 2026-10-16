@@ -242,7 +242,7 @@ function drawScene(ctx: CanvasRenderingContext2D, width: number, height: number,
 
 export default function SelfIntroVideo({ language }: { language: Language }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef = useRef<number | null>(null);
+  const renderTimerRef = useRef<number | null>(null);
   const [kind, setKind] = useState<VideoKind>("guide");
   const [isRendering, setIsRendering] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -250,7 +250,7 @@ export default function SelfIntroVideo({ language }: { language: Language }) {
   const [error, setError] = useState("");
 
   useEffect(() => () => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    if (renderTimerRef.current !== null) window.clearInterval(renderTimerRef.current);
   }, []);
 
   useEffect(() => () => {
@@ -281,7 +281,9 @@ export default function SelfIntroVideo({ language }: { language: Language }) {
     const scenes = copy[language][kind];
     const sceneDuration = 3.5;
     const totalDuration = sceneDuration * scenes.length;
-    const stream = canvas.captureStream(30);
+    // Use a timer-driven render loop instead of requestAnimationFrame. RAF may pause
+    // in backgrounded/mobile browser tabs, leaving the progress stuck at 0%.
+    const stream = canvas.captureStream(20);
     const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
     let recorder: MediaRecorder;
     try {
@@ -312,20 +314,27 @@ export default function SelfIntroVideo({ language }: { language: Language }) {
       setIsRendering(false);
     };
     const startedAt = performance.now();
-    const draw = (now: number) => {
-      const elapsed = (now - startedAt) / 1000;
+    let lastProgress = -1;
+    const renderFrame = () => {
+      const elapsed = Math.min(totalDuration, (performance.now() - startedAt) / 1000);
       const sceneIndex = Math.min(scenes.length - 1, Math.floor(elapsed / sceneDuration));
-      const phase = (elapsed % sceneDuration) / sceneDuration;
+      const phase = Math.min(1, (elapsed % sceneDuration) / sceneDuration);
       drawScene(ctx, width, height, scenes[sceneIndex], sceneIndex, phase, language);
-      setProgress(Math.min(99, Math.round((elapsed / totalDuration) * 100)));
-      if (elapsed >= totalDuration) {
-        recorder.stop();
-        return;
+      const nextProgress = Math.min(99, Math.round((elapsed / totalDuration) * 100));
+      if (nextProgress !== lastProgress) {
+        lastProgress = nextProgress;
+        setProgress(nextProgress);
       }
-      rafRef.current = requestAnimationFrame(draw);
+      if (elapsed >= totalDuration) {
+        if (renderTimerRef.current !== null) window.clearInterval(renderTimerRef.current);
+        renderTimerRef.current = null;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
     };
+    // Draw the first frame before recording starts, then update at up to 20 fps.
+    renderFrame();
     recorder.start(250);
-    rafRef.current = requestAnimationFrame(draw);
+    renderTimerRef.current = window.setInterval(renderFrame, 50);
   };
 
   return (
