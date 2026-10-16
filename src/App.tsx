@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Sparkles } from "lucide-react";
-import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type AudioSegment } from "./video/video-sequence-render";
 
 type EditStyle = "velocity" | "cinematic" | "anime";
@@ -68,16 +68,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [outputUrl, setOutputUrl] = useState("");
   const [outputName, setOutputName] = useState("");
-  const [sourceDuration, setSourceDuration] = useState(0);
   const [cutCount, setCutCount] = useState(0);
   const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
 
-  useEffect(() => () => {
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
-    if (musicUrl) URL.revokeObjectURL(musicUrl);
-    if (outputUrl) URL.revokeObjectURL(outputUrl);
-  }, [videoUrl, musicUrl, outputUrl]);
+  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
+  useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
+  useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
 
   const onVideoSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -117,9 +114,6 @@ export default function App() {
       setStage("analyzing");
       setMessage("Анализируем визуальные изменения и выбираем моменты…");
       const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
-      setSourceDuration(analysis.duration);
-      const variants = buildHighlightVariants(analysis.candidates, analysis.duration);
-      const best = variants.find((item) => item.id === "aggressive") ?? variants[0];
       const segments = makeSegments(analysis.candidates, analysis.duration, Math.min(duration, analysis.duration), style, videoFile, videoUrl);
       if (!segments.length) throw new Error("Не удалось собрать последовательность кадров. Попробуй другое видео.");
       setCutCount(segments.length);
