@@ -14,6 +14,18 @@ function translateText(value: string, language: Language): string {
   if (language === "en") return value;
   const trimmed = value.trim();
   if (russianText[trimmed]) return value.replace(trimmed, russianText[trimmed]);
+  let match = trimmed.match(/^(\\d+) seconds?$/);
+  if (match) return `${match[1]} сек.`;
+  if (trimmed === "2 minutes") return "2 минуты";
+  if (trimmed === "5 minutes") return "5 минут";
+  if (trimmed === "10+ minutes") return "10+ минут";
+  if (trimmed.startsWith("01 · OPEN — Start with a clear visual hook for")) return trimmed.replace("01 · OPEN — Start with a clear visual hook for", "01 · НАЧАЛО — Начни с яркого визуального момента для");
+  if (trimmed === "02 · SELECT — Use your imported footage as the primary visual source.") return "02 · ОТБОР — Используй импортированные материалы как основной визуальный источник.";
+  if (trimmed === "02 · VISUALS — Add your own clips or images; generative media is not connected yet.") return "02 · ВИЗУАЛ — Добавь свои клипы или изображения; генерация материалов пока не подключена.";
+  if (trimmed === "03 · BUILD — Arrange the strongest moments into a beginning, middle, and ending.") return "03 · СБОРКА — Расположи лучшие моменты в начале, середине и финале.";
+  if (trimmed === "04 · SOUND — Review the imported audio and keep dialogue understandable.") return "04 · ЗВУК — Проверь импортированное аудио и сохрани разборчивость диалогов.";
+  if (trimmed === "04 · SOUND — Add music or voiceover later; no audio has been generated.") return "04 · ЗВУК — Позже добавь музыку или озвучку; аудио ещё не создано.";
+  if (trimmed.startsWith("05 · FINISH — Prepare a ")) return trimmed.replace("05 · FINISH — Prepare a", "05 · ФИНАЛ — Подготовь композицию").replace(" composition, target length ", ", длительность ").replace(", export target ", ", качество экспорта ");
   let match = trimmed.match(/^Added (\d+) media files? to this session\.$/);
   if (match) return `Добавлено медиафайлов: ${match[1]}.`;
   match = trimmed.match(/^(\d+) video(s?) · (.+) known duration$/);
