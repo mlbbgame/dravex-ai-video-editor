@@ -68,3 +68,4 @@ jobs:
 
 # Rebuild the isolated /preview/ app after the Android no-music recorder fix.
 # Refresh preview with the action/velocity transition upgrade for Android smoke testing.
+# Rebuild preview with real shot transitions, source-audio preservation, and improved pacing.
