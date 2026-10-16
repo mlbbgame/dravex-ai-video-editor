@@ -2,6 +2,7 @@ import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElem
 import { renderImageSlideshow } from "./video/local-render";
 import { renderVideoSequence } from "./video/video-sequence-render";
 import { generateLocalPlan, makeOverlayTitle } from "./video/plan-generator";
+import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightProgress, type HighlightVariant } from "./video/highlight-finder";
 import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
@@ -100,6 +101,11 @@ export default function App() {
   const [referenceReport, setReferenceReport] = useState<string[]>([]);
   const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
+  const [isAnalyzingHighlights, setIsAnalyzingHighlights] = useState(false);
+  const [highlightProgress, setHighlightProgress] = useState<HighlightProgress | null>(null);
+  const [highlightVariants, setHighlightVariants] = useState<HighlightVariant[]>([]);
+  const [selectedHighlightVariant, setSelectedHighlightVariant] = useState<HighlightVariant["id"]>("cinematic");
+  const [highlightSourceId, setHighlightSourceId] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const activeClip = clips.find((clip) => clip.id === activeId) ?? clips[0] ?? null;
@@ -292,6 +298,71 @@ export default function App() {
     }
   };
 
+  const analyzeHighlights = async () => {
+    const source = activeClip?.kind === "video" ? activeClip : clips.find((clip) => clip.kind === "video");
+    if (!source) {
+      setNotice(language === "ru" ? "Сначала импортируй длинное видео, из которого нужно выбрать лучшие моменты." : "Import a source video before looking for highlights.");
+      window.setTimeout(() => setNotice(""), 4500);
+      return;
+    }
+    setIsAnalyzingHighlights(true);
+    setHighlightProgress(null);
+    setHighlightVariants([]);
+    setHighlightSourceId(source.id);
+    setNotice(language === "ru" ? "Сканируем видео локально. Длинные файлы могут анализироваться несколько минут." : "Scanning video locally. Long files may take several minutes.");
+    try {
+      const result = await analyzeVideoForHighlights(source.url, setHighlightProgress);
+      const variants = buildHighlightVariants(result.candidates, result.duration);
+      setHighlightVariants(variants);
+      setSelectedHighlightVariant("cinematic");
+      setHighlightSourceId(source.id);
+      setNotice(language === "ru"
+        ? `Анализ завершён: найдено ${result.candidates.length} визуальных моментов. Выбери вариант и проверь его перед экспортом.`
+        : `Scan complete: ${result.candidates.length} visual moments found. Choose a cut and review it before export.`);
+      window.setTimeout(() => setNotice(""), 6000);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : (language === "ru" ? "Не удалось проанализировать видео." : "Video analysis failed."));
+      window.setTimeout(() => setNotice(""), 6000);
+    } finally {
+      setIsAnalyzingHighlights(false);
+      setHighlightProgress(null);
+    }
+  };
+
+  const applyHighlightVariant = (variant: HighlightVariant) => {
+    const source = clips.find((clip) => clip.id === highlightSourceId && clip.kind === "video");
+    if (!source) {
+      setNotice(language === "ru" ? "Исходное видео больше не найдено. Запусти анализ снова." : "The source video is no longer available. Analyze it again.");
+      window.setTimeout(() => setNotice(""), 4500);
+      return;
+    }
+    if (!variant.moments.length) return;
+    const cutClips: MediaClip[] = variant.moments.map((moment, index) => ({
+      ...source,
+      id: uid(),
+      name: `${source.name.replace(/\.[^.]+$/, "")} · ${String(index + 1).padStart(2, "0")}`,
+      bytes: index === 0 ? source.bytes : 0,
+      duration: moment.end - moment.start,
+      trimStart: moment.start,
+      trimEnd: moment.end
+    }));
+    setClips((current) => {
+      const currentIndex = current.findIndex((clip) => clip.id === source.id);
+      if (currentIndex < 0) return current;
+      const next = [...current];
+      next.splice(currentIndex, 1, ...cutClips);
+      return next;
+    });
+    setActiveId(cutClips[0].id);
+    setTargetLength(`${Math.max(1, Math.round(variant.duration))} seconds`);
+    setEditStyle(variant.id === "aggressive" ? "velocity" : variant.id === "cinematic" ? "cinematic" : "story");
+    setMode("manual");
+    setNotice(language === "ru"
+      ? `В монтаж добавлено ${cutClips.length} выбранных фрагментов (~${Math.round(variant.duration)} с). Исходные моменты сохранены как обрезки; перед экспортом проверь последовательность.`
+      : `${cutClips.length} selected segments added (~${Math.round(variant.duration)} s). Review the sequence before exporting.`);
+    window.setTimeout(() => setNotice(""), 6500);
+  };
+
   const applyReferenceRecipe = () => {
     if (!referenceRecipe) return;
     const fast = referenceRecipe.pace === "Fast";
@@ -463,6 +534,58 @@ export default function App() {
         {mode === "collab" && <section className="collab-notice panel"><span className="collab-notice-icon"><ShieldCheck size={18} /></span><div><strong>{language === "ru" ? "Режим совместной работы" : "Collaboration mode"}</strong><p>{language === "ru" ? "ИИ-план — только черновик. Проверь его, редактируй клипы вручную и экспортируй результат, когда будешь готов. Принятие каждого предложения остаётся за тобой." : "The AI plan is a draft. Review it, edit clips manually, and export when ready. You stay in control of every proposed change."}</p></div></section>}
         <EvolutionEngine language={language} />
 
+        <section className="highlight-director panel">
+          <div className="highlight-director-heading">
+            <div>
+              <span className="section-kicker">DRAVEX · AUTO HIGHLIGHT DIRECTOR</span>
+              <h2>{language === "ru" ? "Найти лучшие моменты" : "Find the best moments"}</h2>
+              <p>{language === "ru" ? "Выбери длинное видео — DRAVEX просканирует его и соберёт три версии эдита разного темпа. Обработка идёт на устройстве." : "Choose a long video. DRAVEX scans it locally and prepares three edit rhythms."}</p>
+            </div>
+            <span className="highlight-director-icon"><WandSparkles size={22} /></span>
+          </div>
+          <div className="highlight-director-controls">
+            <div className="highlight-source-info">
+              <strong>{activeClip?.kind === "video" ? activeClip.name : clips.find((clip) => clip.kind === "video")?.name ?? (language === "ru" ? "Видео ещё не добавлено" : "No source video yet")}</strong>
+              <span>{language === "ru" ? "Совет: выбери видео в медиатеке, затем запусти анализ. Для двухчасового файла сканирование может занять время." : "Tip: select a video in the media library before scanning. A two-hour file may take time."}</span>
+            </div>
+            <button className="button button-primary" onClick={analyzeHighlights} disabled={isAnalyzingHighlights || !clips.some((clip) => clip.kind === "video")}>
+              <ScanSearch size={16} /> {isAnalyzingHighlights ? (language === "ru" ? "Анализируем…" : "Scanning…") : (language === "ru" ? "Анализировать видео" : "Analyze video")} <ArrowRight size={16} />
+            </button>
+          </div>
+          {isAnalyzingHighlights && <div className="highlight-progress" role="status" aria-live="polite">
+            <div className="highlight-progress-track"><span style={{ width: highlightProgress ? `${Math.round(highlightProgress.current / highlightProgress.total * 100)}%` : "2%" }} /></div>
+            <p>{language === "ru"
+              ? highlightProgress ? `Просмотр кадра ${highlightProgress.current} из ${highlightProgress.total} · позиция ${formatTime(highlightProgress.time)}` : "Подготавливаем видео к анализу…"
+              : highlightProgress ? `Sampling frame ${highlightProgress.current} of ${highlightProgress.total} · ${formatTime(highlightProgress.time)}` : "Preparing video for analysis…"}</p>
+          </div>}
+          {highlightVariants.length > 0 && <div className="highlight-results">
+            <div className="highlight-results-intro">
+              <strong>{language === "ru" ? "Три черновых варианта" : "Three draft cuts"}</strong>
+              <span>{language === "ru" ? "Длина выбрана по доступным моментам; каждый фрагмент можно проверить в монтажной шкале." : "Length is chosen from available moments. Review each cut in the timeline."}</span>
+            </div>
+            <div className="highlight-variant-grid">
+              {highlightVariants.map((variant) => <button key={variant.id} className={selectedHighlightVariant === variant.id ? "highlight-variant selected" : "highlight-variant"} onClick={() => setSelectedHighlightVariant(variant.id)} aria-pressed={selectedHighlightVariant === variant.id}>
+                <span className="highlight-variant-top"><span className="highlight-variant-dot" />{variant.title}</span>
+                <strong>{Math.round(variant.duration)}<small> {language === "ru" ? "сек" : "sec"}</small></strong>
+                <span className="highlight-variant-description">{variant.description}</span>
+                <span className="highlight-variant-meta">{variant.moments.length} {language === "ru" ? "фрагментов" : "segments"} · {variant.shotLength.toFixed(1)}s {language === "ru" ? "на фрагмент" : "per shot"}</span>
+                <span className="highlight-variant-action">{selectedHighlightVariant === variant.id ? (language === "ru" ? "Выбран" : "Selected") : (language === "ru" ? "Выбрать вариант" : "Select cut")}</span>
+              </button>)}
+            </div>
+            <div className="highlight-selected-footer">
+              <div><strong>{language === "ru" ? "Выбрано:" : "Selected:"} {highlightVariants.find((variant) => variant.id === selectedHighlightVariant)?.title}</strong><span>{language === "ru" ? "Применение заменит исходный клип последовательностью выбранных обрезок. Можно отменить вручную, удалив их и импортировав исходник снова." : "Applying replaces the source clip with selected trims. Re-import the source to start over."}</span></div>
+              <button className="button button-primary" onClick={() => {
+                const variant = highlightVariants.find((item) => item.id === selectedHighlightVariant);
+                if (variant) applyHighlightVariant(variant);
+              }}><Check size={16} /> {language === "ru" ? "Применить к монтажу" : "Apply to timeline"} <ArrowRight size={16} /></button>
+            </div>
+            <div className="highlight-candidate-note">
+              <ShieldCheck size={15} />
+              <span>{language === "ru" ? "Важно: это первая эвристическая версия — она оценивает визуальные изменения, движение и контраст, но ещё не распознаёт сюжет, конкретных персонажей, эмоции или смысл диалогов. Всегда просматривай выбранные моменты." : "Important: this first heuristic version scores visual change, motion, and contrast. It does not understand plot, specific characters, emotions, or dialogue yet. Always review the selected moments."}</span>
+            </div>
+          </div>}
+        </section>
+
         <section className="reference-lab panel">
           <div className="reference-lab-heading">
             <div><span className="section-kicker">REFERENCE LAB · FIRST STEP</span><h2>Teach DRAVEX with a reference</h2><p>Import a video into the media library, then inspect its pacing and likely cuts.</p></div>
@@ -491,7 +614,7 @@ export default function App() {
               <div className="settings-grid">
                 <label className="setting-field"><span>Edit style</span><select value={editStyle} onChange={(event) => setEditStyle(event.target.value as EditStyle)}><option value="velocity">Velocity / Fast Cuts</option><option value="anime">Anime / AMV</option><option value="cinematic">Cinematic</option><option value="glitch">Glitch / Cyberpunk</option><option value="story">Clean Storytelling</option></select></label>
                 <label className="setting-field"><span>Aspect ratio</span><select value={aspect} onChange={(event) => setAspect(event.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option><option>4:5</option></select></label>
-                <label className="setting-field"><span>Target length</span><select value={targetLength} onChange={(event) => setTargetLength(event.target.value)}><option>15 seconds</option><option>30 seconds</option><option>60 seconds</option><option>90 seconds</option><option>2 minutes</option><option>5 minutes</option><option>10+ minutes</option></select></label>
+                <label className="setting-field"><span>Target length</span><select value={targetLength} onChange={(event) => setTargetLength(event.target.value)}>{!["15 seconds", "30 seconds", "60 seconds", "90 seconds", "2 minutes", "5 minutes", "10+ minutes"].includes(targetLength) && <option value={targetLength}>{targetLength}</option>}<option>15 seconds</option><option>30 seconds</option><option>60 seconds</option><option>90 seconds</option><option>2 minutes</option><option>5 minutes</option><option>10+ minutes</option></select></label>
                 <label className="setting-field"><span>Output quality</span><select value={quality} onChange={(event) => setQuality(event.target.value)}><option>720p</option><option>1080p</option><option>4K</option></select></label>
               </div>
               <label className="overlay-toggle"><input type="checkbox" checked={showTitleOverlay} onChange={(event) => setShowTitleOverlay(event.target.checked)} /><span>Overlay title text</span></label>
