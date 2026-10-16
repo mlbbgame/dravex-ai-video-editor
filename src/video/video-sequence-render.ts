@@ -129,7 +129,8 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
 export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
-  const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+  // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
+  const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/webm;codecs=vp9"].find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
