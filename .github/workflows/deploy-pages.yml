@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out main site
         uses: actions/checkout@v4
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -28,10 +28,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install dependencies
+      - name: Install main dependencies
         run: npm install --no-audit --no-fund
-      - name: Build site
+      - name: Build main site
         run: npm run build
+      - name: Check out DRAVEX preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: rebuild/one-button-auto-montage
+          path: preview-source
+      - name: Install preview dependencies
+        working-directory: preview-source
+        run: npm install --no-audit --no-fund
+      - name: Build preview site
+        working-directory: preview-source
+        run: npm run build -- --base=/dravex-ai-video-editor/preview/
+      - name: Add preview under /preview/
+        run: |
+          mkdir -p dist/preview
+          cp -R preview-source/dist/. dist/preview/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
