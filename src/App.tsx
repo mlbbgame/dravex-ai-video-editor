@@ -225,7 +225,7 @@ export default function App() {
     const isRu = language === "ru";
     const recipe = editRecipes[editStyle];
     const duration = parseInt(targetLength, 10) || 30;
-    const category = /mlbb|mobile legends|мобайл легенд|мобайл легендс|клинт|fanny|фанни|ml|gaming|геймплей|игров/.test(lower) ? "gaming"
+    const category = /mlbb|mobile legends|мобайл легенд|мобайл легендс|клинт|fanny|фанни|ml\b|gaming|геймплей|игров/.test(lower) ? "gaming"
       : /car|cars|авто|машин|gtr|gt-r|rs6|гонк|drift|дрифт/.test(lower) ? "cars"
       : /travel|trip|путешеств|поездк|город|city|landscape|природ|nature/.test(lower) ? "travel"
       : /tutorial|how to|guide|обуч|инструкц|урок|гайд|совет/.test(lower) ? "tutorial"
@@ -492,7 +492,7 @@ export default function App() {
                   trimEnd: clip.trimEnd && clip.trimEnd > (clip.trimStart ?? 0) ? clip.trimEnd : (clip.duration ?? 0)
                 }),
             audioTracks: audioClips.map(({ name, url }) => ({ name, url, volume: musicVolume / 100 })),
-            title: (() => { const raw = prompt.trim().split(/[.!?\\n]/)[0]?.trim() || projectName; return raw.length > 48 ? `${raw.slice(0, 45).trimEnd()}…` : raw; })(),
+            title: (() => { const raw = prompt.trim().split(/[.!?\n]/)[0]?.trim() || projectName; return raw.length > 48 ? `${raw.slice(0, 45).trimEnd()}…` : raw; })(),
             aspectRatio: aspect,
             onProgress: setRenderProgress
           })
