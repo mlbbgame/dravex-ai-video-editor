@@ -240,7 +240,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
   });
 
-  const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1) => {
+  const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
@@ -255,12 +255,44 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const offsetX = Math.sin(progress * 71) * width * shake;
     const offsetY = Math.cos(progress * 83) * height * shake;
     context.save();
+    const transitionWindow = !suppressTransitions && cutProgress >= 0 && cutProgress < 0.2;
+    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
+    const transitionType = cutIndex % 5;
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.12) saturate(1.12)" : style === "anime" ? "contrast(1.1) saturate(1.25)" : style === "velocity" ? "contrast(1.16) saturate(1.22)" : style === "glitch" ? "contrast(1.18) saturate(1.3)" : "contrast(1.04) saturate(1.04)";
-    // Fade each new shot in from the background so cuts feel like deliberate transitions.
-    context.globalAlpha = !suppressTransitions && cutProgress >= 0 && cutProgress < 0.12
-      ? Math.max(0.04, cutProgress / 0.12)
-      : 1;
-    context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+    if (transitionWindow && transitionType === 0) {
+      // Fast zoom-in reveal.
+      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.2 : 0.1);
+      const dw = drawWidth * punch;
+      const dh = drawHeight * punch;
+      context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
+      context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
+    } else if (transitionWindow && (transitionType === 1 || transitionType === 2)) {
+      // Alternating directional wipe reveals the new shot.
+      const reveal = Math.max(0.04, Math.min(1, transitionProgress));
+      const revealWidth = width * reveal;
+      context.beginPath();
+      context.rect(transitionType === 1 ? 0 : width - revealWidth, 0, revealWidth, height);
+      context.clip();
+      context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+    } else if (transitionWindow && transitionType === 3) {
+      // Diagonal slash reveal.
+      const edge = width + height * transitionProgress * 1.5;
+      context.beginPath();
+      context.moveTo(0, 0);
+      context.lineTo(Math.min(width, edge), 0);
+      context.lineTo(Math.max(0, edge - height), height);
+      context.lineTo(0, height);
+      context.closePath();
+      context.clip();
+      context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+    } else {
+      // Clean cut or short fade; keep the footage readable.
+      context.globalAlpha = transitionWindow ? Math.min(1, transitionProgress * 2.2 + 0.05) : 1;
+      if (transitionWindow && style === "velocity") {
+        context.filter = "blur(" + ((1 - transitionProgress) * Math.min(16, width * 0.012)) + "px) " + context.filter;
+      }
+      context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+    }
     context.restore();
     if (!suppressEffects) {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
@@ -331,12 +363,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         }
       }));
     }
-    for (const item of loaded) {
+    for (const [cutIndex, item] of loaded.entries()) {
       if (item.kind === "image") {
         const segmentStartedAt = performance.now();
         while (performance.now() - segmentStartedAt < item.duration * 1000) {
           const segmentProgress = Math.min(1, (performance.now() - segmentStartedAt) / (item.duration * 1000));
-          draw(item.image, segmentProgress, segmentProgress < 0.16 ? segmentProgress : 1);
+          draw(item.image, segmentProgress, segmentProgress < 0.2 ? segmentProgress : 1, cutIndex);
           onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
@@ -351,7 +383,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
         const clipProgress = Math.min(1, (performance.now() - clipStartedAt) / (duration * 1000));
-        draw(video, clipProgress, clipProgress < 0.16 ? clipProgress : 1);
+        draw(video, clipProgress, clipProgress < 0.2 ? clipProgress : 1, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
