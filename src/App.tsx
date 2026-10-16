@@ -128,7 +128,15 @@ export default function App() {
   const videoCount = clips.filter((clip) => clip.kind === "video").length;
   const totalBytes = clips.reduce((sum, clip) => sum + clip.bytes, 0);
   const estimatedDuration = useMemo(
-    () => clips.reduce((sum, clip) => sum + (clip.duration ?? 0), 0),
+    () => clips.reduce((sum, clip) => {
+      if (clip.kind === "video" && clip.duration) {
+        const start = Math.max(0, clip.trimStart ?? 0);
+        const end = Math.min(clip.duration, clip.trimEnd ?? clip.duration);
+        return sum + Math.max(0, end - start);
+      }
+      if (clip.kind === "image") return sum + 3;
+      return sum + (clip.duration ?? 0);
+    }, 0),
     [clips]
   );
 
@@ -522,7 +530,16 @@ export default function App() {
 
         <section className="timeline-section panel">
           <div className="timeline-heading"><div><span className="section-kicker">EDITING WORKSPACE</span><h2>Timeline <span className="soon-badge">FOUNDATION</span></h2></div><div className="timeline-actions"><span className="timeline-length"><Gauge size={15} /> {formatTime(estimatedDuration)}</span><button className="button button-quiet" onClick={saveProject}><Download size={16} /> Export project</button></div></div>
-          {clips.length ? <div className="timeline-tracks"><div className="track-label"><Film size={15} /> MEDIA</div><div className="track-items">{clips.map((clip, index) => <button key={clip.id} className={activeClip?.id === clip.id ? "track-clip selected" : "track-clip"} onClick={() => setActiveId(clip.id)}><span>{String(index + 1).padStart(2, "0")}</span><strong>{clip.name}</strong><small>{clip.kind.toUpperCase()}</small></button>)}</div></div> : <div className="timeline-empty"><span className="timeline-empty-icon"><Layers3 size={18} /></span><div><strong>Your timeline is ready</strong><p>Add media to start building your sequence.</p></div><button className="button button-quiet" onClick={() => uploadRef.current?.click()}>Add first clip <ArrowRight size={15} /></button></div>}
+          {clips.length ? <div className="timeline-tracks"><div className="track-label"><Film size={15} /> MEDIA</div><div className="track-items">{clips.map((clip, index) => <div key={clip.id} className={activeClip?.id === clip.id ? "track-clip-card selected" : "track-clip-card"}>
+                <button className="track-clip-select" onClick={() => setActiveId(clip.id)} aria-label={`Select ${clip.name}`}>
+                  <span>{String(index + 1).padStart(2, "0")}</span><strong>{clip.name}</strong><small>{clip.kind.toUpperCase()}</small>
+                  {clip.kind === "video" && clip.duration ? <small>{formatTime(Math.max(0, Math.min(clip.duration, clip.trimEnd ?? clip.duration) - Math.max(0, clip.trimStart ?? 0)))}</small> : null}
+                </button>
+                <div className="track-clip-actions">
+                  <button onClick={() => moveClip(clip.id, -1)} disabled={index === 0} aria-label={language === "ru" ? "Переместить клип выше" : "Move clip earlier"} title={language === "ru" ? "Выше" : "Move earlier"}><ArrowUp size={13} /></button>
+                  <button onClick={() => moveClip(clip.id, 1)} disabled={index === clips.length - 1} aria-label={language === "ru" ? "Переместить клип ниже" : "Move clip later"} title={language === "ru" ? "Ниже" : "Move later"}><ArrowDown size={13} /></button>
+                </div>
+              </div>)}</div></div> : <div className="timeline-empty"><span className="timeline-empty-icon"><Layers3 size={18} /></span><div><strong>Your timeline is ready</strong><p>Add media to start building your sequence.</p></div><button className="button button-quiet" onClick={() => uploadRef.current?.click()}>Add first clip <ArrowRight size={15} /></button></div>}
           <div className="timeline-note"><span className="note-mark">i</span> This build supports clip trimming and local WebM sequence export with original video audio where supported. Imported audio mixing is available; transitions, MP4 export, and connected AI generation are still in development.</div>
         </section>
 
