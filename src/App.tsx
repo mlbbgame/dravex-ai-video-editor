@@ -156,7 +156,7 @@ export default function App() {
 
       <main className="main-area" id="home">
         <header className="topbar">
-          <div className="crumb"><span>Workspace</span><ChevronDown size={14} /><strong>{mode === "ai" ? "AI Creator" : "Manual Studio"}</strong></div>
+          <div className="crumb"><span>Workspace</span><ChevronDown size={14} /><strong>{mode === "ai" ? "AI Creator" : "Manual Studio"}</strong><span className="crumb-divider">/</span><input className="project-name-input" aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></div>
           <div className="top-actions"><span className="save-status"><span className="status-dot" /> Session only</span><button className="button button-quiet top-save" onClick={saveProject}><Download size={16} /> Save project</button></div>
         </header>
 
