@@ -48,16 +48,33 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
 }
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
+  const target = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
+  // Some browsers do not fire "seeked" when asked to seek to the current frame.
+  if (video.readyState >= 2 && Math.abs(video.currentTime - target) < 0.02) return Promise.resolve();
+
   return new Promise((resolve, reject) => {
-    const finish = () => { cleanup(); resolve(); };
-    const fail = () => { cleanup(); reject(new Error("The browser could not inspect a frame. Try another video format.")); };
+    let timeoutId = 0;
     const cleanup = () => {
+      window.clearTimeout(timeoutId);
       video.removeEventListener("seeked", finish);
       video.removeEventListener("error", fail);
     };
+    const finish = () => { cleanup(); resolve(); };
+    const fail = () => {
+      cleanup();
+      reject(new Error("Не удалось прочитать кадр видео. Попробуй MP4 или WebM."));
+    };
     video.addEventListener("seeked", finish, { once: true });
     video.addEventListener("error", fail, { once: true });
-    video.currentTime = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Видео слишком долго обрабатывается. Попробуй более короткий файл."));
+    }, 12000);
+    try {
+      video.currentTime = target;
+    } catch {
+      fail();
+    }
   });
 }
 
