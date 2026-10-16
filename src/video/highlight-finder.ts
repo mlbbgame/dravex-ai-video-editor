@@ -125,8 +125,9 @@ export async function analyzeVideoForHighlights(
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
-    // Cap work on very long files to keep the Android browser more responsive.
-    const interval = Math.max(1.5, duration / 900, duration > 1800 ? 4 : 0);
+    // Cap frame sampling so long videos remain practical on Android phones.
+    // At most about 300 samples are inspected, with a minimum 1.5-second interval.
+    const interval = Math.max(1.5, duration / 300, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
     let previous: Uint8ClampedArray | null = null;
