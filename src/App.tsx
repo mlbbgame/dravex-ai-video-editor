@@ -1,7 +1,7 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import { renderVideoSequence } from "./video/video-sequence-render";
-import { extractPromptDuration, generateLocalPlan, getPromptRenderPreferences, makeOverlayTitle } from "./video/plan-generator";
+import { extractPromptDuration, generateLocalPlan, getPromptRenderPreferences, inferPromptSettings, makeOverlayTitle } from "./video/plan-generator";
 import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightProgress, type HighlightVariant } from "./video/highlight-finder";
 import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
 import SelfIntroVideo from "./components/SelfIntroVideo";
@@ -201,24 +201,29 @@ export default function App() {
       window.setTimeout(() => setNotice(""), 3500);
       return;
     }
+    const inferred = inferPromptSettings(prompt, language);
     const promptDuration = extractPromptDuration(prompt);
+    const resolvedStyle = inferred.style ?? editStyle;
+    const resolvedAspect = inferred.aspectRatio ?? aspect;
     if (promptDuration && promptDuration !== targetLength) setTargetLength(promptDuration);
+    if (inferred.style && inferred.style !== editStyle) setEditStyle(inferred.style);
+    if (inferred.aspectRatio && inferred.aspectRatio !== aspect) setAspect(inferred.aspectRatio);
     const next = generateLocalPlan({
       prompt,
-      style: editStyle,
+      style: resolvedStyle,
       duration: promptDuration ?? targetLength,
-      aspectRatio: aspect,
+      aspectRatio: resolvedAspect,
       quality,
       language,
       videoNames: clips.filter((clip) => clip.kind === "video").map((clip) => clip.name),
       imageNames: clips.filter((clip) => clip.kind === "image").map((clip) => clip.name),
       hasAudio: clips.some((clip) => clip.kind === "audio")
     });
-    setPlan(next);
+    setPlan([...inferred.reasons.map((reason) => `AUTO · ${reason}`), ...next]);
     trackEvolutionEvent("plan_created");
     setNotice(language === "ru"
-      ? "Подготовлен более подробный план по запросу, стилю, длительности и исходным файлам. Это локальный планировщик, а не настоящая подключённая языковая модель."
-      : "A more detailed plan was prepared from your prompt, style, duration, and source files. This is a local planner, not a connected language model.");
+      ? "DRAVEX подобрал стиль и формат из запроса. Проверь автоматически выбранные настройки перед экспортом."
+      : "DRAVEX inferred the style and format from your brief. Review the automatically selected settings before export.");
     window.setTimeout(() => setNotice(""), 6000);
   };
 
