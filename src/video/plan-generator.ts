@@ -75,10 +75,13 @@ function detectIntent(prompt: string, ru: boolean, hasVideo: boolean): PromptInt
   const cinematic = has("cinematic", "film look", "movie-like", "film grain", "киношн", "кинематограф", "как в кино");
   const glitch = has("glitch", "cyberpunk", "rgb split", "digital distortion", "глитч", "киберпанк", "неон");
   const energetic = has("impact", "shake", "flash", "whoosh", "удар", "тряск", "вспыш", "свуш");
-  const requestBeatSync = has("sync to the beat", "beat sync", "on beat", "sync with music", "music beats", "cut to the beat", "в такт музыке", "под бит", "синхронно с музыкой", "по биту", "под ритм");
-  const requestSlowMotion = has("slow motion", "slow-mo", "slowmo", "slowed", "замедлен", "слоумо", "медленные кадры");
-  const requestTransitions = has("transition", "transitions", "smooth transition", "whip pan", "match cut", "переход", "переходы", "плавные склейки", "вайп");
-  const requestCaptions = has("subtitles", "captions", "on-screen text", "text overlay", "titles", "надписи", "субтитры", "текст на экране", "титры");
+  const noBeatSync = has("no beat sync", "without beat sync", "not synced to the beat", "не синхронизировать с битом", "без синхронизации с битом");
+  const requestBeatSync = !noBeatSync && has("sync to the beat", "beat sync", "on beat", "sync with music", "music beats", "cut to the beat", "в такт музыке", "под бит", "синхронно с музыкой", "по биту", "под ритм");
+  const noSlowMotion = has("no slow motion", "without slow motion", "без замедления", "не замедляй");
+  const requestSlowMotion = !noSlowMotion && has("slow motion", "slow-mo", "slowmo", "slowed", "замедлен", "слоумо", "медленные кадры");
+  const noTransitions = has("no transitions", "without transitions", "без переходов", "не добавляй переходы");
+  const requestTransitions = !noTransitions && has("transition", "transitions", "smooth transition", "whip pan", "match cut", "переход", "переходы", "плавные склейки", "вайп");
+  const requestCaptions = !shouldSuppressTextOverlay(prompt) && has("subtitles", "captions", "on-screen text", "text overlay", "titles", "надписи", "субтитры", "текст на экране", "титры");
   const noText = shouldSuppressTextOverlay(prompt);
   const noEffects = has("no effects", "without effects", "clean edit", "без эффектов", "без лишних эффектов");
   const noFlash = has("no flashes", "without flashes", "без вспышек", "без флешей");
