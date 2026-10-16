@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check,
@@ -47,7 +47,7 @@ function localize(node: ReactNode, language: Language): ReactNode {
     else if ((key === "placeholder" || key === "title" || key === "aria-label") && typeof value === "string") nextProps[key] = translateText(value, language);
     else nextProps[key] = value;
   }
-  return cloneElement(node, nextProps as never);
+  return cloneElement(node as ReactElement<Record<string, unknown>>, nextProps as Partial<Record<string, unknown>>);
 }
 
 type Mode = "ai" | "manual";
