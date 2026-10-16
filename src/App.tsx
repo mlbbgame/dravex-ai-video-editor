@@ -121,7 +121,7 @@ export default function App() {
     setScan({ current: 0, total: 0, time: 0 });
     try {
       setStage("analyzing");
-      setMessage("Анализируем визуальные изменения и выбираем моменты…");
+      setMessage(isImageMode ? "Подготавливаем изображения и движение камеры…" : "Анализируем кадры и выбираем выразительные моменты…");
       let segments: Array<VideoSegment | ImageSegment>;
       let renderDuration = duration;
       if (isImageMode) {
@@ -180,7 +180,7 @@ export default function App() {
         <input ref={videoInput} className="auto-hidden-input" type="file" accept="video/*,image/*" multiple onChange={onVideoSelected} />
         {!mediaFiles.length ? (
           <button className="auto-upload-zone" onClick={() => videoInput.current?.click()} type="button">
-            <span className="auto-upload-icon"><Upload size={25} /></span><strong>Выбрать видео</strong><span>Выбери видео или несколько изображений на телефоне</span><small>MP4 / WebM / JPG / PNG · изображения можно объединить в ролик</small>
+            <span className="auto-upload-icon"><Upload size={25} /></span><strong>Добавить материал</strong><span>Выбери одно видео или несколько изображений на телефоне</span><small>MP4 / WebM / JPG / PNG · изображения можно объединить в ролик</small>
           </button>
         ) : (
           <div className="auto-source-card">
