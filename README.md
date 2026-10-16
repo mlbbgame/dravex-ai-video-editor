@@ -22,7 +22,7 @@ The first Evolution Engine layer records workflow counters and voluntary user ra
 
 ## Current prototype
 
-The initial web app provides a responsive workspace, local media import and preview, clip ordering/removal, project settings, a basic prompt-to-storyboard scaffold, and project JSON export. The first local render prototype can create a short WebM slideshow from imported images with a subtle zoom effect and title overlay, using the browser's Canvas and MediaRecorder APIs. It does not yet render imported video clips, include audio, or export MP4. AI model integration and broader device compatibility/performance testing remain future milestones.
+The web app provides a responsive workspace, local media import and preview, clip ordering/removal, trim points, splitting at the playhead, project JSON export, a local prompt-to-storyboard scaffold, and reference-video pacing estimates. The local renderer can export WebM from image slideshows and ordered video/image sequences, preserving video audio where supported and mixing imported audio at a fixed level. The first Evolution Engine foundation records local workflow counters, optional ratings, and browser capability diagnostics. It does not upload telemetry or media. A connected generative AI model, MP4 export, advanced transitions/audio automation, benchmark-driven algorithm experiments, and autonomous code evolution are not implemented yet. Android device testing is still required.
 
 ## Run locally
 
