@@ -182,7 +182,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (!context) throw new Error("Could not initialize the video renderer.");
 
   const videoStream = canvas.captureStream(24);
-  const audioContext = typeof AudioContext !== "undefined" ? new AudioContext() : null;
+  // Do not create an AudioContext for a no-music export. On some Android
+  // Chrome devices, adding an otherwise-unused Web Audio track can prevent
+  // MediaRecorder from emitting video data. The no-music path records video-only.
+  const audioContext = loadedAudio.length > 0 && typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
@@ -204,6 +207,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     ...videoStream.getVideoTracks(),
     ...(audioDestination?.stream.getAudioTracks() ?? [])
   ]);
+  if (!stream.getVideoTracks().some((track) => track.readyState === "live")) {
+    throw new Error("Не удалось запустить видеопоток с холста. Перезагрузи страницу и попробуй ещё раз.");
+  }
   const bitrate = quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
   const chunks: BlobPart[] = [];
@@ -227,7 +233,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       void audioContext?.close();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) resolve(blob);
-      else reject(new Error("Браузер не сохранил кадры в видеофайл. Попробуй открыть DRAVEX в Chrome, отключить музыку и создать ролик ещё раз. Если ошибка повторится, напиши, какой браузер используешь."));
+      else {
+        const videoTrackState = videoStream.getVideoTracks().map((track) => track.readyState).join(",") || "нет";
+        reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${mimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
+      }
     };
   });
 
