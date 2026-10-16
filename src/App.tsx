@@ -433,7 +433,7 @@ export default function App() {
           })
         : await renderImageSlideshow({
             images,
-            title: showTitleOverlay ? (prompt || projectName) : "",
+            title: showTitleOverlay ? makeOverlayTitle(prompt, projectName) : "",
             aspectRatio: aspect,
             durationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
             style: editStyle,
