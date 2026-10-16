@@ -1,7 +1,7 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import {
-  Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check,
+  Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
   Layers3, MonitorPlay, Music2, Plus, Settings2,
   ShieldCheck, Sparkles, Trash2, Upload, WandSparkles, X
@@ -114,6 +114,8 @@ export default function App() {
   const [projectName, setProjectName] = useState("Untitled project");
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
+  const [referenceReport, setReferenceReport] = useState<string[]>([]);
+  const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const activeClip = clips.find((clip) => clip.id === activeId) ?? clips[0] ?? null;
@@ -186,6 +188,84 @@ export default function App() {
     setPlan(next);
     setNotice("Automatic edit plan prepared. Image scoring and style-aware motion run locally during rendering; this is not a connected AI model yet.");
     window.setTimeout(() => setNotice(""), 6000);
+  };
+
+  const analyzeReference = async () => {
+    const reference = clips.find((clip) => clip.kind === "video");
+    if (!reference) {
+      setNotice("Import a reference video first, then analyze its editing rhythm.");
+      window.setTimeout(() => setNotice(""), 4000);
+      return;
+    }
+    setIsAnalyzingReference(true);
+    setReferenceReport([]);
+    setNotice("Analyzing reference video locally in your browser…");
+    try {
+      const video = document.createElement("video");
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      video.src = reference.url;
+      await new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error("This video could not be read by the browser."));
+      });
+      const duration = Math.min(video.duration || 0, 120);
+      if (!Number.isFinite(duration) || duration < 1) throw new Error("The reference video is too short or its duration is unavailable.");
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 36;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Frame analysis is not supported in this browser.");
+      const sampleTimes = Array.from({ length: Math.max(2, Math.ceil(duration * 2)) }, (_, i) => Math.min(i * 0.5, Math.max(0, duration - 0.08)));
+      let previous: Uint8ClampedArray | null = null;
+      const cutTimes: number[] = [];
+      let previousLuma = 0;
+      for (const time of sampleTimes) {
+        await new Promise<void>((resolve, reject) => {
+          const onSeeked = () => { video.removeEventListener("error", onError); resolve(); };
+          const onError = () => { video.removeEventListener("seeked", onSeeked); reject(new Error("Could not sample a frame from this video.")); };
+          video.addEventListener("seeked", onSeeked, { once: true });
+          video.addEventListener("error", onError, { once: true });
+          video.currentTime = time;
+        });
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let luma = 0;
+        for (let i = 0; i < pixels.length; i += 4) luma += (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722);
+        luma /= (pixels.length / 4);
+        if (previous) {
+          let difference = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            difference += (Math.abs(pixels[i] - previous[i]) + Math.abs(pixels[i + 1] - previous[i + 1]) + Math.abs(pixels[i + 2] - previous[i + 2])) / 3;
+          }
+          difference /= (pixels.length / 4);
+          if (difference > 42 && time > 0.4 && (cutTimes.length === 0 || time - cutTimes[cutTimes.length - 1] >= 1)) cutTimes.push(time);
+        }
+        previous = new Uint8ClampedArray(pixels);
+        previousLuma = luma;
+      }
+      const averageShot = duration / Math.max(1, cutTimes.length + 1);
+      const pace = averageShot < 1.5 ? "Fast" : averageShot < 3.5 ? "Medium" : "Slow";
+      const report = [
+        `REFERENCE — ${reference.name}`,
+        `DURATION — About ${Math.round(video.duration)} seconds`,
+        `EDITING RHYTHM — ${pace}; estimated average shot length ${averageShot.toFixed(1)} seconds`,
+        `SCENE CHANGES — About ${cutTimes.length} likely visual cuts detected`,
+        cutTimes.length ? `CUT MARKERS — ${cutTimes.slice(0, 12).map((time) => `${time.toFixed(1)}s`).join(", ")}` : "CUT MARKERS — No clear cuts detected at the sampled intervals",
+        "LIMITATION — This local first pass detects visual changes; it does not yet understand the story, spoken words, or music beats."
+      ];
+      setReferenceReport(report);
+      setNotice("Reference analysis complete. This is a local visual estimate, not semantic AI analysis.");
+      window.setTimeout(() => setNotice(""), 6000);
+      video.removeAttribute("src");
+      video.load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Reference analysis failed.");
+      window.setTimeout(() => setNotice(""), 5000);
+    } finally {
+      setIsAnalyzingReference(false);
+    }
   };
 
   const renderVideo = async () => {
@@ -288,6 +368,18 @@ export default function App() {
         <section className="mode-switch" aria-label="Editing mode">
           <button className={mode === "ai" ? "mode-option selected" : "mode-option"} onClick={() => setMode("ai")}><span className="mode-icon ai-icon"><Sparkles size={18} /></span><span><strong>AI Creator</strong><small>Plan with AI assistance</small></span>{mode === "ai" && <Check className="mode-check" size={17} />}</button>
           <button className={mode === "manual" ? "mode-option selected" : "mode-option"} onClick={() => setMode("manual")}><span className="mode-icon manual-icon"><Layers3 size={18} /></span><span><strong>Manual Studio</strong><small>Edit it your way</small></span>{mode === "manual" && <Check className="mode-check" size={17} />}</button>
+        </section>
+
+        <section className="reference-lab panel">
+          <div className="reference-lab-heading">
+            <div><span className="section-kicker">REFERENCE LAB · FIRST STEP</span><h2>Teach DRAVEX with a reference</h2><p>Import a video into the media library, then inspect its pacing and likely cuts.</p></div>
+            <span className="reference-lab-icon"><ScanSearch size={20} /></span>
+          </div>
+          <div className="reference-lab-actions">
+            <div className="reference-source"><strong>{clips.find((clip) => clip.kind === "video")?.name ?? "No reference video imported"}</strong><span>{clips.some((clip) => clip.kind === "video") ? "The first imported video will be analyzed locally." : "Use Import to choose a video from your device."}</span></div>
+            <button className="button button-primary" onClick={analyzeReference} disabled={isAnalyzingReference || !clips.some((clip) => clip.kind === "video")}>{isAnalyzingReference ? "Analyzing…" : "Analyze reference"} <ArrowRight size={16} /></button>
+          </div>
+          {referenceReport.length > 0 && <div className="reference-report" aria-live="polite">{referenceReport.map((line, index) => <p key={index}>{line}</p>)}</div>}
         </section>
 
         {mode === "ai" ? (
