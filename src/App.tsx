@@ -1,6 +1,7 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import { renderVideoSequence } from "./video/video-sequence-render";
+import { generateLocalPlan, makeOverlayTitle } from "./video/plan-generator";
 import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
@@ -211,29 +212,29 @@ export default function App() {
   };
 
   const makePlan = () => {
-    const imageClips = clips.filter((clip) => clip.kind === "image");
-    if (!prompt.trim() && imageClips.length === 0) {
-      setNotice("Describe the video or add images so DRAVEX can plan a montage.");
+    if (!prompt.trim() && !clips.some((clip) => clip.kind === "image" || clip.kind === "video")) {
+      setNotice(language === "ru"
+        ? "Опиши видео или добавь видео/изображения, чтобы DRAVEX мог подготовить план."
+        : "Describe the video or add video/images so DRAVEX can prepare a plan.");
       window.setTimeout(() => setNotice(""), 3500);
       return;
     }
-    const idea = prompt.trim().replace(/[.!?]+$/, "");
-    const hasAudio = clips.some((clip) => clip.kind === "audio");
-    const recipe = editRecipes[editStyle];
-    const imageSummary = imageClips.length
-      ? `02 · IMAGE ANALYSIS — ${imageClips.length} image(s) will be scored for contrast, color, and visual impact. The strongest frame opens the montage.`
-      : "02 · VISUALS — Add images to enable automatic visual analysis and montage rendering.";
-    const next = [
-      `01 · STORY — ${idea ? `Build the edit around “${idea}”.` : "Use the uploaded images as the story source and infer a visual sequence."}`,
-      imageSummary,
-      recipe.visuals,
-      recipe.rhythm,
-      hasAudio ? "04 · SOUND — Original audio from video clips can be included; separately imported audio files are not mixed into the export yet." : "04 · SOUND — Original video audio is preserved where supported, and imported audio files can be mixed into sequence exports at a fixed volume.",
-      recipe.finish
-    ];
+    const next = generateLocalPlan({
+      prompt,
+      style: editStyle,
+      duration: targetLength,
+      aspectRatio: aspect,
+      quality,
+      language,
+      videoNames: clips.filter((clip) => clip.kind === "video").map((clip) => clip.name),
+      imageNames: clips.filter((clip) => clip.kind === "image").map((clip) => clip.name),
+      hasAudio: clips.some((clip) => clip.kind === "audio")
+    });
     setPlan(next);
     trackEvolutionEvent("plan_created");
-    setNotice("Automatic edit plan prepared. Image scoring and style-aware motion run locally during rendering; this is not a connected AI model yet.");
+    setNotice(language === "ru"
+      ? "Подготовлен более подробный план по запросу, стилю, длительности и исходным файлам. Это локальный планировщик, а не настоящая подключённая языковая модель."
+      : "A more detailed plan was prepared from your prompt, style, duration, and source files. This is a local planner, not a connected language model.");
     window.setTimeout(() => setNotice(""), 6000);
   };
 
@@ -376,7 +377,7 @@ export default function App() {
                   trimEnd: clip.trimEnd && clip.trimEnd > (clip.trimStart ?? 0) ? clip.trimEnd : (clip.duration ?? 0)
                 }),
             audioTracks: audioClips.map(({ name, url }) => ({ name, url, volume: musicVolume / 100 })),
-            title: prompt || projectName,
+            title: makeOverlayTitle(prompt, projectName),
             aspectRatio: aspect,
             onProgress: setRenderProgress
           })
