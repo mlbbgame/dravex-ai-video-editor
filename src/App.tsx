@@ -362,6 +362,7 @@ export default function App() {
             aspectRatio: aspect,
             durationSeconds: Math.min(30, targetLength.includes("minutes") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15)),
             style: editStyle,
+            quality,
             onProgress: setRenderProgress
           });
       trackEvolutionEvent("render_success");
