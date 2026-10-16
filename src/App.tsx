@@ -342,7 +342,7 @@ export default function App() {
         previous = new Uint8ClampedArray(pixels);
       }
       const averageShot = duration / Math.max(1, cutTimes.length + 1);
-      const pace = averageShot < 1.5 ? "Fast" : averageShot < 3.5 ? "Medium" : "Slow";
+      const pace: ReferenceRecipe["pace"] = averageShot < 1.5 ? "Fast" : averageShot < 3.5 ? "Medium" : "Slow";
       const report = [
         `REFERENCE — ${reference.name}`,
         `DURATION — About ${Math.round(video.duration)} seconds`,
