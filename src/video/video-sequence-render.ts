@@ -126,11 +126,17 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
   // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
-  if (targetDurationSeconds && Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0 && sourceDuration > targetDurationSeconds) {
-    const scale = targetDurationSeconds / sourceDuration;
-    for (const item of loaded) {
-      item.duration *= scale;
-      if (item.kind === "video") item.end = item.start + item.duration;
+  if (targetDurationSeconds && Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0) {
+    if (sourceDuration > targetDurationSeconds) {
+      const scale = targetDurationSeconds / sourceDuration;
+      for (const item of loaded) {
+        item.duration *= scale;
+        if (item.kind === "video") item.end = item.start + item.duration;
+      }
+    } else if (loaded.every((item) => item.kind === "image")) {
+      // A still-image sequence can hold on its images to fill the requested duration, including when audio is present.
+      const scale = targetDurationSeconds / sourceDuration;
+      for (const item of loaded) item.duration *= scale;
     }
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
