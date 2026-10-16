@@ -351,6 +351,20 @@ export default function App() {
 
         <footer className="app-footer"><span>DRAVEX <span className="footer-dot">●</span> BUILDING THE FUTURE OF VIDEO</span><span><ShieldCheck size={14} /> Your choice. Your workflow.</span></footer>
       </main>
+      <nav className="mobile-nav" aria-label="Main navigation">
+        <button className={mode === "ai" ? "mobile-nav-item active" : "mobile-nav-item"} onClick={() => setMode("ai")} aria-label="AI Creator">
+          <WandSparkles size={19} /><span>AI</span>
+        </button>
+        <button className={mode === "manual" ? "mobile-nav-item active" : "mobile-nav-item"} onClick={() => setMode("manual")} aria-label="Manual Studio">
+          <Layers3 size={19} /><span>Studio</span>
+        </button>
+        <button className="mobile-nav-item" onClick={() => uploadRef.current?.click()} aria-label="Import media">
+          <Upload size={19} /><span>Import</span>
+        </button>
+        <button className="mobile-nav-item" onClick={saveProject} aria-label="Save project">
+          <Download size={19} /><span>Save</span>
+        </button>
+      </nav>
       {notice && <div className="toast" role="status"><Check size={16} /> {notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={15} /></button></div>}
     </div>
   ), language);
