@@ -8,14 +8,18 @@ type RenderOptions = {
   aspectRatio: string;
   durationSeconds?: number;
   style?: RenderStyle;
+  quality?: string;
   onProgress?: (progress: number) => void;
 };
 
-const dimensionsFor = (aspectRatio: string) => {
-  if (aspectRatio === "16:9") return { width: 1280, height: 720 };
-  if (aspectRatio === "1:1") return { width: 720, height: 720 };
-  if (aspectRatio === "4:5") return { width: 720, height: 900 };
-  return { width: 720, height: 1280 };
+const dimensionsFor = (aspectRatio: string, quality = "720p") => {
+  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
+  let base: { width: number; height: number };
+  if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
+  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
+  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
+  else base = { width: 720, height: 1280 };
+  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
 };
 
 const loadImage = (url: string) =>
@@ -63,6 +67,7 @@ export async function renderImageSlideshow({
   aspectRatio,
   durationSeconds = 15,
   style = "cinematic",
+  quality = "720p",
   onProgress
 }: RenderOptions): Promise<Blob> {
   if (!images.length) throw new Error("Import at least one image before rendering.");
@@ -74,7 +79,7 @@ export async function renderImageSlideshow({
     .find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
-  const { width, height } = dimensionsFor(aspectRatio);
+  const { width, height } = dimensionsFor(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -88,7 +93,7 @@ export async function renderImageSlideshow({
   const stream = canvas.captureStream(24);
   const recorder = new MediaRecorder(stream, {
     mimeType,
-    videoBitsPerSecond: 4_000_000
+    videoBitsPerSecond: quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 4_000_000
   });
   const chunks: BlobPart[] = [];
   const safeDuration = Math.max(5, Math.min(30, durationSeconds));
