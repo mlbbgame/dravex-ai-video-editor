@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check,
@@ -6,6 +6,37 @@ import {
   Layers3, MonitorPlay, Music2, Plus, Settings2,
   ShieldCheck, Sparkles, Trash2, Upload, WandSparkles, X
 } from "lucide-react";
+
+
+type Language = "en" | "ru";
+const russianText: Record<string, string> = {"WORKSPACE":"РАБОЧЕЕ ПРОСТРАНСТВО","PROJECT":"ПРОЕКТ","Import media":"Импортировать медиа","Save project file":"Сохранить файл проекта","Local-first prototype":"Локальный прототип","Your media stays in this browser session.":"Ваши медиафайлы остаются в текущем сеансе браузера.","Early prototype":"Ранний прототип","Session only":"Только текущий сеанс","Save project":"Сохранить проект","YOUR STORY, YOUR RULES":"ТВОЯ ИСТОРИЯ — ТВОИ ПРАВИЛА","Make something":"Создай нечто","worth watching.":"Достойное просмотра.","Your timeline.":"Твоя монтажная шкала.","Your creative control.":"Твой творческий контроль.","Describe the video in your head. Build a plan, bring in your footage, and shape the final cut.":"Опиши видео, которое представляешь. Составь план, добавь материалы и создай финальный монтаж.","Work directly with your media. No AI required — you stay in control of every creative decision.":"Работай напрямую со своими материалами. ИИ не обязателен — каждое творческое решение остаётся за тобой.","Plan with AI assistance":"Планирование с помощью ИИ","Edit it your way":"Монтируй по-своему","Describe your video":"Опиши своё видео","Start with an idea. Be as specific as you like.":"Начни с идеи. Чем подробнее, тем лучше.","YOUR CREATIVE BRIEF":"ТВОЯ ИДЕЯ","A cinematic night drive through a neon city, fast cuts synced to the beat, dramatic opening and a powerful finish…":"Кинематографичная ночная поездка по неоновому городу, быстрый монтаж в ритм музыки, драматичное начало и мощный финал…","Mood":"Настроение","Story":"История","Editing style":"Стиль монтажа","Set the direction":"Настрой видео","Adjust the output to fit your platform.":"Настрой результат под свою платформу.","Aspect ratio":"Соотношение сторон","Target length":"Длительность","Output quality":"Качество видео","Build my video plan":"Создать план видео","Local planning demo — no external AI model is connected yet.":"Локальная демонстрация планирования — внешняя модель ИИ пока не подключена.","Your creative plan":"Твой план видео","A first outline for your next cut.":"Первый набросок будущего ролика.","DRAFT":"ЧЕРНОВИК","YOUR NEXT IDEA":"ТВОЯ СЛЕДУЮЩАЯ ИДЕЯ","Your next idea starts here":"Твоя следующая идея начинается здесь","Your outline will appear here after you describe the video and build a plan.":"Здесь появится план после того, как ты опишешь видео и создашь план.","Waiting for your brief":"Ожидаем твою идею","Draft ready to review":"Черновик готов к просмотру","Render 15-second video":"Создать видео на 15 секунд","First renderer exports WebM from imported images directly on this device. MP4, audio, and video-clip rendering are not included yet.":"Первая версия создаёт WebM из изображений прямо на устройстве. Экспорт MP4, звук и обработка видеоклипов пока не поддерживаются.","YOUR ASSETS":"ТВОИ МАТЕРИАЛЫ","Media library":"Медиатека","Add media":"Добавить медиа","Drop your media into the story":"Добавь материалы в проект","Or tap to browse files on your device":"Или нажми, чтобы выбрать файлы на устройстве","VIDEO · IMAGE · AUDIO":"ВИДЕО · ИЗОБРАЖЕНИЯ · АУДИО","PREVIEW":"ПРЕДПРОСМОТР","Your preview lives here":"Здесь будет предпросмотр","Import media to get started.":"Импортируй файлы, чтобы начать.","No media selected":"Медиа не выбраны","EDITING WORKSPACE":"МОНТАЖНОЕ ПРОСТРАНСТВО","Timeline":"Монтажная шкала","FOUNDATION":"ОСНОВА","Export project":"Экспорт проекта","Your timeline is ready":"Монтажная шкала готова","Add media to start building your sequence.":"Добавь медиафайлы, чтобы начать собирать последовательность.","Add first clip":"Добавить первый клип","This build can organize and preview media and save project settings. Trimming, transitions, rendered MP4 export, and connected AI generation are not implemented yet.":"Эта версия умеет упорядочивать и просматривать медиа, а также сохранять настройки проекта. Обрезка, переходы, экспорт готового MP4 и подключение ИИ пока не реализованы.","BUILDING THE FUTURE OF VIDEO":"СОЗДАЁМ БУДУЩЕЕ ВИДЕО","Your choice. Your workflow.":"Твой выбор. Твой рабочий процесс.","Dismiss message":"Закрыть сообщение","Add more":"Добавить ещё","Move clip up":"Переместить клип вверх","Move clip down":"Переместить клип вниз","Remove clip":"Удалить клип","Move up":"Вверх","Move down":"Вниз","Remove":"Удалить","MEDIA":"МЕДИА","BETA":"БЕТА","Describe the video you want to make first.":"Сначала опиши видео, которое хочешь создать.","Draft plan created locally. This is a planning preview, not a rendered video.":"Черновой план создан локально. Это предварительный план, а не готовое видео.","Add at least one image to render a short video. Video-clip rendering is coming later.":"Добавь хотя бы одно изображение, чтобы создать короткое видео. Обработка видеоклипов появится позже.","Rendering a short video locally in your browser…":"Создаём короткое видео прямо в браузере…","Video rendered and downloaded as WebM. This first local renderer uses images, motion, and a title; audio and MP4 export are next steps.":"Видео создано и скачано в формате WebM. Эта версия использует изображения, движение и заголовок; звук и экспорт MP4 добавим позже.","Video rendering failed. Please try fewer or smaller images.":"Не удалось создать видео. Попробуй использовать меньше изображений или файлы меньшего размера.","Project settings exported as a .dravex.json file. Source media is not embedded.":"Настройки проекта экспортированы в файл .dravex.json. Исходные медиафайлы в него не включены.","Choose a video, image, or audio file.":"Выбери видео, изображение или аудиофайл.","Import your clips, choose the order, preview each item, and prepare a project file. More precise timeline tools and finished-video rendering are still being built.":"Импортируй клипы, выбери их порядок, просмотри каждый файл и подготовь файл проекта. Точные инструменты монтажа и экспорт готового видео ещё разрабатываются.","Language":"Язык"};
+function translateText(value: string, language: Language): string {
+  if (language === "en") return value;
+  const trimmed = value.trim();
+  if (russianText[trimmed]) return value.replace(trimmed, russianText[trimmed]);
+  let match = trimmed.match(/^Added (\d+) media files? to this session\.$/);
+  if (match) return `Добавлено медиафайлов: ${match[1]}.`;
+  match = trimmed.match(/^(\d+) video(s?) · (.+) known duration$/);
+  if (match) return `${match[1]} видео · ${match[3]} — известная длительность`;
+  match = trimmed.match(/^(\d+) media files added$/);
+  if (match) return `Добавлено медиафайлов: ${match[1]}`;
+  match = trimmed.match(/^Rendering video… (\d+)%$/);
+  if (match) return `Создаём видео… ${match[1]}%`;
+  return value;
+}
+function localize(node: ReactNode, language: Language): ReactNode {
+  if (typeof node === "string") return translateText(node, language);
+  if (Array.isArray(node)) return node.map((child, index) => <span key={index}>{localize(child, language)}</span>);
+  if (!isValidElement(node)) return node;
+  const props = node.props as Record<string, unknown>;
+  const nextProps: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "children") nextProps.children = localize(value as ReactNode, language);
+    else if ((key === "placeholder" || key === "title" || key === "aria-label") && typeof value === "string") nextProps[key] = translateText(value, language);
+    else nextProps[key] = value;
+  }
+  return cloneElement(node, nextProps);
+}
 
 type Mode = "ai" | "manual";
 type ClipKind = "video" | "audio" | "image";
@@ -29,6 +60,7 @@ const formatBytes = (bytes: number) =>
 
 export default function App() {
   const [mode, setMode] = useState<Mode>("ai");
+  const [language, setLanguage] = useState<Language>("en");
   const [clips, setClips] = useState<MediaClip[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -166,7 +198,7 @@ export default function App() {
     window.setTimeout(() => setNotice(""), 4500);
   };
 
-  return (
+  return localize((
     <div className="app-shell">
       <aside className="sidebar">
         <a className="brand" href="#home" aria-label="DRAVEX home">
@@ -193,7 +225,7 @@ export default function App() {
       <main className="main-area" id="home">
         <header className="topbar">
           <div className="crumb"><span>Workspace</span><ChevronDown size={14} /><strong>{mode === "ai" ? "AI Creator" : "Manual Studio"}</strong><span className="crumb-divider">/</span><input className="project-name-input" aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></div>
-          <div className="top-actions"><span className="save-status"><span className="status-dot" /> Session only</span><button className="button button-quiet top-save" onClick={saveProject}><Download size={16} /> Save project</button></div>
+          <div className="top-actions"><label className="language-switch"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value as Language)} aria-label="Language"><option value="en">English</option><option value="ru">Русский</option></select></label><span className="save-status"><span className="status-dot" /> Session only</span><button className="button button-quiet top-save" onClick={saveProject}><Download size={16} /> Save project</button></div>
         </header>
 
         <section className="welcome-row">
@@ -272,5 +304,5 @@ export default function App() {
       </main>
       {notice && <div className="toast" role="status"><Check size={16} /> {notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={15} /></button></div>}
     </div>
-  );
+  ), language);
 }
