@@ -55,33 +55,6 @@ function localize(node: ReactNode, language: Language): ReactNode {
 
 type Mode = "ai" | "manual" | "collab";
 type EditStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
-const editRecipes: Record<EditStyle, { visuals: string; rhythm: string; finish: string }> = {
-  velocity: {
-    visuals: "02 · VISUALS — Pick the strongest action shots and build speed ramps into key moments.",
-    rhythm: "03 · RHYTHM — Cut on the beat; alternate quick bursts with short slow-motion accents.",
-    finish: "05 · FINISH — Save the biggest reveal for the music drop and end on a clean loop."
-  },
-  anime: {
-    visuals: "02 · VISUALS — Frame the hero clearly; use close-ups, impact poses, and dramatic contrast.",
-    rhythm: "03 · RHYTHM — Use fast motion cuts, brief impact flashes, shake, and whoosh accents sparingly.",
-    finish: "05 · FINISH — Build toward one signature hero moment, then finish with a strong freeze-frame."
-  },
-  cinematic: {
-    visuals: "02 · VISUALS — Establish the scene, then use deliberate close-ups and controlled movement.",
-    rhythm: "03 · RHYTHM — Let emotional shots breathe; use smooth zooms and only a few purposeful cuts.",
-    finish: "05 · FINISH — Resolve the story with a memorable final frame and a gentle fade."
-  },
-  glitch: {
-    visuals: "02 · VISUALS — Use bold silhouettes, neon contrast, and clean focal points for each shot.",
-    rhythm: "03 · RHYTHM — Place brief glitch or RGB-split accents on selected beats, not every cut.",
-    finish: "05 · FINISH — Hit one controlled digital distortion at the climax, then return to a crisp image."
-  },
-  story: {
-    visuals: "02 · VISUALS — Choose readable shots that clearly show the subject and what is happening.",
-    rhythm: "03 · RHYTHM — Keep cuts purposeful, captions short, and the story easy to follow without sound.",
-    finish: "05 · FINISH — Deliver a clear payoff and finish before the idea starts to feel repetitive."
-  }
-};
 type ClipKind = "video" | "audio" | "image";
 type ReferenceRecipe = { name: string; duration: number; pace: "Fast" | "Medium" | "Slow"; averageShot: number; cutTimes: number[] };
 type MediaClip = {
