@@ -96,7 +96,7 @@ export async function renderImageSlideshow({
     videoBitsPerSecond: quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 4_000_000
   });
   const chunks: BlobPart[] = [];
-  const safeDuration = Math.max(5, Math.min(30, durationSeconds));
+  const safeDuration = Math.max(5, Math.min(600, durationSeconds));
   const totalFrames = Math.max(24, Math.round(safeDuration * 24));
   const frameDuration = 1000 / 24;
 
