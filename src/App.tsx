@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
+import { renderVideoSequence } from "./video/video-sequence-render";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
@@ -89,6 +90,8 @@ type MediaClip = {
   url: string;
   bytes: number;
   duration?: number;
+  trimStart?: number;
+  trimEnd?: number;
 };
 
 const uid = () => `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -300,33 +303,48 @@ export default function App() {
   };
 
   const renderVideo = async () => {
+    const videoClips = clips.filter((clip) => clip.kind === "video");
     const images = clips.filter((clip) => clip.kind === "image").map(({ name, url }) => ({ name, url }));
-    if (!images.length) {
-      setNotice("Add at least one image to render a short video. Video-clip rendering is coming later.");
+    if (!videoClips.length && !images.length) {
+      setNotice("Import at least one video clip or image before rendering.");
       window.setTimeout(() => setNotice(""), 5000);
       return;
     }
     setIsRendering(true);
     setRenderProgress(0);
-    setNotice("Rendering a short video locally in your browser…");
+    setNotice(videoClips.length ? "Rendering trimmed video clips locally in your browser… audio is not included yet." : "Rendering a short image montage locally in your browser…");
     try {
-      const blob = await renderImageSlideshow({
-        images,
-        title: prompt || projectName,
-        aspectRatio: aspect,
-        durationSeconds: Math.min(30, targetLength.includes("minutes") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15)),
-        style: editStyle,
-        onProgress: setRenderProgress
-      });
+      const blob = videoClips.length
+        ? await renderVideoSequence({
+            segments: videoClips.map((clip) => ({
+              name: clip.name,
+              url: clip.url,
+              trimStart: clip.trimStart ?? 0,
+              trimEnd: clip.trimEnd && clip.trimEnd > (clip.trimStart ?? 0) ? clip.trimEnd : (clip.duration ?? 0)
+            })),
+            title: prompt || projectName,
+            aspectRatio: aspect,
+            onProgress: setRenderProgress
+          })
+        : await renderImageSlideshow({
+            images,
+            title: prompt || projectName,
+            aspectRatio: aspect,
+            durationSeconds: Math.min(30, targetLength.includes("minutes") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15)),
+            style: editStyle,
+            onProgress: setRenderProgress
+          });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = `${projectName.trim().replace(/[^a-z0-9-_]+/gi, "-") || "dravex-video"}.webm`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice("Video rendered and downloaded as WebM. This first local renderer uses images, motion, and a title; audio and MP4 export are next steps.");
+      setNotice(videoClips.length
+        ? "Video sequence exported as WebM from your trimmed source clips. Original audio, transitions, and MP4 export are still upcoming."
+        : "Image montage exported as WebM with motion and the selected style. Audio and MP4 export are still upcoming.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Video rendering failed. Please try fewer or smaller images.");
+      setNotice(error instanceof Error ? error.message : "Video rendering failed. Try shorter clips or smaller source files.");
     } finally {
       setIsRendering(false);
       setRenderProgress(0);
@@ -342,7 +360,7 @@ export default function App() {
       mode,
       prompt,
       settings: { aspectRatio: aspect, resolution: quality, targetLength },
-      media: clips.map(({ id, name, kind, bytes, duration }) => ({ id, name, kind, bytes, duration })),
+      media: clips.map(({ id, name, kind, bytes, duration, trimStart, trimEnd }) => ({ id, name, kind, bytes, duration, trimStart, trimEnd })),
       storyboard: plan,
       limitations: "Media files are not embedded. Re-import source files when reopening this project. No finished video render is included."
     };
@@ -463,8 +481,21 @@ export default function App() {
             <div className="preview-panel panel">
               <div className="preview-head"><span><MonitorPlay size={16} /> PREVIEW</span><span className="preview-resolution">{aspect} · {quality}</span></div>
               <div className={`preview-stage ${aspect === "16:9" ? "landscape" : aspect === "1:1" ? "square" : "portrait"}`}>
-                {!activeClip ? <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={28} /></div><strong>Your preview lives here</strong><span>Import media to get started.</span></div> : activeClip.kind === "video" ? <video key={activeClip.id} src={activeClip.url} controls playsInline onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, duration } : clip)); }} /> : activeClip.kind === "image" ? <img src={activeClip.url} alt={activeClip.name} /> : <div className="audio-preview"><span className="audio-visual"><AudioLines size={42} /></span><strong>{activeClip.name}</strong><audio src={activeClip.url} controls /></div>}
+                {!activeClip ? <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={28} /></div><strong>Your preview lives here</strong><span>Import media to get started.</span></div> : activeClip.kind === "video" ? <video key={activeClip.id} src={activeClip.url} controls playsInline onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, duration, trimEnd: clip.trimEnd ?? duration, trimStart: clip.trimStart ?? 0 } : clip)); }} /> : activeClip.kind === "image" ? <img src={activeClip.url} alt={activeClip.name} /> : <div className="audio-preview"><span className="audio-visual"><AudioLines size={42} /></span><strong>{activeClip.name}</strong><audio src={activeClip.url} controls /></div>}
               </div>
+              {activeClip?.kind === "video" && <div className="trim-controls">
+                <div className="trim-controls-heading"><strong>{language === "ru" ? "ОБРЕЗКА КЛИПА" : "CLIP TRIM"}</strong><span>{language === "ru" ? "Секунды" : "Seconds"}</span></div>
+                <label><span>{language === "ru" ? "Начало" : "Start"}</span><input type="number" min="0" max={Math.max(0, (activeClip.duration ?? 0) - 0.1)} step="0.1" value={activeClip.trimStart ?? 0} onChange={(event) => {
+                  const value = Math.max(0, Math.min(Number(event.target.value) || 0, Math.max(0, (activeClip.duration ?? 0) - 0.1)));
+                  setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, trimStart: value, trimEnd: Math.max(clip.trimEnd ?? clip.duration ?? value + 0.1, value + 0.1) } : clip));
+                }} /></label>
+                <label><span>{language === "ru" ? "Конец" : "End"}</span><input type="number" min={(activeClip.trimStart ?? 0) + 0.1} max={activeClip.duration ?? undefined} step="0.1" value={activeClip.trimEnd ?? activeClip.duration ?? ""} onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, trimEnd: Number.isFinite(value) && value > (clip.trimStart ?? 0) ? Math.min(value, clip.duration ?? value) : clip.trimEnd } : clip));
+                }} />
+                </label>
+                <span className="trim-duration">{formatTime(Math.max(0, (activeClip.trimEnd ?? activeClip.duration ?? 0) - (activeClip.trimStart ?? 0)))} {language === "ru" ? "выбрано" : "selected"}</span>
+              </div>}
               <div className="preview-footer"><span>{activeClip ? activeClip.name : "No media selected"}</span><span>{videoCount} video{videoCount === 1 ? "" : "s"} · {formatTime(estimatedDuration)} known duration</span></div>
             </div>
           </div>
