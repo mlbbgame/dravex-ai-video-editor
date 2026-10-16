@@ -45,7 +45,7 @@ npm run preview
 1. Responsive app shell, local media bin, and three workflow modes (AI Creator, Manual Studio, Collaboration).
 2. Evolution Engine foundation: local workflow metrics, device diagnostics, and optional local feedback.
 3. Manual clip controls and editable project persistence.
-4. Local image-to-video WebM rendering and video sequence export; improve transitions, audio controls, and export reliability.
+4. Local WebM rendering with style-based visual treatment and selectable output resolution; next improve true transitions, audio controls, and export reliability.
 5. AI planning connected to an optional model, with validated edit instructions, approval, and undo/revisions.
 6. Scene analysis, captions, music, transitions, multiple variants, and quality checks.
 7. Safe Evolution Engine: repeatable benchmark projects, regression tests, candidate experiments, measurable acceptance thresholds, and rollback.
