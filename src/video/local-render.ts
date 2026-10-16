@@ -81,13 +81,9 @@ export async function renderImageSlideshow({
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not initialize the video renderer.");
 
-  const loadedImages = await Promise.all(images.map((image) => loadImage(image.url)));
-  const ranked = loadedImages.map((image, originalIndex) => ({ image, originalIndex, score: visualScore(image) }));
-  // Keep the user's chosen order for the body, but promote the strongest visual to the opening hook.
-  const strongest = [...ranked].sort((a, b) => b.score - a.score)[0];
-  const sequence = strongest
-    ? [strongest, ...ranked.filter((item) => item.originalIndex !== strongest.originalIndex)]
-    : ranked;
+  // Preserve the sequence chosen by the user. Contrast/saturation are not semantic understanding,
+  // so they must never reorder a story automatically.
+  const sequence = await Promise.all(images.map(async (image) => ({ image: await loadImage(image.url) })));
   const stream = canvas.captureStream(24);
   const recorder = new MediaRecorder(stream, {
     mimeType,
