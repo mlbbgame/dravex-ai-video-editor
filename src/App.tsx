@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Sparkles } from "lucide-react";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
-import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type AudioSegment } from "./video/video-sequence-render";
+import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 
 type EditStyle = "velocity" | "cinematic" | "anime";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -55,9 +55,9 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
 }
 
 export default function App() {
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [musicFile, setMusicFile] = useState<File | null>(null);
-  const [videoUrl, setVideoUrl] = useState("");
   const [musicUrl, setMusicUrl] = useState("");
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
@@ -70,26 +70,35 @@ export default function App() {
   const [outputName, setOutputName] = useState("");
   const [cutCount, setCutCount] = useState(0);
   const videoInput = useRef<HTMLInputElement>(null);
+  const videoFile = mediaFiles[0] ?? null;
+  const videoUrl = mediaUrls[0] ?? "";
+  const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => file.type.startsWith("image/"));
   const musicInput = useRef<HTMLInputElement>(null);
 
-  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
+  useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
 
   const onVideoSelected = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("video/")) {
-      setError("Выбери видеофайл, например MP4 или WebM.");
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const hasInvalid = files.some((file) => !file.type.startsWith("video/") && !file.type.startsWith("image/"));
+    const videos = files.filter((file) => file.type.startsWith("video/"));
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
+      setError("Выбери одно видео или несколько изображений. Видео и изображения пока нужно монтировать отдельно.");
+      event.target.value = "";
       return;
     }
-    setVideoFile(file);
-    setVideoUrl(URL.createObjectURL(file));
+    mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+    setMediaFiles(files);
+    setMediaUrls(files.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
     setError("");
-    setMessage("Видео готово к автоматическому монтажу.");
+    setMessage(videos.length ? "Видео готово к автоматическому монтажу." : "Изображения готовы к автоматическому монтажу.");
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
+    event.target.value = "";
   };
 
   const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -105,7 +114,7 @@ export default function App() {
   };
 
   const createMontage = async () => {
-    if (!videoFile || !videoUrl || stage === "analyzing" || stage === "rendering") return;
+    if (!mediaFiles.length || stage === "analyzing" || stage === "rendering") return;
     setError("");
     setOutputUrl("");
     setRenderProgress(0);
@@ -113,9 +122,17 @@ export default function App() {
     try {
       setStage("analyzing");
       setMessage("Анализируем визуальные изменения и выбираем моменты…");
-      const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
-      const segments = makeSegments(analysis.candidates, analysis.duration, Math.min(duration, analysis.duration), style, videoFile, videoUrl);
-      if (!segments.length) throw new Error("Не удалось собрать последовательность кадров. Попробуй другое видео.");
+      let segments: Array<VideoSegment | ImageSegment>;
+      let renderDuration = duration;
+      if (isImageMode) {
+        segments = mediaFiles.map((file, index) => ({ kind: "image" as const, name: file.name, url: mediaUrls[index], duration: duration / mediaFiles.length }));
+        setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
+      } else {
+        const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+        renderDuration = Math.min(duration, analysis.duration);
+        segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, style, videoFile!, videoUrl);
+      }
+      if (!segments.length) throw new Error("Не удалось собрать последовательность кадров. Попробуй другой исходник.");
       setCutCount(segments.length);
       setStage("rendering");
       setMessage("Собираем монтаж, применяем визуальный стиль и записываем видео…");
@@ -127,7 +144,7 @@ export default function App() {
         aspectRatio: "9:16",
         quality: "720p",
         style: style as SequenceRenderStyle,
-        targetDurationSeconds: Math.min(duration, analysis.duration),
+        targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress
       });
       const nextUrl = URL.createObjectURL(blob);
@@ -159,16 +176,16 @@ export default function App() {
       </section>
 
       <section className="auto-workspace">
-        <div className="auto-step-heading"><span>01</span><div><h2>Добавь исходное видео</h2><p>Обработка происходит в браузере на твоём устройстве.</p></div></div>
-        <input ref={videoInput} className="auto-hidden-input" type="file" accept="video/*" onChange={onVideoSelected} />
-        {!videoFile ? (
+        <div className="auto-step-heading"><span>01</span><div><h2>Добавь исходное видео</h2><p>Видео или изображения автоматически собираются в ролик прямо в браузере.</p></div></div>
+        <input ref={videoInput} className="auto-hidden-input" type="file" accept="video/*,image/*" multiple onChange={onVideoSelected} />
+        {!mediaFiles.length ? (
           <button className="auto-upload-zone" onClick={() => videoInput.current?.click()} type="button">
-            <span className="auto-upload-icon"><Upload size={25} /></span><strong>Выбрать видео</strong><span>Нажми здесь и выбери файл на телефоне</span><small>MP4 / WebM · Длинные видео могут обрабатываться медленно</small>
+            <span className="auto-upload-icon"><Upload size={25} /></span><strong>Выбрать видео</strong><span>Выбери видео или несколько изображений на телефоне</span><small>MP4 / WebM / JPG / PNG · изображения можно объединить в ролик</small>
           </button>
         ) : (
           <div className="auto-source-card">
-            <video className="auto-source-preview" src={videoUrl} controls playsInline preload="metadata" />
-            <div className="auto-source-meta"><div><strong>{videoFile.name}</strong><span>{(videoFile.size / (1024 * 1024)).toFixed(1)} МБ · исходник загружен</span></div><button className="auto-text-button" onClick={() => videoInput.current?.click()} type="button">Заменить</button></div>
+            {isImageMode ? <div className="auto-image-grid">{mediaFiles.map((file, index) => <div className="auto-image-thumb" key={mediaUrls[index]}><img src={mediaUrls[index]} alt={file.name} /><span>{index + 1}. {file.name}</span></div>)}</div> : <video className="auto-source-preview" src={videoUrl} controls playsInline preload="metadata" />}
+            <div className="auto-source-meta"><div><strong>{isImageMode ? `${mediaFiles.length} изображений выбрано` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ · исходник загружен</span></div><button className="auto-text-button" onClick={() => videoInput.current?.click()} type="button">Заменить</button></div>
           </div>
         )}
 
@@ -182,7 +199,7 @@ export default function App() {
           <div className="auto-option"><span>Музыка (необязательно)</span><input ref={musicInput} className="auto-hidden-input" type="file" accept="audio/*" onChange={onMusicSelected} /><button type="button" className="auto-music-button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button></div>
         </div>
 
-        <button className="auto-create-button" type="button" disabled={!videoFile || busy} onClick={createMontage}>{busy ? <LoaderCircle className="auto-spin" size={19} /> : <WandSparkles size={19} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем видео…" : "АВТОМОНТАЖ"}</button>
+        <button className="auto-create-button" type="button" disabled={!mediaFiles.length || busy} onClick={createMontage}>{busy ? <LoaderCircle className="auto-spin" size={19} /> : <WandSparkles size={19} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем видео…" : "АВТОМОНТАЖ"}</button>
 
         {busy && <div className="auto-progress-panel"><div className="auto-progress-top"><strong>{stage === "analyzing" ? "Шаг 1 из 2 · Поиск моментов" : "Шаг 2 из 2 · Сборка ролика"}</strong><span>{stage === "analyzing" ? `${scanPercent}%` : `${renderProgress}%`}</span></div><div className="auto-progress-track"><div style={{ width: `${stage === "analyzing" ? scanPercent : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку и не блокируй телефон во время экспорта.</small></div>}
 
@@ -190,7 +207,7 @@ export default function App() {
         {stage === "done" && outputUrl && <div className="auto-result"><div className="auto-result-heading"><CheckCircle2 size={20} /><div><strong>Монтаж готов</strong><span>{cutCount} фрагментов · вертикальный формат 9:16 · WebM</span></div></div><video className="auto-output-preview" src={outputUrl} controls playsInline /><div className="auto-result-actions"><a className="auto-download-button" href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button className="auto-again-button" type="button" onClick={createMontage}><RefreshCw size={16} />Создать заново</button></div></div>}
       </section>
 
-      <section className="auto-truth-note"><span><Play size={15} /></span><p><strong>Честно о текущей версии.</strong> Это первый рабочий этап: браузер оценивает визуальные изменения, контраст и насыщенность, а не понимает сюжет как человек. Экспорт доступен в WebM; автоматический поиск трендовых примеров, интеллектуальное понимание сцен, точная синхронизация с битом и MP4-экспорт ещё предстоит разработать.</p></section>
+      <section className="auto-truth-note"><span><Play size={15} /></span><p><strong>Честно о текущей версии.</strong> Это первая версия: для видео браузер оценивает визуальные изменения, контраст и насыщенность; изображения собираются в последовательность с лёгким движением. Экспорт доступен в WebM; автоматический поиск трендовых примеров, интеллектуальное понимание сцен, точная синхронизация с битом, расширенные переходы и MP4-экспорт ещё предстоит разработать.</p></section>
       <footer className="auto-footer">DRAVEX <span>·</span> Сделано для быстрого монтажа</footer>
     </main>
   );
