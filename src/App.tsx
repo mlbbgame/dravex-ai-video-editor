@@ -119,6 +119,7 @@ export default function App() {
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
   const [musicVolume, setMusicVolume] = useState(65);
+  const [playheadTime, setPlayheadTime] = useState(0);
   const [referenceReport, setReferenceReport] = useState<string[]>([]);
   const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
@@ -161,8 +162,8 @@ export default function App() {
 
   const removeClip = (id: string) => {
     const clip = clips.find((item) => item.id === id);
-    if (clip) URL.revokeObjectURL(clip.url);
     const next = clips.filter((item) => item.id !== id);
+    if (clip && !next.some((item) => item.url === clip.url)) URL.revokeObjectURL(clip.url);
     setClips(next);
     if (activeId === id) setActiveId(next[0]?.id ?? null);
   };
@@ -176,6 +177,32 @@ export default function App() {
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
+  };
+
+  const splitClipAtPlayhead = () => {
+    if (!activeClip || activeClip.kind !== "video" || !activeClip.duration) return;
+    const start = Math.max(0, activeClip.trimStart ?? 0);
+    const end = Math.min(activeClip.duration, activeClip.trimEnd ?? activeClip.duration);
+    const splitAt = playheadTime;
+    if (splitAt <= start + 0.1 || splitAt >= end - 0.1) {
+      setNotice(language === "ru"
+        ? "Поставь видео на паузу или перемотай внутрь выбранного диапазона, затем раздели клип."
+        : "Seek inside the selected trim range, then split the clip.");
+      window.setTimeout(() => setNotice(""), 4500);
+      return;
+    }
+    const first: MediaClip = { ...activeClip, id: uid(), name: activeClip.name.replace(/\.[^.]+$/, "") + " · 1", trimStart: start, trimEnd: splitAt };
+    const second: MediaClip = { ...activeClip, id: uid(), name: activeClip.name.replace(/\.[^.]+$/, "") + " · 2", trimStart: splitAt, trimEnd: end };
+    setClips((current) => {
+      const index = current.findIndex((clip) => clip.id === activeClip.id);
+      if (index < 0) return current;
+      const next = [...current];
+      next.splice(index, 1, first, second);
+      return next;
+    });
+    setActiveId(second.id);
+    setNotice(language === "ru" ? "Клип разделён на две части по текущей позиции воспроизведения." : "Clip split into two segments at the current playhead.");
+    window.setTimeout(() => setNotice(""), 4500);
   };
 
   const makePlan = () => {
@@ -503,7 +530,7 @@ export default function App() {
             <div className="preview-panel panel">
               <div className="preview-head"><span><MonitorPlay size={16} /> PREVIEW</span><span className="preview-resolution">{aspect} · {quality}</span></div>
               <div className={`preview-stage ${aspect === "16:9" ? "landscape" : aspect === "1:1" ? "square" : "portrait"}`}>
-                {!activeClip ? <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={28} /></div><strong>Your preview lives here</strong><span>Import media to get started.</span></div> : activeClip.kind === "video" ? <video key={activeClip.id} src={activeClip.url} controls playsInline onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, duration, trimEnd: clip.trimEnd ?? duration, trimStart: clip.trimStart ?? 0 } : clip)); }} /> : activeClip.kind === "image" ? <img src={activeClip.url} alt={activeClip.name} /> : <div className="audio-preview"><span className="audio-visual"><AudioLines size={42} /></span><strong>{activeClip.name}</strong><audio src={activeClip.url} controls /></div>}
+                {!activeClip ? <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={28} /></div><strong>Your preview lives here</strong><span>Import media to get started.</span></div> : activeClip.kind === "video" ? <video key={activeClip.id} src={activeClip.url} controls playsInline onTimeUpdate={(event) => setPlayheadTime(event.currentTarget.currentTime)} onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setPlayheadTime(event.currentTarget.currentTime); setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, duration, trimEnd: clip.trimEnd ?? duration, trimStart: clip.trimStart ?? 0 } : clip)); }} /> : activeClip.kind === "image" ? <img src={activeClip.url} alt={activeClip.name} /> : <div className="audio-preview"><span className="audio-visual"><AudioLines size={42} /></span><strong>{activeClip.name}</strong><audio src={activeClip.url} controls /></div>}
               </div>
               {activeClip?.kind === "audio" && <div className="audio-mix-controls">
                 <label htmlFor="music-volume"><strong>{language === "ru" ? "ГРОМКОСТЬ ФОНОВОГО АУДИО" : "BACKGROUND AUDIO VOLUME"}</strong><span>{musicVolume}%</span></label>
@@ -522,6 +549,7 @@ export default function App() {
                 }} />
                 </label>
                 <span className="trim-duration">{formatTime(Math.max(0, (activeClip.trimEnd ?? activeClip.duration ?? 0) - (activeClip.trimStart ?? 0)))} {language === "ru" ? "выбрано" : "selected"}</span>
+                <button className="button button-quiet split-clip-button" onClick={splitClipAtPlayhead} disabled={!activeClip.duration || playheadTime <= (activeClip.trimStart ?? 0) + 0.1 || playheadTime >= (activeClip.trimEnd ?? activeClip.duration) - 0.1}><Aperture size={14} />{language === "ru" ? "Разделить по позиции" : "Split at playhead"}</button>
               </div>}
               <div className="preview-footer"><span>{activeClip ? activeClip.name : "No media selected"}</span><span>{videoCount} video{videoCount === 1 ? "" : "s"} · {formatTime(estimatedDuration)} known duration</span></div>
             </div>
