@@ -23,18 +23,6 @@ const loadImage = (url: string) =>
     image.src = url;
   });
 
-const roundedRect = (
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number
-) => {
-  context.beginPath();
-  context.roundRect(x, y, width, height, radius);
-};
-
 export async function renderImageSlideshow({
   images,
   title,
