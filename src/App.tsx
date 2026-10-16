@@ -1,7 +1,7 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import { renderVideoSequence } from "./video/video-sequence-render";
-import { generateLocalPlan, makeOverlayTitle } from "./video/plan-generator";
+import { extractPromptDuration, generateLocalPlan, getPromptRenderPreferences, makeOverlayTitle } from "./video/plan-generator";
 import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightProgress, type HighlightVariant } from "./video/highlight-finder";
 import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
 import SelfIntroVideo from "./components/SelfIntroVideo";
@@ -201,10 +201,12 @@ export default function App() {
       window.setTimeout(() => setNotice(""), 3500);
       return;
     }
+    const promptDuration = extractPromptDuration(prompt);
+    if (promptDuration && promptDuration !== targetLength) setTargetLength(promptDuration);
     const next = generateLocalPlan({
       prompt,
       style: editStyle,
-      duration: targetLength,
+      duration: promptDuration ?? targetLength,
       aspectRatio: aspect,
       quality,
       language,
@@ -398,6 +400,7 @@ export default function App() {
     const audioClips = clips.filter((clip) => clip.kind === "audio");
     const visualClips = clips.filter((clip) => clip.kind === "video" || clip.kind === "image");
     const images = clips.filter((clip) => clip.kind === "image").map(({ name, url }) => ({ name, url }));
+    const renderPreferences = getPromptRenderPreferences(prompt);
     if (!visualClips.length) {
       setNotice("Import at least one video clip or image before rendering.");
       window.setTimeout(() => setNotice(""), 5000);
@@ -428,6 +431,7 @@ export default function App() {
             aspectRatio: aspect,
             quality,
             style: editStyle,
+            ...renderPreferences,
             targetDurationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
             onProgress: setRenderProgress
           })
@@ -438,6 +442,7 @@ export default function App() {
             durationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
             style: editStyle,
             quality,
+            ...renderPreferences,
             onProgress: setRenderProgress
           });
       trackEvolutionEvent("render_success");
