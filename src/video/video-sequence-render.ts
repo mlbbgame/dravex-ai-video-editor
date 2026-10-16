@@ -185,7 +185,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // Do not create an AudioContext for a no-music export. On some Android
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
-  const audioContext = loadedAudio.length > 0 && typeof AudioContext !== "undefined" ? new AudioContext() : null;
+  // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
+  const hasSourceVideo = loaded.some((item) => item.kind === "video");
+  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
@@ -193,7 +195,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       if (item.kind !== "video" || connectedVideoElements.has(item.video)) continue;
       connectedVideoElements.add(item.video);
       const source = audioContext.createMediaElementSource(item.video);
-      source.connect(audioDestination);
+      const sourceGain = audioContext.createGain();
+      sourceGain.gain.value = loadedAudio.length > 0 ? 0.28 : 1;
+      source.connect(sourceGain);
+      sourceGain.connect(audioDestination);
     }
     for (const item of loadedAudio) {
       const source = audioContext.createMediaElementSource(item.audio);
@@ -240,12 +245,30 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
   });
 
+  const previousFrameCanvas = document.createElement("canvas");
+  previousFrameCanvas.width = width;
+  previousFrameCanvas.height = height;
+  const previousFrameContext = previousFrameCanvas.getContext("2d");
+  let hasPreviousFrame = false;
+
+  const savePreviousFrame = () => {
+    if (!previousFrameContext) return;
+    previousFrameContext.clearRect(0, 0, width, height);
+    previousFrameContext.drawImage(canvas, 0, 0, width, height);
+    hasPreviousFrame = true;
+  };
+
   const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
+    const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < 0.2;
+    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
+    const transitionType = cutIndex % 5;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
+    // Keep the outgoing shot underneath the incoming shot so wipes, zooms and fades are real transitions.
+    if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
     const motion = suppressEffects ? 0 : style === "velocity" ? 0.075 : style === "anime" ? 0.045 : style === "glitch" ? 0.035 : style === "story" ? 0.018 : 0.028;
     const zoom = 1.015 + Math.sin(progress * Math.PI) * motion;
     const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
@@ -255,10 +278,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const offsetX = Math.sin(progress * 71) * width * shake;
     const offsetY = Math.cos(progress * 83) * height * shake;
     context.save();
-    const transitionWindow = !suppressTransitions && cutProgress >= 0 && cutProgress < 0.2;
-    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
-    const transitionType = cutIndex % 5;
-    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.12) saturate(1.12)" : style === "anime" ? "contrast(1.1) saturate(1.25)" : style === "velocity" ? "contrast(1.16) saturate(1.22)" : style === "glitch" ? "contrast(1.18) saturate(1.3)" : "contrast(1.04) saturate(1.04)";
+    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
       // Fast zoom-in reveal.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.2 : 0.1);
@@ -297,7 +317,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
       shade.addColorStop(0, "rgba(5,7,12,0)");
-      shade.addColorStop(1, "rgba(5,7,12,0.72)");
+      shade.addColorStop(1, "rgba(5,7,12,0.38)");
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
     }
@@ -316,7 +336,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
-      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.3)");
+      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.22)");
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
     }
@@ -372,6 +392,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
           onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
+        savePreviousFrame();
         completed += item.duration;
         continue;
       }
@@ -388,6 +409,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       video.pause();
+      savePreviousFrame();
       completed += duration;
     }
     const last = loaded[loaded.length - 1];
