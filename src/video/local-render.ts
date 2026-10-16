@@ -173,7 +173,7 @@ export async function renderImageSlideshow({
       context.textBaseline = "bottom";
       context.shadowColor = "rgba(0,0,0,0.6)";
       context.shadowBlur = 12;
-      const words = cleanTitle.split(/\\s+/);
+      const words = cleanTitle.split(/\s+/);
       const lines: string[] = [];
       let line = "";
       for (const word of words) {
