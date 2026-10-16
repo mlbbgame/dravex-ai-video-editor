@@ -499,7 +499,7 @@ export default function App() {
           </div>}
         </section>
 
-        {mode === "ai" ? (
+        {mode !== "manual" ? (
           <section className="creator-grid">
             <div className="panel prompt-panel">
               <div className="panel-heading"><div><span className="step-number">01</span><div><h2>Describe your video</h2><p>Start with an idea. Be as specific as you like.</p></div></div><span className="panel-icon"><Sparkles size={18} /></span></div>
