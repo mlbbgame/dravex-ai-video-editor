@@ -323,3 +323,13 @@ textarea:focus { border-color: #b5f36d80; }
   .app-footer { align-items: flex-start; flex-direction: column; gap: 9px; font-size: 7px; }
   .toast { right: 10px; bottom: 10px; font-size: 10px; }
 }
+
+
+/* Language selector */
+.language-switch { display: inline-flex; align-items: center; }
+.language-switch select { max-width: 100px; padding: 7px 8px; border: 1px solid #303342; border-radius: 7px; color: #e2e3eb; background: #151722; font: inherit; font-size: 10px; outline: none; }
+.language-switch select:focus { border-color: var(--accent); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 560px) {
+  .language-switch select { max-width: 72px; padding: 6px 3px; font-size: 9px; }
+}
