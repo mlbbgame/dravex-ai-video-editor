@@ -75,7 +75,6 @@ export default function App() {
   const videoUrl = mediaUrls[0] ?? "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => file.type.startsWith("image/"));
   const busy = stage === "analyzing" || stage === "rendering";
-  const scanPercent = scan.total ? Math.round((scan.current / scan.total) * 100) : 0;
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
