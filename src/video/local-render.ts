@@ -166,34 +166,33 @@ export async function renderImageSlideshow({
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
 
-      const cleanTitle = title.trim().slice(0, 120) || "A story in motion";
-      const fontSize = Math.max(26, Math.round(width * 0.055));
-      context.font = `700 ${fontSize}px system-ui, sans-serif`;
-      context.textAlign = "center";
-      context.textBaseline = "bottom";
-      context.shadowColor = "rgba(0,0,0,0.6)";
-      context.shadowBlur = 12;
-      const words = cleanTitle.split(/\s+/);
-      const lines: string[] = [];
-      let line = "";
-      for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        if (context.measureText(candidate).width > width * 0.82 && line) {
-          lines.push(line);
-          line = word;
-        } else line = candidate;
+      const cleanTitle = title.trim().slice(0, 120);
+      if (cleanTitle) {
+        const fontSize = Math.max(26, Math.round(width * 0.055));
+        context.font = `700 ${fontSize}px system-ui, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "bottom";
+        context.shadowColor = "rgba(0,0,0,0.6)";
+        context.shadowBlur = 12;
+        const words = cleanTitle.split(/\s+/);
+        const lines: string[] = [];
+        let line = "";
+        for (const word of words) {
+          const candidate = line ? `${line} ${word}` : word;
+          if (context.measureText(candidate).width > width * 0.82 && line) {
+            lines.push(line);
+            line = word;
+          } else line = candidate;
+        }
+        if (line) lines.push(line);
+        const visibleLines = lines.slice(-3);
+        const lineHeight = fontSize * 1.18;
+        visibleLines.forEach((text, index) => {
+          context.fillStyle = "#ffffff";
+          context.fillText(text, width / 2, height * 0.82 + (index - visibleLines.length + 1) * lineHeight, width * 0.86);
+        });
+        context.shadowBlur = 0;
       }
-      if (line) lines.push(line);
-      const visibleLines = lines.slice(-3);
-      const lineHeight = fontSize * 1.18;
-      visibleLines.forEach((text, index) => {
-        context.fillStyle = "#ffffff";
-        context.fillText(text, width / 2, height * 0.82 + (index - visibleLines.length + 1) * lineHeight, width * 0.86);
-      });
-      context.shadowBlur = 0;
-      context.font = `600 ${Math.max(14, Math.round(width * 0.022))}px system-ui, sans-serif`;
-      context.fillStyle = "rgba(255,255,255,0.8)";
-      context.fillText("MADE WITH DRAVEX", width / 2, height * 0.94);
 
       onProgress?.(Math.min(100, Math.round(((frame + 1) / totalFrames) * 100)));
       if (frame >= totalFrames - 1) {
