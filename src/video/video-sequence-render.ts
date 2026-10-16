@@ -23,7 +23,7 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
     video.preload = "auto";
-    video.muted = true;
+    video.muted = false;
     video.playsInline = true;
     video.src = segment.url;
     video.onloadedmetadata = () => resolve(video);
@@ -64,7 +64,19 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not initialize the video renderer.");
-  const stream = canvas.captureStream(24);
+  const videoStream = canvas.captureStream(24);
+  const audioContext = typeof AudioContext !== "undefined" ? new AudioContext() : null;
+  const audioDestination = audioContext?.createMediaStreamDestination();
+  if (audioContext && audioDestination) {
+    for (const { video } of loaded) {
+      const source = audioContext.createMediaElementSource(video);
+      source.connect(audioDestination);
+    }
+  }
+  const stream = new MediaStream([
+    ...videoStream.getVideoTracks(),
+    ...(audioDestination?.stream.getAudioTracks() ?? [])
+  ]);
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 });
   const chunks: BlobPart[] = [];
   const result = new Promise<Blob>((resolve, reject) => {
@@ -72,7 +84,9 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
     recorder.onerror = () => reject(new Error("The browser stopped recording unexpectedly."));
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
+      videoStream.getTracks().forEach((track) => track.stop());
       loaded.forEach(({ video }) => { video.pause(); video.removeAttribute("src"); video.load(); });
+      void audioContext?.close();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) resolve(blob);
       else reject(new Error("The rendered video was empty. Please try again."));
@@ -104,6 +118,7 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
     }
   };
 
+  if (audioContext?.state === "suspended") await audioContext.resume();
   recorder.start(250);
   let completed = 0;
   try {
