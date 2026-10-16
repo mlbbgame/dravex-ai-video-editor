@@ -17,7 +17,7 @@ The user chooses the workflow. A future mixed workflow may let users switch betw
 
 ## Current prototype
 
-The initial web app provides a responsive workspace, local media import and preview, clip ordering/removal, project settings, a basic prompt-to-storyboard scaffold, and project JSON export. AI model integration and production-grade MP4 rendering are future milestones; browser compatibility and performance must be tested on real devices.
+The initial web app provides a responsive workspace, local media import and preview, clip ordering/removal, project settings, a basic prompt-to-storyboard scaffold, and project JSON export. The first local render prototype can create a short WebM slideshow from imported images with a subtle zoom effect and title overlay, using the browser's Canvas and MediaRecorder APIs. It does not yet render imported video clips, include audio, or export MP4. AI model integration and broader device compatibility/performance testing remain future milestones.
 
 ## Run locally
 
@@ -39,7 +39,7 @@ npm run preview
 
 1. Responsive app shell and local media bin.
 2. Manual clip controls and editable project persistence.
-3. Real timeline operations and reliable video export.
+3. Local image-to-video WebM rendering; next add video-clip rendering, audio, and MP4 export.
 4. AI planning connected to a model, with validated edit instructions and undo/revisions.
 5. Scene analysis, captions, music, transitions, multiple variants, and quality checks.
 6. Optional image/video/audio generation providers, subject to their availability, terms, and costs.
