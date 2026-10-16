@@ -68,7 +68,7 @@ export function getPromptRenderPreferences(prompt: string): PromptRenderPreferen
 
 export function extractPromptDuration(prompt: string): string | null {
   const text = normalized(prompt);
-  const match = text.match(/(\\d{1,3})[\\s-]*(seconds?|secs?|sec|s|секунд(?:а|ы|у)?|сек|minutes?|mins?|min|минут(?:а|ы)?|мин)/i);
+  const match = text.match(/(\d{1,3})[\s-]*(seconds?|secs?|sec|s|секунд(?:а|ы|у)?|сек|minutes?|mins?|min|минут(?:а|ы)?|мин)/i);
   if (!match) return null;
   const amount = Number.parseInt(match[1], 10);
   if (!Number.isFinite(amount) || amount < 1 || amount > 600) return null;
