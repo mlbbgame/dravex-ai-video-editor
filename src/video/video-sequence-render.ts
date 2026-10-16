@@ -109,7 +109,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -229,6 +229,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const offsetY = Math.cos(progress * 83) * height * shake;
     context.save();
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.12) saturate(1.12)" : style === "anime" ? "contrast(1.1) saturate(1.25)" : style === "velocity" ? "contrast(1.16) saturate(1.22)" : style === "glitch" ? "contrast(1.18) saturate(1.3)" : "contrast(1.04) saturate(1.04)";
+    // Fade each new shot in from the background so cuts feel like deliberate transitions.
+    context.globalAlpha = !suppressTransitions && cutProgress >= 0 && cutProgress < 0.12
+      ? Math.max(0.04, cutProgress / 0.12)
+      : 1;
     context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
     context.restore();
     if (!suppressEffects) {
