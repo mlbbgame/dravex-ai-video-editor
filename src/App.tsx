@@ -356,6 +356,7 @@ export default function App() {
             aspectRatio: aspect,
             quality,
             style: editStyle,
+            targetDurationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
             onProgress: setRenderProgress
           })
         : await renderImageSlideshow({
