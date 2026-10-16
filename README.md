@@ -58,3 +58,8 @@ This is an early prototype, not yet a complete editor. It does not train its own
 ## Self-introduction video studio
 
 The self-introduction studio creates a short, six-scene animated presentation about DRAVEX itself. Users can choose a project overview or a first-use tutorial, in English or Russian, then render a vertical 9:16 WebM locally in the browser and preview/download the result. It does not use a paid API or upload media. The current version draws illustrative interface scenes and captions; it is not a screen recording of real clicks, has no voiceover yet, and should be treated as a first prototype. Canvas capture and MediaRecorder support are checked at runtime. Android Chrome testing is still required.
+
+
+## Persistent learning memory (experimental)
+
+The Reference Lab can store locally observed pacing profiles in browser `localStorage` across visits, combine repeated samples by pace, and record explicit helpful / not-helpful feedback. Positive feedback can guide which automatic highlight variant is preselected in later sessions. This is a small transparent heuristic feedback loop, not neural-network training, not cloud synchronization, and not autonomous discovery of TikTok/YouTube media. The current browser-only app cannot read frames or audio inside cross-origin platform embeds. Automatic web research and full link-based audiovisual analysis require a permitted media source and/or a backend integration; the app must not claim these steps ran when they did not.
