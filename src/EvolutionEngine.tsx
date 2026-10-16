@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CheckCircle2, Cpu, Database, FlaskConical, Gauge, Heart, ShieldCheck, ThumbsDown, ThumbsUp, Wrench } from "lucide-react";
+import { Activity, CheckCircle2, Cpu, Database, FlaskConical, Gauge, Heart, ShieldCheck, ThumbsDown, Wrench } from "lucide-react";
 
 type EvolutionEvent = "media_imported" | "plan_created" | "reference_analyzed" | "render_success" | "render_failure" | "clip_changed";
 type Metrics = Record<EvolutionEvent, number>;
