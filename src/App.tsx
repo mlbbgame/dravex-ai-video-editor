@@ -356,7 +356,7 @@ export default function App() {
     setActiveId(cutClips[0].id);
     setTargetLength(`${Math.max(1, Math.round(variant.duration))} seconds`);
     setEditStyle(variant.id === "aggressive" ? "velocity" : variant.id === "cinematic" ? "cinematic" : "story");
-    setMode("manual");
+    setMode("ai");
     setNotice(language === "ru"
       ? `В монтаж добавлено ${cutClips.length} выбранных фрагментов (~${Math.round(variant.duration)} с). Исходные моменты сохранены как обрезки; перед экспортом проверь последовательность.`
       : `${cutClips.length} selected segments added (~${Math.round(variant.duration)} s). Review the sequence before exporting.`);
