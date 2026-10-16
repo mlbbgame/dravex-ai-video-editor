@@ -81,6 +81,7 @@ const editRecipes: Record<EditStyle, { visuals: string; rhythm: string; finish: 
   }
 };
 type ClipKind = "video" | "audio" | "image";
+type ReferenceRecipe = { name: string; duration: number; pace: "Fast" | "Medium" | "Slow"; averageShot: number; cutTimes: number[] };
 type MediaClip = {
   id: string;
   name: string;
@@ -115,6 +116,7 @@ export default function App() {
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
   const [referenceReport, setReferenceReport] = useState<string[]>([]);
+  const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
 
@@ -199,6 +201,7 @@ export default function App() {
     }
     setIsAnalyzingReference(true);
     setReferenceReport([]);
+    setReferenceRecipe(null);
     setNotice("Analyzing reference video locally in your browser…");
     try {
       const video = document.createElement("video");
@@ -254,6 +257,7 @@ export default function App() {
         "LIMITATION — This local first pass detects visual changes; it does not yet understand the story, spoken words, or music beats."
       ];
       setReferenceReport(report);
+      setReferenceRecipe({ name: reference.name, duration: video.duration, pace, averageShot, cutTimes: cutTimes.slice(0, 12) });
       setNotice("Reference analysis complete. This is a local visual estimate, not semantic AI analysis.");
       window.setTimeout(() => setNotice(""), 6000);
       video.removeAttribute("src");
@@ -264,6 +268,35 @@ export default function App() {
     } finally {
       setIsAnalyzingReference(false);
     }
+  };
+
+  const applyReferenceRecipe = () => {
+    if (!referenceRecipe) return;
+    const fast = referenceRecipe.pace === "Fast";
+    const slow = referenceRecipe.pace === "Slow";
+    const shotRange = fast ? "0.5–1.2 s" : slow ? "2.5–4 s" : "1.2–2.5 s";
+    const ruShotRange = fast ? "0,5–1,2 с" : slow ? "2,5–4 с" : "1,2–2,5 с";
+    const recipe = language === "ru" ? [
+      `РЕЦЕПТ МОНТАЖА — по примеру «${referenceRecipe.name}»`,
+      `01 · ЗАЦЕПКА — начни с самого сильного момента в первые 1–2 секунды.`,
+      `02 · ТЕМП — ${referenceRecipe.pace === "Fast" ? "быстрый" : referenceRecipe.pace === "Slow" ? "медленный" : "средний"} ритм; ориентир длительности кадра ${ruShotRange}.`,
+      `03 · СКЛЕЙКИ — обнаружено примерно ${referenceRecipe.cutTimes.length} вероятных смен кадра; используй метки как подсказки, а не точные границы.`,
+      `04 · РАЗВИТИЕ — чередуй основные моменты с короткими переходными кадрами, сохраняя выбранный стиль «${editStyle}».`,
+      `05 · ФИНАЛ — оставь сильнейший момент ближе к концу и заверши чистым кадром.`,
+      `ОГРАНИЧЕНИЕ — это рецепт по визуальному темпу, а не понимание сюжета или музыки.`
+    ] : [
+      `EDIT RECIPE — inspired by “${referenceRecipe.name}”`,
+      "01 · HOOK — open with the strongest moment in the first 1–2 seconds.",
+      `02 · PACING — ${referenceRecipe.pace.toLowerCase()} rhythm; target shot length around ${shotRange}.`,
+      `03 · CUTS — about ${referenceRecipe.cutTimes.length} likely visual changes detected; use markers as guides, not exact edit points.`,
+      `04 · BUILD — alternate key moments with short connective shots, keeping the selected “${editStyle}” style.`,
+      "05 · FINISH — save a strong moment for the ending and finish on a clean frame.",
+      "LIMITATION — this recipe reflects visual pacing, not story or music understanding."
+    ];
+    setPlan(recipe);
+    setMode("ai");
+    setNotice(language === "ru" ? "Рецепт перенесён в план монтажа. Это рекомендации по темпу, а не автоматическая нарезка исходного видео." : "Recipe added to your edit plan. These are pacing guidelines, not automatic trimming of the source video.");
+    window.setTimeout(() => setNotice(""), 5000);
   };
 
   const renderVideo = async () => {
@@ -378,6 +411,10 @@ export default function App() {
             <button className="button button-primary" onClick={analyzeReference} disabled={isAnalyzingReference || !clips.some((clip) => clip.kind === "video")}>{isAnalyzingReference ? "Analyzing…" : "Analyze reference"} <ArrowRight size={16} /></button>
           </div>
           {referenceReport.length > 0 && <div className="reference-report" aria-live="polite">{referenceReport.map((line, index) => <p key={index}>{line}</p>)}</div>}
+          {referenceRecipe && <div className="reference-recipe">
+            <div><strong>{language === "ru" ? "РЕЦЕПТ МОНТАЖА" : "EDIT RECIPE"}</strong><p>{language === "ru" ? "DRAVEX превратил найденный темп в практические подсказки для нового ролика." : "DRAVEX has turned the detected pacing into practical guidelines for a new edit."}</p></div>
+            <button className="button button-primary" onClick={applyReferenceRecipe}><WandSparkles size={16} /> {language === "ru" ? "Использовать рецепт в плане" : "Use recipe in plan"} <ArrowRight size={15} /></button>
+          </div>}
         </section>
 
         {mode === "ai" ? (
