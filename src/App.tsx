@@ -47,7 +47,7 @@ function localize(node: ReactNode, language: Language): ReactNode {
     else if ((key === "placeholder" || key === "title" || key === "aria-label") && typeof value === "string") nextProps[key] = translateText(value, language);
     else nextProps[key] = value;
   }
-  return cloneElement(node, nextProps);
+  return cloneElement(node, nextProps as never);
 }
 
 type Mode = "ai" | "manual";
