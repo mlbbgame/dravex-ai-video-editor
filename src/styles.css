@@ -579,3 +579,22 @@ textarea:focus { border-color: #b5f36d80; }
   .trim-controls { padding: 12px; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .trim-duration { grid-column: 1 / -1; padding-bottom: 0; text-align: left; }
 }
+
+
+/* Background audio mix controls */
+.audio-mix-controls {
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255,255,255,.07);
+  background: rgba(10, 12, 18, .56);
+}
+.audio-mix-controls label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #a6a9b9; font-size: 10px; }
+.audio-mix-controls label strong { font-size: 9px; letter-spacing: .08em; }
+.audio-mix-controls label span { color: #b5f36d; font-family: 'DM Mono', monospace; }
+.audio-mix-controls input[type="range"] { width: 100%; accent-color: var(--accent); }
+.audio-mix-controls p { margin: 0; color: #7f8498; font-size: 10px; line-height: 1.5; }
+@media (max-width: 560px) {
+  .audio-mix-controls { padding: 13px 12px; }
+  .audio-mix-controls label { font-size: 9px; }
+}
