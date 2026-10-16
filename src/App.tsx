@@ -63,6 +63,22 @@ type ClipKind = "video" | "audio" | "image";
 type ReferenceRecipe = { name: string; duration: number; pace: "Fast" | "Medium" | "Slow"; averageShot: number; cutTimes: number[] };
 type ReferenceLink = { id: string; url: string; platform: "TikTok" | "YouTube"; videoId: string };
 
+type LearnedProfile = { pace: "Fast" | "Medium" | "Slow"; sampleCount: number; helpful: number; unhelpful: number; averageShot: number; lastUpdated: string };
+const LEARNING_MEMORY_KEY = "dravex-learning-memory-v1";
+function loadLearningMemory(): LearnedProfile[] {
+  try {
+    const raw = window.localStorage.getItem(LEARNING_MEMORY_KEY);
+    if (!raw) return [];
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is LearnedProfile => item && ["Fast", "Medium", "Slow"].includes(item.pace) && Number.isFinite(item.sampleCount) && Number.isFinite(item.helpful) && Number.isFinite(item.unhelpful) && Number.isFinite(item.averageShot));
+  } catch { return []; }
+}
+function persistLearningMemory(profiles: LearnedProfile[]): boolean {
+  try { window.localStorage.setItem(LEARNING_MEMORY_KEY, JSON.stringify(profiles)); return true; }
+  catch { return false; }
+}
+
 function parseReferenceLink(raw: string): Omit<ReferenceLink, "id"> | null {
   try {
     const parsed = new URL(raw.trim());
@@ -130,6 +146,7 @@ export default function App() {
   const [referenceLinkError, setReferenceLinkError] = useState("");
   const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
+  const [learnedProfiles, setLearnedProfiles] = useState<LearnedProfile[]>(() => loadLearningMemory());
   const [isAnalyzingHighlights, setIsAnalyzingHighlights] = useState(false);
   const [highlightProgress, setHighlightProgress] = useState<HighlightProgress | null>(null);
   const [highlightVariants, setHighlightVariants] = useState<HighlightVariant[]>([]);
@@ -337,6 +354,16 @@ export default function App() {
       setReferenceReport(report);
       trackEvolutionEvent("reference_analyzed");
       setReferenceRecipe({ name: reference.name, duration: video.duration, pace, averageShot, cutTimes: cutTimes.slice(0, 12) });
+      setLearnedProfiles((current) => {
+        const existing = current.find((profile) => profile.pace === pace);
+        const next = existing
+          ? current.map((profile) => profile.pace === pace
+              ? { ...profile, sampleCount: profile.sampleCount + 1, averageShot: Number(((profile.averageShot * profile.sampleCount + averageShot) / (profile.sampleCount + 1)).toFixed(2)), lastUpdated: new Date().toISOString() }
+              : profile)
+          : [...current, { pace, sampleCount: 1, helpful: 0, unhelpful: 0, averageShot: Number(averageShot.toFixed(2)), lastUpdated: new Date().toISOString() }];
+        persistLearningMemory(next);
+        return next;
+      });
       setNotice("Reference analysis complete. This is a local visual estimate, not semantic AI analysis.");
       window.setTimeout(() => setNotice(""), 6000);
       video.removeAttribute("src");
@@ -346,6 +373,34 @@ export default function App() {
       window.setTimeout(() => setNotice(""), 5000);
     } finally {
       setIsAnalyzingReference(false);
+    }
+  };
+
+
+  const rateLearnedRecipe = (helpful: boolean) => {
+    if (!referenceRecipe) return;
+    setLearnedProfiles((current) => {
+      const existing = current.find((profile) => profile.pace === referenceRecipe.pace);
+      const next = existing
+        ? current.map((profile) => profile.pace === referenceRecipe.pace
+            ? { ...profile, helpful: profile.helpful + (helpful ? 1 : 0), unhelpful: profile.unhelpful + (helpful ? 0 : 1), lastUpdated: new Date().toISOString() }
+            : profile)
+        : [...current, { pace: referenceRecipe.pace, sampleCount: 1, helpful: helpful ? 1 : 0, unhelpful: helpful ? 0 : 1, averageShot: Number(referenceRecipe.averageShot.toFixed(2)), lastUpdated: new Date().toISOString() }];
+      const saved = persistLearningMemory(next);
+      setNotice(language === "ru"
+        ? (saved ? "Оценка сохранена. DRAVEX учтёт её в следующих рекомендациях." : "Браузер не смог сохранить память. Проверь настройки сайта.")
+        : (saved ? "Feedback saved. DRAVEX will use it in future recommendations." : "Browser storage failed. Check site settings."));
+      return next;
+    });
+  };
+
+  const clearLearningMemory = () => {
+    try {
+      window.localStorage.removeItem(LEARNING_MEMORY_KEY);
+      setLearnedProfiles([]);
+      setNotice(language === "ru" ? "Память обучения очищена на этом устройстве." : "Learning memory cleared on this device.");
+    } catch {
+      setNotice(language === "ru" ? "Не удалось очистить память браузера." : "Could not clear browser learning memory.");
     }
   };
 
@@ -365,7 +420,9 @@ export default function App() {
       const result = await analyzeVideoForHighlights(source.url, setHighlightProgress);
       const variants = buildHighlightVariants(result.candidates, result.duration);
       setHighlightVariants(variants);
-      setSelectedHighlightVariant("cinematic");
+      const bestLearned = [...learnedProfiles].sort((left, right) => (right.helpful - right.unhelpful) - (left.helpful - left.unhelpful))[0];
+      const hasPositiveLearning = Boolean(bestLearned && bestLearned.helpful > bestLearned.unhelpful);
+      setSelectedHighlightVariant(hasPositiveLearning && bestLearned ? (bestLearned.pace === "Fast" ? "aggressive" : bestLearned.pace === "Slow" ? "slow" : "cinematic") : "cinematic");
       setHighlightSourceId(source.id);
       setNotice(language === "ru"
         ? `Анализ завершён: найдено ${result.candidates.length} визуальных моментов. Выбери вариант и проверь его перед экспортом.`
