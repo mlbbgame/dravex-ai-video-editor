@@ -32,6 +32,7 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
 }
 
 function seek(video: HTMLVideoElement, time: number): Promise<void> {
+  if (video.readyState >= 2 && Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const done = () => { video.removeEventListener("error", failed); resolve(); };
     const failed = () => { video.removeEventListener("seeked", done); reject(new Error("Could not seek within one of the selected clips.")); };
