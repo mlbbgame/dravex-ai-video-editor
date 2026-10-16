@@ -61,6 +61,31 @@ type Mode = "ai" | "manual" | "collab";
 type EditStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 type ClipKind = "video" | "audio" | "image";
 type ReferenceRecipe = { name: string; duration: number; pace: "Fast" | "Medium" | "Slow"; averageShot: number; cutTimes: number[] };
+type ReferenceLink = { id: string; url: string; platform: "TikTok" | "YouTube"; videoId: string };
+
+function parseReferenceLink(raw: string): Omit<ReferenceLink, "id"> | null {
+  try {
+    const parsed = new URL(raw.trim());
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+    if (host === "youtube.com" || host === "youtu.be" || host === "music.youtube.com") {
+      let videoId = "";
+      if (host === "youtu.be") videoId = parsed.pathname.split("/").filter(Boolean)[0] ?? "";
+      else if (parsed.pathname === "/watch") videoId = parsed.searchParams.get("v") ?? "";
+      else {
+        const match = parsed.pathname.match(/^\/(?:shorts|embed|live)\/([\w-]+)/);
+        videoId = match?.[1] ?? "";
+      }
+      return /^[\w-]{11}$/.test(videoId) ? { url: parsed.href, platform: "YouTube", videoId } : null;
+    }
+    if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
+      const match = parsed.pathname.match(/\/video\/(\d+)/);
+      return match ? { url: parsed.href, platform: "TikTok", videoId: match[1] } : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 type MediaClip = {
   id: string;
   name: string;
@@ -100,6 +125,9 @@ export default function App() {
   const [musicVolume, setMusicVolume] = useState(65);
   const [playheadTime, setPlayheadTime] = useState(0);
   const [referenceReport, setReferenceReport] = useState<string[]>([]);
+  const [referenceLinkInput, setReferenceLinkInput] = useState("");
+  const [referenceLinks, setReferenceLinks] = useState<ReferenceLink[]>([]);
+  const [referenceLinkError, setReferenceLinkError] = useState("");
   const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
   const [isAnalyzingHighlights, setIsAnalyzingHighlights] = useState(false);
@@ -224,6 +252,21 @@ export default function App() {
     setNotice(language === "ru"
       ? "DRAVEX подобрал стиль и формат из запроса. Проверь автоматически выбранные настройки перед экспортом."
       : "DRAVEX inferred the style and format from your brief. Review the automatically selected settings before export.");
+    window.setTimeout(() => setNotice(""), 6000);
+  };
+
+  const addReferenceLink = () => {
+    const parsed = parseReferenceLink(referenceLinkInput);
+    if (!parsed) {
+      setReferenceLinkError("Paste a full TikTok video URL or a YouTube / Shorts URL. Short TikTok share links (vm.tiktok.com) cannot be resolved in this browser-only version.");
+      return;
+    }
+    setReferenceLinks((current) => current.some((item) => item.url === parsed.url)
+      ? current
+      : [...current, { ...parsed, id: uid() }]);
+    setReferenceLinkInput("");
+    setReferenceLinkError("");
+    setNotice("Reference link added. The embedded player can be viewed, but its frames cannot be analyzed by this browser-only app.");
     window.setTimeout(() => setNotice(""), 6000);
   };
 
@@ -602,6 +645,37 @@ export default function App() {
           <div className="reference-lab-heading">
             <div><span className="section-kicker">REFERENCE LAB · FIRST STEP</span><h2>Teach DRAVEX with a reference</h2><p>Import a video into the media library, then inspect its pacing and likely cuts.</p></div>
             <span className="reference-lab-icon"><ScanSearch size={20} /></span>
+          </div>
+          <div className="reference-link-entry">
+            <label className="field-label" htmlFor="reference-video-url">TIKTOK / YOUTUBE SHORTS LINK</label>
+            <div className="reference-link-form">
+              <input id="reference-video-url" type="url" value={referenceLinkInput} onChange={(event) => { setReferenceLinkInput(event.target.value); setReferenceLinkError(""); }} placeholder="https://www.tiktok.com/@creator/video/… or https://youtube.com/shorts/…" />
+              <button className="button button-primary" type="button" onClick={addReferenceLink} disabled={!referenceLinkInput.trim()}>Add reference <ArrowRight size={16} /></button>
+            </div>
+            {referenceLinkError && <p className="reference-link-error" role="alert">{referenceLinkError}</p>}
+            <p className="reference-link-note">Links open in an official embedded player. Browser security prevents DRAVEX from reading frames or audio inside TikTok / YouTube players, so upload a video file below to analyze its actual cut rhythm. TikTok short share links may need to be opened and copied as a full video URL.</p>
+            {referenceLinks.length > 0 && <div className="reference-link-list">
+              {referenceLinks.map((item) => <article className="reference-link-card" key={item.id}>
+                <div className="reference-link-card-head">
+                  <strong>{item.platform} reference</strong>
+                  <div className="reference-link-actions">
+                    <a href={item.url} target="_blank" rel="noreferrer">Open original ↗</a>
+                    <button type="button" className="reference-remove" onClick={() => setReferenceLinks((current) => current.filter((link) => link.id !== item.id))} aria-label="Remove reference">Remove</button>
+                  </div>
+                </div>
+                <div className="reference-embed-wrap">
+                  <iframe
+                    src={item.platform === "YouTube" ? `https://www.youtube-nocookie.com/embed/${item.videoId}` : `https://www.tiktok.com/player/v1/${item.videoId}?music_info=1&description=1`}
+                    title={`${item.platform} reference video`}
+                    loading="lazy"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
+                </div>
+                <p className="reference-link-note">Saved for this browser session. To analyze editing rhythm, add a local copy of this video to the media library and use “Analyze reference”.</p>
+              </article>)}
+            </div>}
           </div>
           <div className="reference-lab-actions">
             <div className="reference-source"><strong>{clips.find((clip) => clip.kind === "video")?.name ?? "No reference video imported"}</strong><span>{clips.some((clip) => clip.kind === "video") ? "The first imported video will be analyzed locally." : "Use Import to choose a video from your device."}</span></div>
