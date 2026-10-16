@@ -598,3 +598,57 @@ textarea:focus { border-color: #b5f36d80; }
   .audio-mix-controls { padding: 13px 12px; }
   .audio-mix-controls label { font-size: 9px; }
 }
+
+
+/* Timeline cards with explicit reorder controls */
+.track-clip-card {
+  min-width: 132px;
+  max-width: 220px;
+  flex: 1 0 132px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid #343747;
+  border-radius: 8px;
+  background: linear-gradient(120deg, #202335, #151722);
+}
+.track-clip-card.selected {
+  border-color: #b5f36d80;
+  background: linear-gradient(120deg, #263321, #151a15);
+}
+.track-clip-select {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.track-clip-select > span { color: var(--accent); font-family: 'DM Mono', monospace; font-size: 8px; }
+.track-clip-select strong { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.track-clip-select small { color: #85899b; font-family: 'DM Mono', monospace; font-size: 7px; letter-spacing: .8px; }
+.track-clip-actions { display: flex; gap: 5px; border-top: 1px solid #ffffff0b; padding-top: 6px; }
+.track-clip-actions button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border: 1px solid #363a4b;
+  border-radius: 5px;
+  background: #10121b;
+  color: #b9becf;
+  touch-action: manipulation;
+}
+.track-clip-actions button:disabled { opacity: .3; }
+.track-clip-actions button:not(:disabled):active { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 560px) {
+  .track-clip-card { min-width: 124px; flex-basis: 124px; padding: 6px; }
+  .track-clip-actions button { width: 32px; height: 30px; }
+}
