@@ -13,10 +13,17 @@ export type ImageSegment = {
   duration?: number;
 };
 
+export type AudioSegment = {
+  name: string;
+  url: string;
+  volume?: number;
+};
+
 export type SequenceSegment = VideoSegment | ImageSegment;
 
 type SequenceOptions = {
   segments: SequenceSegment[];
+  audioTracks?: AudioSegment[];
   title: string;
   aspectRatio: string;
   onProgress?: (progress: number) => void;
@@ -68,6 +75,17 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
   });
 }
 
+function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
+  return new Promise((resolve, reject) => {
+    const audio = document.createElement("audio");
+    audio.preload = "auto";
+    audio.src = segment.url;
+    audio.onloadedmetadata = () => resolve(audio);
+    audio.onerror = () => reject(new Error(`Could not read audio file: ${segment.name}`));
+    audio.load();
+  });
+}
+
 function seek(video: HTMLVideoElement, time: number): Promise<void> {
   if (video.readyState >= 2 && Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -79,7 +97,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, title, aspectRatio, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -99,6 +117,10 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
   }));
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (totalDuration <= 0) throw new Error("The selected trim ranges are empty.");
+  const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
+    segment,
+    audio: await loadAudio(segment)
+  })));
 
   const { width, height } = dimensionsFor(aspectRatio);
   const canvas = document.createElement("canvas");
@@ -115,6 +137,13 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
       if (item.kind !== "video") continue;
       const source = audioContext.createMediaElementSource(item.video);
       source.connect(audioDestination);
+    }
+    for (const item of loadedAudio) {
+      const source = audioContext.createMediaElementSource(item.audio);
+      const gain = audioContext.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, item.segment.volume ?? 0.65));
+      source.connect(gain);
+      gain.connect(audioDestination);
     }
   }
   const stream = new MediaStream([
@@ -135,6 +164,11 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
           item.video.removeAttribute("src");
           item.video.load();
         }
+      });
+      loadedAudio.forEach(({ audio }) => {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
       });
       void audioContext?.close();
       const blob = new Blob(chunks, { type: mimeType });
@@ -174,6 +208,16 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
   recorder.start(250);
   let completed = 0;
   try {
+    if (audioContext && loadedAudio.length) {
+      await Promise.all(loadedAudio.map(async ({ audio }) => {
+        audio.currentTime = 0;
+        try {
+          await audio.play();
+        } catch {
+          throw new Error("The browser blocked audio playback during export. Tap Create montage again and allow media playback.");
+        }
+      }));
+    }
     for (const item of loaded) {
       if (item.kind === "image") {
         const segmentStartedAt = performance.now();
