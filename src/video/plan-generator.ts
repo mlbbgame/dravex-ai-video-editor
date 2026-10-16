@@ -79,6 +79,56 @@ export function extractPromptDuration(prompt: string): string | null {
   return isMinutes ? `${amount} minutes` : `${amount} seconds`;
 }
 
+
+export type InferredPromptSettings = {
+  style: PlanStyle | null;
+  aspectRatio: string | null;
+  reasons: string[];
+};
+
+/** Infer practical editor defaults from the creative brief without overriding unrelated manual choices. */
+export function inferPromptSettings(prompt: string, language: "en" | "ru" = "en"): InferredPromptSettings {
+  const text = normalized(prompt);
+  const has = (...terms: string[]) => includesAny(text, terms);
+  const reasons: string[] = [];
+  let style: PlanStyle | null = null;
+  let aspectRatio: string | null = null;
+
+  // Prefer a specific visual language over generic words such as "edit" or "video".
+  if (has("anime", "amv", "manga", "jujutsu", "toji", "аниме", "амв", "манга", "тодзи", "дзюдзюцу")) {
+    style = "anime";
+    reasons.push(language === "ru" ? "Стиль выбран по запросу: аниме / AMV." : "Style inferred from the brief: anime / AMV.");
+  } else if (has("glitch", "cyberpunk", "rgb split", "digital distortion", "глитч", "киберпанк", "неон", "цифровые помехи")) {
+    style = "glitch";
+    reasons.push(language === "ru" ? "Стиль выбран по запросу: глитч / киберпанк." : "Style inferred from the brief: glitch / cyberpunk.");
+  } else if (has("cinematic", "film look", "movie-like", "cinematic trailer", "dramatic film", "киношн", "кинематограф", "как в кино", "трейлер фильма", "драматичный трейлер")) {
+    style = "cinematic";
+    reasons.push(language === "ru" ? "Стиль выбран по запросу: кинематографичный." : "Style inferred from the brief: cinematic.");
+  } else if (has("storytelling", "story edit", "documentary", "tutorial", "how to", "guide", "explainer", "travel vlog", "история", "истори", "сторителлинг", "документаль", "обуч", "гайд", "инструкц", "объясни", "влог")) {
+    style = "story";
+    reasons.push(language === "ru" ? "Стиль выбран по запросу: понятное повествование." : "Style inferred from the brief: clean storytelling.");
+  } else if (has("velocity", "fast cuts", "quick cuts", "high energy", "aggressive edit", "montage", "gameplay edit", "kill montage", "динамичный", "быстрые склейки", "скоростной", "агрессивный эдит", "монтаж фрагов", "игровой эдит", "эдит по mlbb")) {
+    style = "velocity";
+    reasons.push(language === "ru" ? "Стиль выбран по запросу: динамичный монтаж." : "Style inferred from the brief: velocity / fast cuts.");
+  }
+
+  if (has("tiktok", "tik tok", "reels", "youtube shorts", "shorts", "тик ток", "тикток", "рилс", "шортс", "вертикальное видео", "vertical video", "9:16")) {
+    aspectRatio = "9:16";
+    reasons.push(language === "ru" ? "Формат установлен на вертикальный 9:16 для коротких видео." : "Aspect ratio set to vertical 9:16 for short-form platforms.");
+  } else if (has("16:9", "horizontal video", "landscape video", "youtube long-form", "long-form youtube", "горизонтальное видео", "альбомный формат", "длинное видео для youtube")) {
+    aspectRatio = "16:9";
+    reasons.push(language === "ru" ? "Формат установлен на горизонтальный 16:9." : "Aspect ratio set to horizontal 16:9.");
+  } else if (has("4:5", "portrait feed", "вертикальная лента 4:5")) {
+    aspectRatio = "4:5";
+    reasons.push(language === "ru" ? "Формат установлен на 4:5." : "Aspect ratio set to 4:5.");
+  } else if (has("square video", "1:1", "квадратное видео", "квадратный формат")) {
+    aspectRatio = "1:1";
+    reasons.push(language === "ru" ? "Формат установлен на квадратный 1:1." : "Aspect ratio set to square 1:1.");
+  }
+
+  return { style, aspectRatio, reasons };
+}
+
 function detectIntent(prompt: string, ru: boolean, hasVideo: boolean): PromptIntent {
   const text = normalized(prompt);
   const has = (...terms: string[]) => includesAny(text, terms);
