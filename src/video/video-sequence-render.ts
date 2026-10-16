@@ -99,13 +99,30 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
 }
 
 function seek(video: HTMLVideoElement, time: number): Promise<void> {
-  if (video.readyState >= 2 && Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
+  if (video.readyState >= 2 && Math.abs(video.currentTime - time) < 0.02) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const done = () => { video.removeEventListener("error", failed); resolve(); };
-    const failed = () => { video.removeEventListener("seeked", done); reject(new Error("Could not seek within one of the selected clips.")); };
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("seeked", done);
+      video.removeEventListener("error", failed);
+    };
+    const done = () => { cleanup(); resolve(); };
+    const failed = () => {
+      cleanup();
+      reject(new Error("Не удалось перейти к выбранному фрагменту. Попробуй другой видеофайл."));
+    };
     video.addEventListener("seeked", done, { once: true });
     video.addEventListener("error", failed, { once: true });
-    video.currentTime = time;
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Переход к фрагменту занял слишком много времени. Попробуй более короткое видео."));
+    }, 12000);
+    try {
+      video.currentTime = time;
+    } catch {
+      failed();
+    }
   });
 }
 
