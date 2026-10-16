@@ -14,8 +14,8 @@ function translateText(value: string, language: Language): string {
   if (language === "en") return value;
   const trimmed = value.trim();
   if (russianText[trimmed]) return value.replace(trimmed, russianText[trimmed]);
-  let match = trimmed.match(/^(\\d+) seconds?$/);
-  if (match) return `${match[1]} сек.`;
+  const durationMatch = trimmed.match(/^(\d+) seconds?$/);
+  if (durationMatch) return `${durationMatch[1]} сек.`;
   if (trimmed === "2 minutes") return "2 минуты";
   if (trimmed === "5 minutes") return "5 минут";
   if (trimmed === "10+ minutes") return "10+ минут";
