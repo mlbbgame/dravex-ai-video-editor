@@ -5,7 +5,7 @@ import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
-  Layers3, MonitorPlay, Music2, Plus, Settings2,
+  Layers3, MonitorPlay, Music2, Plus, Settings2, Heart,
   ShieldCheck, Sparkles, Trash2, Upload, WandSparkles, X
 } from "lucide-react";
 
