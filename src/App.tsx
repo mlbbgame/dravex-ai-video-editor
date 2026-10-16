@@ -4,6 +4,7 @@ import { renderVideoSequence } from "./video/video-sequence-render";
 import { generateLocalPlan, makeOverlayTitle } from "./video/plan-generator";
 import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightProgress, type HighlightVariant } from "./video/highlight-finder";
 import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
+import SelfIntroVideo from "./components/SelfIntroVideo";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
@@ -532,6 +533,7 @@ export default function App() {
           <button className={mode === "collab" ? "mode-option selected" : "mode-option"} onClick={() => setMode("collab")}><span className="mode-icon collab-icon"><Heart size={18} /></span><span><strong>{language === "ru" ? "Совместный режим" : "Collaboration"}</strong><small>{language === "ru" ? "ИИ предлагает, ты решаешь" : "AI suggests, you decide"}</small></span>{mode === "collab" && <Check className="mode-check" size={17} />}</button>
         </section>
         {mode === "collab" && <section className="collab-notice panel"><span className="collab-notice-icon"><ShieldCheck size={18} /></span><div><strong>{language === "ru" ? "Режим совместной работы" : "Collaboration mode"}</strong><p>{language === "ru" ? "ИИ-план — только черновик. Проверь его, редактируй клипы вручную и экспортируй результат, когда будешь готов. Принятие каждого предложения остаётся за тобой." : "The AI plan is a draft. Review it, edit clips manually, and export when ready. You stay in control of every proposed change."}</p></div></section>}
+        <SelfIntroVideo language={language} />
         <EvolutionEngine language={language} />
 
         <section className="highlight-director panel">
