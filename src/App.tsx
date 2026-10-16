@@ -223,8 +223,6 @@ export default function App() {
     const idea = prompt.trim().replace(/[.!?]+$/, "");
     const lower = idea.toLocaleLowerCase();
     const isRu = language === "ru";
-    const recipe = editRecipes[editStyle];
-    const duration = parseInt(targetLength, 10) || 30;
     const category = /mlbb|mobile legends|мобайл легенд|мобайл легендс|клинт|fanny|фанни|ml\b|gaming|геймплей|игров/.test(lower) ? "gaming"
       : /car|cars|авто|машин|gtr|gt-r|rs6|гонк|drift|дрифт/.test(lower) ? "cars"
       : /travel|trip|путешеств|поездк|город|city|landscape|природ|nature/.test(lower) ? "travel"
