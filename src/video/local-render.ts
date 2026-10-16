@@ -8,6 +8,9 @@ type RenderOptions = {
   aspectRatio: string;
   durationSeconds?: number;
   style?: RenderStyle;
+  suppressEffects?: boolean;
+  suppressFlashes?: boolean;
+  suppressTransitions?: boolean;
   quality?: string;
   onProgress?: (progress: number) => void;
 };
@@ -67,6 +70,9 @@ export async function renderImageSlideshow({
   aspectRatio,
   durationSeconds = 15,
   style = "cinematic",
+  suppressEffects = false,
+  suppressFlashes = false,
+  suppressTransitions = false,
   quality = "720p",
   onProgress
 }: RenderOptions): Promise<Blob> {
@@ -126,7 +132,7 @@ export async function renderImageSlideshow({
       const current = sequence[imageIndex].image;
       const next = sequence[Math.min(imageIndex + 1, sequence.length - 1)].image;
       const progress = Math.max(0, Math.min(1, localFrame));
-      const motion = style === "velocity" ? 0.13 : style === "anime" ? 0.1 : style === "glitch" ? 0.09 : style === "story" ? 0.045 : 0.07;
+      const motion = suppressEffects ? 0 : style === "velocity" ? 0.13 : style === "anime" ? 0.1 : style === "glitch" ? 0.09 : style === "story" ? 0.045 : 0.07;
       const zoom = 1 + localFrame * motion;
       const scale = Math.max(width / current.width, height / current.height) * zoom;
       const drawWidth = current.width * scale;
@@ -143,7 +149,7 @@ export async function renderImageSlideshow({
       context.drawImage(current, (width - drawWidth) / 2 - driftX, (height - drawHeight) / 2 - driftY, drawWidth, drawHeight);
       // A short crossfade makes the scene changes feel intentional instead of abrupt.
       const transition = 0.12;
-      if (imageIndex < sequence.length - 1 && progress > 1 - transition) {
+      if (!suppressEffects && !suppressTransitions && imageIndex < sequence.length - 1 && progress > 1 - transition) {
         const alpha = (progress - (1 - transition)) / transition;
         const nextScale = Math.max(width / next.width, height / next.height) * (1 + alpha * motion * 0.45);
         const nextW = next.width * nextScale;
@@ -154,17 +160,19 @@ export async function renderImageSlideshow({
       }
       context.restore();
 
-      if (style === "glitch" && Math.floor(elapsed / 500) % 7 === 0 && localFrame < 0.06) {
+      if (!suppressEffects && !suppressFlashes && style === "glitch" && Math.floor(elapsed / 500) % 7 === 0 && localFrame < 0.06) {
         context.fillStyle = "rgba(40, 220, 255, 0.12)";
         context.fillRect(0, 0, width, height);
         context.fillStyle = "rgba(255, 35, 100, 0.1)";
         context.fillRect(Math.round(width * 0.015), 0, width, height);
       }
-      const shade = context.createLinearGradient(0, height * 0.45, 0, height);
-      shade.addColorStop(0, "rgba(5, 7, 12, 0)");
-      shade.addColorStop(1, "rgba(5, 7, 12, 0.88)");
-      context.fillStyle = shade;
-      context.fillRect(0, 0, width, height);
+      if (!suppressEffects) {
+        const shade = context.createLinearGradient(0, height * 0.45, 0, height);
+        shade.addColorStop(0, "rgba(5, 7, 12, 0)");
+        shade.addColorStop(1, "rgba(5, 7, 12, 0.88)");
+        context.fillStyle = shade;
+        context.fillRect(0, 0, width, height);
+      }
 
       const cleanTitle = title.trim().slice(0, 120);
       if (cleanTitle) {

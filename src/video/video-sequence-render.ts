@@ -30,6 +30,10 @@ type SequenceOptions = {
   aspectRatio: string;
   quality?: string;
   style?: SequenceRenderStyle;
+  suppressEffects?: boolean;
+  suppressFlashes?: boolean;
+  suppressShake?: boolean;
+  suppressTransitions?: boolean;
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
 };
@@ -105,7 +109,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -215,40 +219,44 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!sourceWidth || !sourceHeight) return;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
-    const motion = style === "velocity" ? 0.075 : style === "anime" ? 0.045 : style === "glitch" ? 0.035 : style === "story" ? 0.018 : 0.028;
+    const motion = suppressEffects ? 0 : style === "velocity" ? 0.075 : style === "anime" ? 0.045 : style === "glitch" ? 0.035 : style === "story" ? 0.018 : 0.028;
     const zoom = 1.015 + Math.sin(progress * Math.PI) * motion;
     const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const shake = cutProgress < 0.16 && style !== "story" ? (1 - cutProgress / 0.16) * (style === "velocity" ? 0.012 : 0.004) : 0;
+    const shake = !suppressEffects && !suppressShake && cutProgress < 0.16 && style !== "story" ? (1 - cutProgress / 0.16) * (style === "velocity" ? 0.012 : 0.004) : 0;
     const offsetX = Math.sin(progress * 71) * width * shake;
     const offsetY = Math.cos(progress * 83) * height * shake;
     context.save();
-    context.filter = style === "cinematic" ? "contrast(1.12) saturate(1.12)" : style === "anime" ? "contrast(1.1) saturate(1.25)" : style === "velocity" ? "contrast(1.16) saturate(1.22)" : style === "glitch" ? "contrast(1.18) saturate(1.3)" : "contrast(1.04) saturate(1.04)";
+    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.12) saturate(1.12)" : style === "anime" ? "contrast(1.1) saturate(1.25)" : style === "velocity" ? "contrast(1.16) saturate(1.22)" : style === "glitch" ? "contrast(1.18) saturate(1.3)" : "contrast(1.04) saturate(1.04)";
     context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
     context.restore();
-    const shade = context.createLinearGradient(0, height * 0.6, 0, height);
-    shade.addColorStop(0, "rgba(5,7,12,0)");
-    shade.addColorStop(1, "rgba(5,7,12,0.72)");
-    context.fillStyle = shade;
-    context.fillRect(0, 0, width, height);
+    if (!suppressEffects) {
+      const shade = context.createLinearGradient(0, height * 0.6, 0, height);
+      shade.addColorStop(0, "rgba(5,7,12,0)");
+      shade.addColorStop(1, "rgba(5,7,12,0.72)");
+      context.fillStyle = shade;
+      context.fillRect(0, 0, width, height);
+    }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (cutProgress >= 0 && cutProgress < 0.09 && style !== "story") {
+    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.09 && style !== "story") {
       const flash = (1 - cutProgress / 0.09) * (style === "velocity" ? 0.24 : style === "glitch" ? 0.18 : 0.1);
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (style === "glitch" && cutProgress >= 0 && cutProgress < 0.07) {
+    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.07) {
       context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.07) * 0.12})`;
       context.fillRect(0, 0, width, height);
       context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.07) * 0.08})`;
       context.fillRect(Math.round(width * 0.012), 0, width, height);
     }
-    const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
-    vignette.addColorStop(0, "rgba(0,0,0,0)");
-    vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.3)");
-    context.fillStyle = vignette;
-    context.fillRect(0, 0, width, height);
+    if (!suppressEffects) {
+      const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.3)");
+      context.fillStyle = vignette;
+      context.fillRect(0, 0, width, height);
+    }
     const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 48);
     if (cleanTitle) {
       const fontSize = Math.max(24, Math.round(width * 0.045));

@@ -48,6 +48,37 @@ export function shouldSuppressTextOverlay(prompt: string): boolean {
   return includesAny(text, NO_TEXT_TERMS);
 }
 
+
+export type PromptRenderPreferences = {
+  suppressEffects: boolean;
+  suppressFlashes: boolean;
+  suppressShake: boolean;
+  suppressTransitions: boolean;
+};
+
+export function getPromptRenderPreferences(prompt: string): PromptRenderPreferences {
+  const text = normalized(prompt);
+  return {
+    suppressEffects: includesAny(text, ["no effects", "without effects", "clean edit", "без эффектов", "без лишних эффектов"]),
+    suppressFlashes: includesAny(text, ["no flashes", "without flashes", "no flash", "без вспышек", "без флешей", "не используй вспышки"]),
+    suppressShake: includesAny(text, ["no shake", "without shake", "без тряски", "без шейка", "не тряси камеру"]),
+    suppressTransitions: includesAny(text, ["no transitions", "without transitions", "без переходов", "не добавляй переходы"])
+  };
+}
+
+export function extractPromptDuration(prompt: string): string | null {
+  const text = normalized(prompt);
+  const match = text.match(/(\d{1,3})[\s-]*(seconds?|secs?|sec|s|секунд(?:а|ы|у)?|сек|minutes?|mins?|min|минут(?:а|ы)?|мин)/i);
+  if (!match) return null;
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount < 1 || amount > 600) return null;
+  const unit = match[2].toLowerCase();
+  const isMinutes = unit.startsWith("min") || unit.startsWith("мин");
+  const seconds = isMinutes ? amount * 60 : amount;
+  if (seconds < 5 || seconds > 600) return null;
+  return isMinutes ? `${amount} minutes` : `${amount} seconds`;
+}
+
 function detectIntent(prompt: string, ru: boolean, hasVideo: boolean): PromptIntent {
   const text = normalized(prompt);
   const has = (...terms: string[]) => includesAny(text, terms);
@@ -88,7 +119,7 @@ function detectIntent(prompt: string, ru: boolean, hasVideo: boolean): PromptInt
   const noShake = has("no shake", "without shake", "без тряски", "без шейка");
   const noMusic = has("no music", "without music", "no soundtrack", "без музыки", "без фоновой музыки", "без саундтрека");
   const useOriginalAudio = has("original audio", "keep original sound", "keep game sound", "preserve audio", "оригинальный звук", "оставь звук игры", "сохрани звук");
-  const requestedDuration = text.match(/(?:under|less than|до|не более|максимум)\s*(\d+)\s*(seconds?|secs?|s|секунд|сек|минут|мин)/i);
+  const requestedDuration = extractPromptDuration(prompt);
   if (verticalPlatform) cues.push(ru ? "Вертикальная короткая площадка: TikTok / Reels / Shorts." : "Vertical short-form platform: TikTok / Reels / Shorts.");
   if (horizontalPlatform) cues.push(ru ? "Запрошен горизонтальный или более длинный формат YouTube." : "A horizontal or longer YouTube format was mentioned.");
   if (fast) cues.push(ru ? "Запрошен быстрый, энергичный темп." : "Fast, high-energy pacing requested.");
@@ -106,7 +137,7 @@ function detectIntent(prompt: string, ru: boolean, hasVideo: boolean): PromptInt
   if (noShake) constraints.push(ru ? "Не использовать тряску камеры." : "Do not use camera shake.");
   if (noMusic) constraints.push(ru ? "Не добавлять музыку." : "Do not add music.");
   if (useOriginalAudio) constraints.push(ru ? "Сохранить исходный звук, где это поддерживается." : "Preserve source audio where supported.");
-  if (requestedDuration) constraints.push(ru ? `Ограничение по длительности из запроса: до ${requestedDuration[1]} ${requestedDuration[2]}.` : `Duration limit mentioned in prompt: under ${requestedDuration[1]} ${requestedDuration[2]}.`);
+  if (requestedDuration) constraints.push(ru ? `Длительность из запроса: ${requestedDuration.replace("seconds", "секунд").replace("minutes", "минут")}.` : `Requested duration: ${requestedDuration}.`);
 
   let label: string;
   let hook: string;
