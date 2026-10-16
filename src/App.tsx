@@ -118,6 +118,7 @@ export default function App() {
   const [projectName, setProjectName] = useState("Untitled project");
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
+  const [musicVolume, setMusicVolume] = useState(65);
   const [referenceReport, setReferenceReport] = useState<string[]>([]);
   const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
@@ -332,7 +333,7 @@ export default function App() {
                   trimStart: clip.trimStart ?? 0,
                   trimEnd: clip.trimEnd && clip.trimEnd > (clip.trimStart ?? 0) ? clip.trimEnd : (clip.duration ?? 0)
                 }),
-            audioTracks: audioClips.map(({ name, url }) => ({ name, url, volume: 0.65 })),
+            audioTracks: audioClips.map(({ name, url }) => ({ name, url, volume: musicVolume / 100 })),
             title: prompt || projectName,
             aspectRatio: aspect,
             onProgress: setRenderProgress
@@ -496,6 +497,11 @@ export default function App() {
               <div className={`preview-stage ${aspect === "16:9" ? "landscape" : aspect === "1:1" ? "square" : "portrait"}`}>
                 {!activeClip ? <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={28} /></div><strong>Your preview lives here</strong><span>Import media to get started.</span></div> : activeClip.kind === "video" ? <video key={activeClip.id} src={activeClip.url} controls playsInline onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, duration, trimEnd: clip.trimEnd ?? duration, trimStart: clip.trimStart ?? 0 } : clip)); }} /> : activeClip.kind === "image" ? <img src={activeClip.url} alt={activeClip.name} /> : <div className="audio-preview"><span className="audio-visual"><AudioLines size={42} /></span><strong>{activeClip.name}</strong><audio src={activeClip.url} controls /></div>}
               </div>
+              {activeClip?.kind === "audio" && <div className="audio-mix-controls">
+                <label htmlFor="music-volume"><strong>{language === "ru" ? "ГРОМКОСТЬ ФОНОВОГО АУДИО" : "BACKGROUND AUDIO VOLUME"}</strong><span>{musicVolume}%</span></label>
+                <input id="music-volume" type="range" min="0" max="100" step="5" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+                <p>{language === "ru" ? "Уровень применяется к импортированным аудиофайлам при экспорте." : "This level is applied to imported audio files during export."}</p>
+              </div>}
               {activeClip?.kind === "video" && <div className="trim-controls">
                 <div className="trim-controls-heading"><strong>{language === "ru" ? "ОБРЕЗКА КЛИПА" : "CLIP TRIM"}</strong><span>{language === "ru" ? "Секунды" : "Seconds"}</span></div>
                 <label><span>{language === "ru" ? "Начало" : "Start"}</span><input type="number" min="0" max={Math.max(0, (activeClip.duration ?? 0) - 0.1)} step="0.1" value={activeClip.trimStart ?? 0} onChange={(event) => {
