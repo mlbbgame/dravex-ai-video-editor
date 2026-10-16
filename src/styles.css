@@ -488,6 +488,96 @@ textarea:focus { border-color: #b5f36d80; }
   overflow-wrap: anywhere;
 }
 .reference-report p + p { border-top: 1px solid rgba(255,255,255,.055); }
+
+.reference-link-entry {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  background: rgba(8, 10, 16, .34);
+}
+.reference-link-form {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 8px;
+}
+.reference-link-form input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  outline: none;
+  color: #eef0f7;
+  background: rgba(4, 6, 12, .72);
+  font: inherit;
+  font-size: 12px;
+}
+.reference-link-form input:focus { border-color: rgba(138,240,194,.65); }
+.reference-link-form .button { flex: 0 0 auto; }
+.reference-link-note {
+  margin: 10px 0 0;
+  color: #9ca2b4;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.reference-link-error {
+  margin: 8px 0 0;
+  color: #ff9f9f;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.reference-link-list { display: grid; gap: 14px; margin-top: 16px; }
+.reference-link-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(138,240,194,.16);
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+}
+.reference-link-card-head, .reference-link-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.reference-link-card-head strong { color: #e9ebf4; font-size: 12px; }
+.reference-link-actions a, .reference-remove {
+  color: #8af0c2;
+  font-size: 11px;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.reference-remove { color: #b5bac8; }
+.reference-embed-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 12px auto 0;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #080a10;
+}
+.reference-embed-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+@media (max-width: 560px) {
+  .reference-link-entry { padding: 12px; }
+  .reference-link-form { flex-direction: column; }
+  .reference-link-form .button { width: 100%; }
+  .reference-link-card-head { align-items: flex-start; }
+  .reference-link-actions { align-items: flex-end; flex-direction: column; }
+}
+
 @media (max-width: 560px) {
   .reference-lab { padding: 16px; margin-bottom: 16px; }
   .reference-lab-heading h2 { font-size: 16px; line-height: 1.35; }
