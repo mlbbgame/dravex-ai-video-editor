@@ -226,7 +226,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       void audioContext?.close();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) resolve(blob);
-      else reject(new Error("The rendered video was empty. Please try again."));
+      else reject(new Error("Браузер не сохранил кадры в видеофайл. Попробуй открыть DRAVEX в Chrome, отключить музыку и создать ролик ещё раз. Если ошибка повторится, напиши, какой браузер используешь."));
     };
   });
 
@@ -308,7 +308,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   };
 
   if (audioContext?.state === "suspended") await audioContext.resume();
-  recorder.start(250);
+  recorder.start(1000);
   let completed = 0;
   try {
     if (audioContext && loadedAudio.length) {
@@ -349,8 +349,29 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       completed += duration;
     }
     const last = loaded[loaded.length - 1];
+    // Keep the final canvas frame alive long enough for mobile MediaRecorder implementations.
     draw(last.kind === "video" ? last.video : last.image);
-    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+
+    // Flush the final encoded data before stopping; some Android browsers otherwise
+    // stop before delivering the last (or only) dataavailable chunk.
+    if (recorder.state === "recording" && typeof recorder.requestData === "function") {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        let timeoutId = 0;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeoutId);
+          recorder.removeEventListener("dataavailable", finish);
+          resolve();
+        };
+        timeoutId = window.setTimeout(finish, 1500);
+        recorder.addEventListener("dataavailable", finish, { once: true });
+        try { recorder.requestData(); } catch { finish(); }
+      });
+    }
     recorder.stop();
   } catch (error) {
     if (recorder.state !== "inactive") recorder.stop();
