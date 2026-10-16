@@ -97,7 +97,6 @@ export async function renderImageSlideshow({
   const safeDuration = Math.max(5, Math.min(30, durationSeconds));
   const totalFrames = Math.max(24, Math.round(safeDuration * 24));
   const frameDuration = 1000 / 24;
-  const sceneFrames = totalFrames / sequence.length;
 
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => {
