@@ -156,22 +156,31 @@ export async function analyzeVideoForHighlights(
       return sample.score >= left && sample.score >= right && sample.time > 1 && sample.time < duration - 1;
     }).sort((a, b) => b.score - a.score);
 
-    const candidates: HighlightMoment[] = [];
     const minimumGap = Math.max(3.5, Math.min(9, duration / 70));
+    const bucketCount = Math.min(80, Math.max(12, Math.ceil(duration / 90)));
+    const bucketWidth = duration / bucketCount;
+    const bucketPeaks: HighlightSample[] = [];
     for (const peak of peaks) {
-      if (candidates.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;
+      const bucket = Math.min(bucketCount - 1, Math.floor(peak.time / bucketWidth));
+      if (!bucketPeaks.some((item) => Math.min(bucketCount - 1, Math.floor(item.time / bucketWidth)) === bucket)) bucketPeaks.push(peak);
+    }
+    const selectedPeaks = [...bucketPeaks];
+    for (const peak of peaks) {
+      if (selectedPeaks.length >= 100) break;
+      if (selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;
+      selectedPeaks.push(peak);
+    }
+    const candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
       const half = Math.max(1.2, Math.min(2.4, interval * 0.8));
-      candidates.push({
+      return {
         time: peak.time,
         start: Math.max(0, peak.time - half),
         end: Math.min(duration, peak.time + half),
         score: peak.score,
         motion: peak.motion,
         contrast: peak.contrast
-      });
-      if (candidates.length >= 100) break;
-    }
-    candidates.sort((a, b) => a.time - b.time);
+      };
+    }).sort((a, b) => a.time - b.time);
     if (!candidates.length) throw new Error("No usable visual moments were found in this file.");
     return { duration, samples, candidates };
   } finally {
@@ -181,35 +190,43 @@ export async function analyzeVideoForHighlights(
   }
 }
 
-function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"]) {
+function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
   const ranked = [...candidates].sort((a, b) => {
     const scoreA = a.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
     const scoreB = b.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
     return scoreB - scoreA;
   });
   const selected: HighlightMoment[] = [];
+  // Seed the cut with the strongest moment from evenly spaced time buckets so a long source
+  // does not accidentally become an edit from one short action-heavy stretch.
+  for (let bucket = 0; bucket < count; bucket += 1) {
+    const from = sourceDuration * bucket / count;
+    const to = sourceDuration * (bucket + 1) / count;
+    const best = ranked.find((item) => item.time >= from && (bucket === count - 1 ? item.time <= to : item.time < to));
+    if (best && selected.every((item) => Math.abs(item.time - best.time) >= spacing)) selected.push(best);
+  }
   for (const item of ranked) {
-    if (selected.every((existing) => Math.abs(existing.time - item.time) >= spacing)) selected.push(item);
     if (selected.length >= count) break;
+    if (selected.every((existing) => Math.abs(existing.time - item.time) >= spacing)) selected.push(item);
   }
   // If spacing is too strict for a short source, fill with the best remaining distinct candidates.
   for (const item of ranked) {
     if (selected.length >= count) break;
     if (!selected.some((existing) => existing.time === item.time)) selected.push(item);
   }
-  return selected.sort((a, b) => a.time - b.time);
+  return selected.sort((a, b) => a.time - b.time).slice(0, count);
 }
 
 export function buildHighlightVariants(candidates: HighlightMoment[], sourceDuration: number): HighlightVariant[] {
   const configs: Array<{ id: HighlightVariant["id"]; title: string; description: string; shotLength: number; desired: number; spacing: number }> = [
-    { id: "aggressive", title: "Агрессивный", description: "Короткие ударные фрагменты и быстрый темп", shotLength: 1.35, desired: 30, spacing: 2.8 },
-    { id: "cinematic", title: "Кинематографичный", description: "Более длинные кадры с нарастанием к кульминации", shotLength: 2.5, desired: 16, spacing: 4.2 },
-    { id: "slow", title: "Плавный / атмосферный", description: "Длиннее держит выразительные кадры, меньше резких смен", shotLength: 3.5, desired: 11, spacing: 5.5 }
+    { id: "aggressive", title: "Агрессивный", description: "Короткие ударные фрагменты и быстрый темп", shotLength: 1.35, desired: 42, spacing: 2.8 },
+    { id: "cinematic", title: "Кинематографичный", description: "Более длинные кадры с нарастанием к кульминации", shotLength: 2.5, desired: 22, spacing: 4.2 },
+    { id: "slow", title: "Плавный / атмосферный", description: "Длиннее держит выразительные кадры, меньше резких смен", shotLength: 3.5, desired: 16, spacing: 5.5 }
   ];
   return configs.map((config) => {
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
     const count = Math.min(config.desired, availableCount, candidates.length);
-    const moments = chooseSpread(candidates, count, config.spacing, config.id).map((moment) => {
+    const moments = chooseSpread(candidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
       const half = config.shotLength / 2;
       const start = Math.max(0, Math.min(sourceDuration - config.shotLength, moment.time - half));
       return {
