@@ -34,6 +34,7 @@ jobs:
         run: npm run build
       # Keep the redesign isolated under /preview/ until Android smoke tests pass.
       # Rebuild preview whenever main changes so fixes on the preview branch can be tested.
+      # Prefer stable mobile codecs while validating the Android export flow.
       - name: Check out DRAVEX preview branch
         uses: actions/checkout@v4
         with:
