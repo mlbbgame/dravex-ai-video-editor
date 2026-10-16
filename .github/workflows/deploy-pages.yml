@@ -32,6 +32,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Build main site
         run: npm run build
+      # Keep the redesign isolated under /preview/ until Android smoke tests pass.
       - name: Check out DRAVEX preview branch
         uses: actions/checkout@v4
         with:
