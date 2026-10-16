@@ -337,11 +337,10 @@ export default function App() {
       return;
     }
     if (!variant.moments.length) return;
-    const sourceIndex = clips.findIndex((clip) => clip.id === source.id);
     const cutClips: MediaClip[] = variant.moments.map((moment, index) => ({
       ...source,
       id: uid(),
-      name: `${source.name.replace(/\\.[^.]+$/, "")} · ${String(index + 1).padStart(2, "0")}`,
+      name: `${source.name.replace(/\.[^.]+$/, "")} · ${String(index + 1).padStart(2, "0")}`,
       bytes: index === 0 ? source.bytes : 0,
       duration: moment.end - moment.start,
       trimStart: moment.start,
