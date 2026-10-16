@@ -743,6 +743,19 @@ export default function App() {
             <div><strong>{language === "ru" ? "РЕЦЕПТ МОНТАЖА" : "EDIT RECIPE"}</strong><p>{language === "ru" ? "DRAVEX превратил найденный темп в практические подсказки для нового ролика." : "DRAVEX has turned the detected pacing into practical guidelines for a new edit."}</p></div>
             <button className="button button-primary" onClick={applyReferenceRecipe}><WandSparkles size={16} /> {language === "ru" ? "Использовать рецепт в плане" : "Use recipe in plan"} <ArrowRight size={15} /></button>
           </div>}
+          <div className="learning-memory-panel">
+            <div className="learning-memory-heading">
+              <div><strong>{language === "ru" ? "ПАМЯТЬ ОБУЧЕНИЯ DRAVEX" : "DRAVEX LEARNING MEMORY"}</strong><p>{language === "ru" ? "Сохраняется на этом устройстве и помогает выбирать темп в следующих проектах." : "Saved on this device and used to guide pacing choices in future projects."}</p></div>
+              <span className="learning-memory-count">{learnedProfiles.reduce((sum, profile) => sum + profile.sampleCount, 0)} {language === "ru" ? "образцов" : "samples"}</span>
+            </div>
+            {learnedProfiles.length ? <div className="learning-profile-list">{learnedProfiles.map((profile) => <div className="learning-profile-row" key={profile.pace}><span><strong>{language === "ru" ? (profile.pace === "Fast" ? "Быстрый" : profile.pace === "Slow" ? "Медленный" : "Средний") : profile.pace}</strong><small>{language === "ru" ? "Средний кадр: " + profile.averageShot.toFixed(1) + " с" : "Avg. shot: " + profile.averageShot.toFixed(1) + "s"}</small></span><span>{language === "ru" ? "оценки +" + profile.helpful + " / −" + profile.unhelpful : "👍 " + profile.helpful + " / 👎 " + profile.unhelpful}</span></div>)}</div> : <p className="learning-memory-empty">{language === "ru" ? "Память пока пуста. Проанализируй референс, затем оцени рецепт." : "Memory is empty. Analyze a reference, then rate its recipe."}</p>}
+            <div className="learning-memory-actions">
+              <button className="button button-quiet" onClick={() => rateLearnedRecipe(true)} disabled={!referenceRecipe}>{language === "ru" ? "Полезный рецепт 👍" : "Helpful recipe 👍"}</button>
+              <button className="button button-quiet" onClick={() => rateLearnedRecipe(false)} disabled={!referenceRecipe}>{language === "ru" ? "Неудачный рецепт 👎" : "Not helpful 👎"}</button>
+              <button className="button button-quiet" onClick={clearLearningMemory} disabled={!learnedProfiles.length}>{language === "ru" ? "Очистить память" : "Clear memory"}</button>
+            </div>
+            <p className="learning-memory-disclaimer">{language === "ru" ? "Это локальная память монтажных правил, а не переобучение нейросети. Ссылки TikTok/YouTube пока нельзя автоматически анализировать по кадрам и звуку." : "This is local memory for editing heuristics, not neural-network training. TikTok/YouTube frames and audio cannot yet be analyzed automatically."}</p>
+          </div>
         </section>
 
         {mode !== "manual" ? (
