@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  Aperture, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AudioLines, Check,
+  Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
-  Headphones, Layers3, MagicWand, MonitorPlay, Music2, Plus, Settings2,
+  Layers3, MonitorPlay, Music2, Plus, Settings2,
   ShieldCheck, Sparkles, Trash2, Upload, WandSparkles, X
 } from "lucide-react";
 
@@ -67,13 +67,11 @@ export default function App() {
   };
 
   const removeClip = (id: string) => {
-    setClips((current) => {
-      const clip = current.find((item) => item.id === id);
-      if (clip) URL.revokeObjectURL(clip.url);
-      const next = current.filter((item) => item.id !== id);
-      if (activeId === id) setActiveId(next[0]?.id ?? null);
-      return next;
-    });
+    const clip = clips.find((item) => item.id === id);
+    if (clip) URL.revokeObjectURL(clip.url);
+    const next = clips.filter((item) => item.id !== id);
+    setClips(next);
+    if (activeId === id) setActiveId(next[0]?.id ?? null);
   };
 
   const moveClip = (id: string, direction: -1 | 1) => {
