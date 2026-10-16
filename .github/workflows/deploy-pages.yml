@@ -67,3 +67,4 @@ jobs:
         uses: actions/deploy-pages@v4
 
 # Rebuild the isolated /preview/ app after the Android no-music recorder fix.
+# Refresh preview with the action/velocity transition upgrade for Android smoke testing.
