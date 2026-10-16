@@ -191,15 +191,31 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     shade.addColorStop(1, "rgba(5,7,12,0.72)");
     context.fillStyle = shade;
     context.fillRect(0, 0, width, height);
-    const cleanTitle = title.trim().slice(0, 90);
+    const cleanTitle = title.trim().replace(/\\s+/g, " ").slice(0, 48);
     if (cleanTitle) {
-      context.font = `700 ${Math.max(24, Math.round(width * 0.045))}px system-ui, sans-serif`;
+      const fontSize = Math.max(24, Math.round(width * 0.045));
+      context.font = `700 ${fontSize}px system-ui, sans-serif`;
       context.textAlign = "center";
       context.textBaseline = "bottom";
       context.fillStyle = "#fff";
       context.shadowColor = "rgba(0,0,0,0.65)";
       context.shadowBlur = 8;
-      context.fillText(cleanTitle, width / 2, height * 0.91, width * 0.86);
+      const lines: string[] = [];
+      let line = "";
+      for (const word of cleanTitle.split(/\\s+/)) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (context.measureText(candidate).width > width * 0.84 && line) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) lines.push(line);
+      const visibleLines = lines.slice(0, 2);
+      visibleLines.forEach((text, index) => {
+        context.fillText(text, width / 2, height * 0.88 + (index - visibleLines.length + 1) * fontSize * 1.15, width * 0.86);
+      });
       context.shadowBlur = 0;
     }
   };
