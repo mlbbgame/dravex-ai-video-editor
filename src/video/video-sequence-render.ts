@@ -52,12 +52,13 @@ type LoadedImage = {
 type LoadedSegment = LoadedVideo | LoadedImage;
 
 const dimensionsFor = (aspectRatio: string, quality = "720p") => {
-  // 4K is available for capable devices, while 720p remains the safer mobile default.
-  const shortSide = quality === "4K" ? 2160 : quality === "1080p" ? 1080 : 720;
-  if (aspectRatio === "16:9") return { width: Math.round(shortSide * 16 / 9), height: shortSide };
-  if (aspectRatio === "1:1") return { width: shortSide, height: shortSide };
-  if (aspectRatio === "4:5") return { width: Math.round(shortSide * 4 / 5), height: shortSide };
-  return { width: Math.round(shortSide * 9 / 16), height: shortSide };
+  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
+  let base: { width: number; height: number };
+  if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
+  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
+  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
+  else base = { width: 720, height: 1280 };
+  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
 };
 
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
