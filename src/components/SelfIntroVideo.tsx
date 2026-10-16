@@ -3,7 +3,6 @@ import { Download, Film, Play, Sparkles, Video } from "lucide-react";
 
 type Language = "en" | "ru";
 type VideoKind = "overview" | "guide";
-type Aspect = "portrait" | "landscape";
 
 type Scene = { title: string; subtitle: string; tag: string; visual: "brand" | "prompt" | "media" | "highlights" | "timeline" | "export" };
 
@@ -245,7 +244,6 @@ export default function SelfIntroVideo({ language }: { language: Language }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
   const [kind, setKind] = useState<VideoKind>("guide");
-  const [aspect, setAspect] = useState<Aspect>("portrait");
   const [isRendering, setIsRendering] = useState(false);
   const [progress, setProgress] = useState(0);
   const [videoUrl, setVideoUrl] = useState("");
@@ -270,8 +268,8 @@ export default function SelfIntroVideo({ language }: { language: Language }) {
     setVideoUrl("");
     setProgress(0);
     setIsRendering(true);
-    const width = aspect === "portrait" ? 720 : 1280;
-    const height = aspect === "portrait" ? 1280 : 720;
+    const width = 720;
+    const height = 1280;
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
@@ -345,10 +343,7 @@ export default function SelfIntroVideo({ language }: { language: Language }) {
           <option value="guide">{language === "ru" ? "Инструкция по использованию" : "How-to tutorial"}</option>
           <option value="overview">{language === "ru" ? "Обзор проекта" : "Project overview"}</option>
         </select></label>
-        <label className="setting-field"><span>{language === "ru" ? "Формат" : "Format"}</span><select value={aspect} onChange={(event) => setAspect(event.target.value as Aspect)} disabled={isRendering}>
-          <option value="portrait">{language === "ru" ? "Вертикальный 9:16 · Shorts" : "Vertical 9:16 · Shorts"}</option>
-          <option value="landscape">{language === "ru" ? "Горизонтальный 16:9" : "Landscape 16:9"}</option>
-        </select></label>
+
       </div>
       <canvas ref={canvasRef} className="self-video-canvas" aria-label={language === "ru" ? "Предпросмотр кадра будущего видео" : "Preview frame of the generated video"} />
       <div className="self-video-actions">
