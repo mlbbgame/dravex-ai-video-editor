@@ -54,6 +54,9 @@ button:disabled { cursor: not-allowed; opacity: .28; }
 .crumb, .top-actions, .save-status { display: flex; align-items: center; gap: 10px; }
 .crumb { color: #7c8092; font-size: 11px; }
 .crumb strong { color: #e2e3eb; font-weight: 600; }
+.crumb-divider { color: #4d5163; margin: 0 1px; }
+.project-name-input { width: 140px; min-width: 0; padding: 5px 7px; border: 1px solid transparent; border-radius: 5px; outline: none; color: #b8bbca; background: transparent; font-size: 10px; }
+.project-name-input:hover, .project-name-input:focus { border-color: #303342; background: #151722; color: #f4f4fa; }
 .top-actions { gap: 17px; }
 .save-status { color: #85899a; font-size: 10px; gap: 7px; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px #b5f36d75; }
@@ -263,6 +266,8 @@ textarea:focus { border-color: #b5f36d80; }
   .topbar { height: 55px; }
   .crumb { gap: 5px; font-size: 9px; }
   .crumb svg { width: 11px; }
+  .project-name-input { width: 78px; padding: 3px 2px; font-size: 8px; }
+  .crumb-divider { display: none; }
   .top-actions { gap: 7px; }
   .save-status { font-size: 0; gap: 0; }
   .save-status .status-dot { width: 7px; height: 7px; }
