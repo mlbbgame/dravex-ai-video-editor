@@ -14,7 +14,7 @@ const styleOptions: Array<{ id: EditStyle; title: string; note: string; icon: ty
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
-  const shotLength = style === "velocity" ? 1.35 : style === "story" ? 3.2 : 2.5;
+  const shotLength = style === "velocity" ? 1.05 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
   const ranked = [...candidates].sort((a, b) => b.score - a.score);
@@ -22,7 +22,7 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 0.8)));
+    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 1.15)));
     if (best) selected.push(best);
   }
   for (const item of ranked) {
@@ -136,7 +136,7 @@ export default function App() {
         renderDuration = Math.min(duration, analysis.duration);
         if (style === "auto") {
           const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
-          actualStyle = averageMotion > 0.13 ? "velocity" : "cinematic";
+          actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
         }
         segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
       }
