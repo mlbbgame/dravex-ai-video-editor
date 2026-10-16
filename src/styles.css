@@ -652,3 +652,8 @@ textarea:focus { border-color: #b5f36d80; }
   .track-clip-card { min-width: 124px; flex-basis: 124px; padding: 6px; }
   .track-clip-actions button { width: 32px; height: 30px; }
 }
+
+
+.split-clip-button { width: fit-content; min-height: 34px; gap: 7px; margin-top: 2px; font-size: 10px; }
+.split-clip-button:disabled { opacity: .38; cursor: not-allowed; }
+@media (max-width: 560px) { .split-clip-button { width: 100%; justify-content: center; min-height: 40px; } }
