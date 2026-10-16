@@ -19,6 +19,8 @@ export type AudioSegment = {
   volume?: number;
 };
 
+export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
+
 export type SequenceSegment = VideoSegment | ImageSegment;
 
 type SequenceOptions = {
@@ -26,6 +28,8 @@ type SequenceOptions = {
   audioTracks?: AudioSegment[];
   title: string;
   aspectRatio: string;
+  quality?: string;
+  style?: SequenceRenderStyle;
   onProgress?: (progress: number) => void;
 };
 
@@ -47,11 +51,14 @@ type LoadedImage = {
 
 type LoadedSegment = LoadedVideo | LoadedImage;
 
-const dimensionsFor = (aspectRatio: string) => {
-  if (aspectRatio === "16:9") return { width: 1280, height: 720 };
-  if (aspectRatio === "1:1") return { width: 720, height: 720 };
-  if (aspectRatio === "4:5") return { width: 720, height: 900 };
-  return { width: 720, height: 1280 };
+const dimensionsFor = (aspectRatio: string, quality = "720p") => {
+  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
+  let base: { width: number; height: number };
+  if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
+  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
+  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
+  else base = { width: 720, height: 1280 };
+  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
 };
 
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
@@ -97,7 +104,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -122,7 +129,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     audio: await loadAudio(segment)
   })));
 
-  const { width, height } = dimensionsFor(aspectRatio);
+  const { width, height } = dimensionsFor(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -150,7 +157,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     ...videoStream.getVideoTracks(),
     ...(audioDestination?.stream.getAudioTracks() ?? [])
   ]);
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 });
+  const bitrate = quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
   const chunks: BlobPart[] = [];
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
@@ -177,21 +185,47 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
   });
 
-  const draw = (source: HTMLVideoElement | HTMLImageElement) => {
+  const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1) => {
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+    if (!sourceWidth || !sourceHeight) return;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
-    const scale = Math.max(width / sourceWidth, height / sourceHeight);
+    const motion = style === "velocity" ? 0.075 : style === "anime" ? 0.045 : style === "glitch" ? 0.035 : style === "story" ? 0.018 : 0.028;
+    const zoom = 1.015 + Math.sin(progress * Math.PI) * motion;
+    const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+    const shake = cutProgress < 0.16 && style !== "story" ? (1 - cutProgress / 0.16) * (style === "velocity" ? 0.012 : 0.004) : 0;
+    const offsetX = Math.sin(progress * 71) * width * shake;
+    const offsetY = Math.cos(progress * 83) * height * shake;
+    context.save();
+    context.filter = style === "cinematic" ? "contrast(1.12) saturate(1.12)" : style === "anime" ? "contrast(1.1) saturate(1.25)" : style === "velocity" ? "contrast(1.16) saturate(1.22)" : style === "glitch" ? "contrast(1.18) saturate(1.3)" : "contrast(1.04) saturate(1.04)";
+    context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+    context.restore();
     const shade = context.createLinearGradient(0, height * 0.6, 0, height);
     shade.addColorStop(0, "rgba(5,7,12,0)");
     shade.addColorStop(1, "rgba(5,7,12,0.72)");
     context.fillStyle = shade;
     context.fillRect(0, 0, width, height);
-    const cleanTitle = title.trim().replace(/\\s+/g, " ").slice(0, 48);
+    // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
+    if (cutProgress >= 0 && cutProgress < 0.09 && style !== "story") {
+      const flash = (1 - cutProgress / 0.09) * (style === "velocity" ? 0.24 : style === "glitch" ? 0.18 : 0.1);
+      context.fillStyle = `rgba(245,248,255,${flash})`;
+      context.fillRect(0, 0, width, height);
+    }
+    if (style === "glitch" && cutProgress >= 0 && cutProgress < 0.07) {
+      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.07) * 0.12})`;
+      context.fillRect(0, 0, width, height);
+      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.07) * 0.08})`;
+      context.fillRect(Math.round(width * 0.012), 0, width, height);
+    }
+    const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.3)");
+    context.fillStyle = vignette;
+    context.fillRect(0, 0, width, height);
+    const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 48);
     if (cleanTitle) {
       const fontSize = Math.max(24, Math.round(width * 0.045));
       context.font = `700 ${fontSize}px system-ui, sans-serif`;
@@ -202,7 +236,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.shadowBlur = 8;
       const lines: string[] = [];
       let line = "";
-      for (const word of cleanTitle.split(/\\s+/)) {
+      for (const word of cleanTitle.split(/\s+/)) {
         const candidate = line ? `${line} ${word}` : word;
         if (context.measureText(candidate).width > width * 0.84 && line) {
           lines.push(line);
@@ -238,8 +272,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       if (item.kind === "image") {
         const segmentStartedAt = performance.now();
         while (performance.now() - segmentStartedAt < item.duration * 1000) {
-          draw(item.image);
           const segmentProgress = Math.min(1, (performance.now() - segmentStartedAt) / (item.duration * 1000));
+          draw(item.image, segmentProgress, segmentProgress < 0.16 ? segmentProgress : 1);
           onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
@@ -253,8 +287,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
-        draw(video);
         const clipProgress = Math.min(1, (performance.now() - clipStartedAt) / (duration * 1000));
+        draw(video, clipProgress, clipProgress < 0.16 ? clipProgress : 1);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }

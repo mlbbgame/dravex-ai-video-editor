@@ -22,7 +22,7 @@ The first Evolution Engine layer records workflow counters and voluntary user ra
 
 ## Current prototype
 
-The web app provides a responsive workspace, local media import and preview, clip ordering/removal, trim points, splitting at the playhead, project JSON export, a local prompt-to-storyboard scaffold, and reference-video pacing estimates. The local renderer can export WebM from image slideshows and ordered video/image sequences, preserving video audio where supported and mixing imported audio at a fixed level. The first Evolution Engine foundation records local workflow counters, optional ratings, and browser capability diagnostics. It does not upload telemetry or media. A connected generative AI model, MP4 export, advanced transitions/audio automation, benchmark-driven algorithm experiments, and autonomous code evolution are not implemented yet. Android device testing is still required.
+The web app provides a responsive workspace, local media import and preview, clip ordering/removal, trim points, splitting at the playhead, project JSON export, a local prompt-to-storyboard scaffold, and reference-video pacing estimates. The local renderer exports WebM from image slideshows and ordered video/image sequences. Sequence exports apply the selected visual style, subtle camera motion, restrained cut flashes, vignette, and selected output resolution (720p, 1080p, or 4K). Title overlays are optional and disabled by default so exports can stay clean. Original video audio is preserved where the browser pipeline supports it, and imported audio can be mixed at a fixed level. The Evolution Engine records workflow counters, optional ratings, and browser capability diagnostics locally; it does not upload telemetry or media. Connected generative AI, automatic audio beat detection, true speed-ramping, cross-clip dissolves, volume automation, MP4 encoding, benchmark-driven algorithm experiments, and autonomous code evolution are not implemented yet. Android device testing is still required. 4K export is resource-intensive on phones; use 1080p if the browser struggles.
 
 ## Run locally
 
@@ -45,7 +45,7 @@ npm run preview
 1. Responsive app shell, local media bin, and three workflow modes (AI Creator, Manual Studio, Collaboration).
 2. Evolution Engine foundation: local workflow metrics, device diagnostics, and optional local feedback.
 3. Manual clip controls and editable project persistence.
-4. Local image-to-video WebM rendering and video sequence export; improve transitions, audio controls, and export reliability.
+4. Local WebM rendering with style-based visual treatment and selectable output resolution; next improve true transitions, audio controls, and export reliability.
 5. AI planning connected to an optional model, with validated edit instructions, approval, and undo/revisions.
 6. Scene analysis, captions, music, transitions, multiple variants, and quality checks.
 7. Safe Evolution Engine: repeatable benchmark projects, regression tests, candidate experiments, measurable acceptance thresholds, and rollback.

@@ -8,14 +8,18 @@ type RenderOptions = {
   aspectRatio: string;
   durationSeconds?: number;
   style?: RenderStyle;
+  quality?: string;
   onProgress?: (progress: number) => void;
 };
 
-const dimensionsFor = (aspectRatio: string) => {
-  if (aspectRatio === "16:9") return { width: 1280, height: 720 };
-  if (aspectRatio === "1:1") return { width: 720, height: 720 };
-  if (aspectRatio === "4:5") return { width: 720, height: 900 };
-  return { width: 720, height: 1280 };
+const dimensionsFor = (aspectRatio: string, quality = "720p") => {
+  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
+  let base: { width: number; height: number };
+  if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
+  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
+  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
+  else base = { width: 720, height: 1280 };
+  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
 };
 
 const loadImage = (url: string) =>
@@ -63,6 +67,7 @@ export async function renderImageSlideshow({
   aspectRatio,
   durationSeconds = 15,
   style = "cinematic",
+  quality = "720p",
   onProgress
 }: RenderOptions): Promise<Blob> {
   if (!images.length) throw new Error("Import at least one image before rendering.");
@@ -74,7 +79,7 @@ export async function renderImageSlideshow({
     .find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
-  const { width, height } = dimensionsFor(aspectRatio);
+  const { width, height } = dimensionsFor(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -88,7 +93,7 @@ export async function renderImageSlideshow({
   const stream = canvas.captureStream(24);
   const recorder = new MediaRecorder(stream, {
     mimeType,
-    videoBitsPerSecond: 4_000_000
+    videoBitsPerSecond: quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 4_000_000
   });
   const chunks: BlobPart[] = [];
   const safeDuration = Math.max(5, Math.min(30, durationSeconds));
@@ -161,34 +166,33 @@ export async function renderImageSlideshow({
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
 
-      const cleanTitle = title.trim().slice(0, 120) || "A story in motion";
-      const fontSize = Math.max(26, Math.round(width * 0.055));
-      context.font = `700 ${fontSize}px system-ui, sans-serif`;
-      context.textAlign = "center";
-      context.textBaseline = "bottom";
-      context.shadowColor = "rgba(0,0,0,0.6)";
-      context.shadowBlur = 12;
-      const words = cleanTitle.split(/\\s+/);
-      const lines: string[] = [];
-      let line = "";
-      for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        if (context.measureText(candidate).width > width * 0.82 && line) {
-          lines.push(line);
-          line = word;
-        } else line = candidate;
+      const cleanTitle = title.trim().slice(0, 120);
+      if (cleanTitle) {
+        const fontSize = Math.max(26, Math.round(width * 0.055));
+        context.font = `700 ${fontSize}px system-ui, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "bottom";
+        context.shadowColor = "rgba(0,0,0,0.6)";
+        context.shadowBlur = 12;
+        const words = cleanTitle.split(/\s+/);
+        const lines: string[] = [];
+        let line = "";
+        for (const word of words) {
+          const candidate = line ? `${line} ${word}` : word;
+          if (context.measureText(candidate).width > width * 0.82 && line) {
+            lines.push(line);
+            line = word;
+          } else line = candidate;
+        }
+        if (line) lines.push(line);
+        const visibleLines = lines.slice(-3);
+        const lineHeight = fontSize * 1.18;
+        visibleLines.forEach((text, index) => {
+          context.fillStyle = "#ffffff";
+          context.fillText(text, width / 2, height * 0.82 + (index - visibleLines.length + 1) * lineHeight, width * 0.86);
+        });
+        context.shadowBlur = 0;
       }
-      if (line) lines.push(line);
-      const visibleLines = lines.slice(-3);
-      const lineHeight = fontSize * 1.18;
-      visibleLines.forEach((text, index) => {
-        context.fillStyle = "#ffffff";
-        context.fillText(text, width / 2, height * 0.82 + (index - visibleLines.length + 1) * lineHeight, width * 0.86);
-      });
-      context.shadowBlur = 0;
-      context.font = `600 ${Math.max(14, Math.round(width * 0.022))}px system-ui, sans-serif`;
-      context.fillStyle = "rgba(255,255,255,0.8)";
-      context.fillText("MADE WITH DRAVEX", width / 2, height * 0.94);
 
       onProgress?.(Math.min(100, Math.round(((frame + 1) / totalFrames) * 100)));
       if (frame >= totalFrames - 1) {
