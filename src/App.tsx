@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { renderImageSlideshow } from "./video/local-render";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
@@ -37,6 +38,8 @@ export default function App() {
   const [plan, setPlan] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [projectName, setProjectName] = useState("Untitled project");
+  const [isRendering, setIsRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const activeClip = clips.find((clip) => clip.id === activeId) ?? clips[0] ?? null;
@@ -104,6 +107,39 @@ export default function App() {
     setPlan(next);
     setNotice("Draft plan created locally. This is a planning preview, not a rendered video.");
     window.setTimeout(() => setNotice(""), 5000);
+  };
+
+  const renderVideo = async () => {
+    const images = clips.filter((clip) => clip.kind === "image").map(({ name, url }) => ({ name, url }));
+    if (!images.length) {
+      setNotice("Add at least one image to render a short video. Video-clip rendering is coming later.");
+      window.setTimeout(() => setNotice(""), 5000);
+      return;
+    }
+    setIsRendering(true);
+    setRenderProgress(0);
+    setNotice("Rendering a short video locally in your browser…");
+    try {
+      const blob = await renderImageSlideshow({
+        images,
+        title: prompt || projectName,
+        aspectRatio: aspect,
+        durationSeconds: 15,
+        onProgress: setRenderProgress
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${projectName.trim().replace(/[^a-z0-9-_]+/gi, "-") || "dravex-video"}.webm`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice("Video rendered and downloaded as WebM. This first local renderer uses images, motion, and a title; audio and MP4 export are next steps.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Video rendering failed. Please try fewer or smaller images.");
+    } finally {
+      setIsRendering(false);
+      setRenderProgress(0);
+    }
   };
 
   const saveProject = () => {
@@ -196,6 +232,10 @@ export default function App() {
               <div className="panel-heading"><div><span className="step-number">03</span><div><h2>Your creative plan</h2><p>A first outline for your next cut.</p></div></div><span className="draft-badge"><span /> DRAFT</span></div>
               {plan.length ? <div className="storyboard">{plan.map((item, index) => <div className="storyboard-item" key={item}><div className="storyboard-thumb">{index === 0 ? <Aperture size={19} /> : index === 3 ? <AudioLines size={19} /> : <Film size={19} />}</div><p>{item}</p></div>)}</div> : <div className="empty-plan"><div className="empty-art"><div className="empty-frame frame-back" /><div className="empty-frame frame-front"><MonitorPlay size={31} /><span>YOUR NEXT IDEA</span></div><span className="spark spark-one">✦</span><span className="spark spark-two">✳</span></div><h3>Your next idea starts here</h3><p>Your outline will appear here after you describe the video and build a plan.</p></div>}
               <div className="plan-footer"><div className="plan-status"><span className="status-ring" /> {plan.length ? "Draft ready to review" : "Waiting for your brief"}</div><span className="plan-meta">{clips.length} media files added</span></div>
+              <button className="button button-primary create-button" onClick={renderVideo} disabled={isRendering}>
+                <Film size={17} /> {isRendering ? `Rendering video… ${renderProgress}%` : "Render 15-second video"} <ArrowRight size={17} />
+              </button>
+              <p className="prototype-note"><ShieldCheck size={14} /> First renderer exports WebM from imported images directly on this device. MP4, audio, and video-clip rendering are not included yet.</p>
             </div>
           </section>
         ) : (
