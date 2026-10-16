@@ -859,3 +859,32 @@ textarea:focus { border-color: #b5f36d80; }
   .highlight-results-intro span { max-width: none; text-align: left; }
   .highlight-variant { padding: 14px; }
 }
+
+
+/* Self-introduction video studio */
+.self-video { margin: 26px 0; padding: 24px; }
+.self-video-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+.self-video-heading h2 { margin: 9px 0 7px; font-size: clamp(20px, 2.3vw, 27px); letter-spacing: -.7px; }
+.self-video-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; max-width: 640px; }
+.self-video-icon { width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #b5f36d35; border-radius: 14px; color: var(--accent); background: #b5f36d0d; }
+.self-video-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 18px; max-width: 520px; }
+.self-video-controls .setting-field { min-width: 0; }
+.self-video-controls select { width: 100%; }
+.self-video-canvas { display: block; width: 100%; max-width: 330px; max-height: 410px; aspect-ratio: 9 / 16; object-fit: contain; margin: 0 auto 18px; background: #0b0d14; border: 1px solid var(--border); border-radius: 12px; }
+.self-video-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.self-video-actions a { text-decoration: none; }
+.self-video-progress { width: 100%; height: 6px; overflow: hidden; border-radius: 8px; background: #272b39; margin-top: 15px; }
+.self-video-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .15s linear; }
+.self-video-result { display: block; width: 100%; max-width: 520px; max-height: 520px; margin: 18px auto 0; background: #050608; border-radius: 10px; }
+.self-video-error { margin: 12px 0 0; color: #ff9a9a; font-size: 12px; line-height: 1.5; }
+.self-video .prototype-note { display: flex; align-items: flex-start; gap: 7px; margin: 15px 0 0; }
+.self-video .prototype-note svg { flex: 0 0 auto; margin-top: 1px; }
+@media (max-width: 620px) {
+  .self-video { padding: 16px; margin: 18px 0; }
+  .self-video-heading { gap: 10px; }
+  .self-video-icon { width: 40px; height: 40px; border-radius: 12px; }
+  .self-video-controls { grid-template-columns: 1fr; gap: 12px; }
+  .self-video-actions { flex-direction: column; }
+  .self-video-actions .button { width: 100%; justify-content: center; }
+  .self-video-canvas { max-width: 260px; max-height: 390px; }
+}

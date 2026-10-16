@@ -53,3 +53,8 @@ npm run preview
 ## Current limitations
 
 This is an early prototype, not yet a complete editor. It does not train its own model, provide unlimited free AI generation, or currently render a finished MP4. Do not upload sensitive media to third-party services; the current prototype keeps imported media in the browser session and does not upload it to a DRAVEX server.
+
+
+## Self-introduction video studio
+
+The self-introduction studio creates a short, six-scene animated presentation about DRAVEX itself. Users can choose a project overview or a first-use tutorial, in English or Russian, then render a vertical 9:16 WebM locally in the browser and preview/download the result. It does not use a paid API or upload media. The current version draws illustrative interface scenes and captions; it is not a screen recording of real clicks, has no voiceover yet, and should be treated as a first prototype. Canvas capture and MediaRecorder support are checked at runtime. Android Chrome testing is still required.
