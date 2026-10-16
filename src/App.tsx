@@ -1,10 +1,11 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import { renderVideoSequence } from "./video/video-sequence-render";
+import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
 import {
   Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
   ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
-  Layers3, MonitorPlay, Music2, Plus, Settings2,
+  Layers3, MonitorPlay, Music2, Plus, Settings2, Heart,
   ShieldCheck, Sparkles, Trash2, Upload, WandSparkles, X
 } from "lucide-react";
 
@@ -52,7 +53,7 @@ function localize(node: ReactNode, language: Language): ReactNode {
   return cloneElement(node as ReactElement<Record<string, unknown>>, nextProps as Partial<Record<string, unknown>>);
 }
 
-type Mode = "ai" | "manual";
+type Mode = "ai" | "manual" | "collab";
 type EditStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 const editRecipes: Record<EditStyle, { visuals: string; rhythm: string; finish: string }> = {
   velocity: {
@@ -154,6 +155,7 @@ export default function App() {
       bytes: file.size
     }));
     setClips((current) => [...current, ...newClips]);
+    if (newClips.length) trackEvolutionEvent("media_imported");
     if (!activeId && newClips[0]) setActiveId(newClips[0].id);
     setNotice(newClips.length ? `Added ${newClips.length} media file${newClips.length === 1 ? "" : "s"} to this session.` : "Choose a video, image, or audio file.");
     window.setTimeout(() => setNotice(""), 4000);
@@ -161,6 +163,7 @@ export default function App() {
   };
 
   const removeClip = (id: string) => {
+    trackEvolutionEvent("clip_changed");
     const clip = clips.find((item) => item.id === id);
     const next = clips.filter((item) => item.id !== id);
     if (clip && !next.some((item) => item.url === clip.url)) URL.revokeObjectURL(clip.url);
@@ -169,6 +172,7 @@ export default function App() {
   };
 
   const moveClip = (id: string, direction: -1 | 1) => {
+    trackEvolutionEvent("clip_changed");
     setClips((current) => {
       const index = current.findIndex((clip) => clip.id === id);
       const target = index + direction;
@@ -201,6 +205,7 @@ export default function App() {
       return next;
     });
     setActiveId(second.id);
+    trackEvolutionEvent("clip_changed");
     setNotice(language === "ru" ? "Клип разделён на две части по текущей позиции воспроизведения." : "Clip split into two segments at the current playhead.");
     window.setTimeout(() => setNotice(""), 4500);
   };
@@ -227,6 +232,7 @@ export default function App() {
       recipe.finish
     ];
     setPlan(next);
+    trackEvolutionEvent("plan_created");
     setNotice("Automatic edit plan prepared. Image scoring and style-aware motion run locally during rendering; this is not a connected AI model yet.");
     window.setTimeout(() => setNotice(""), 6000);
   };
@@ -296,6 +302,7 @@ export default function App() {
         "LIMITATION — This local first pass detects visual changes; it does not yet understand the story, spoken words, or music beats."
       ];
       setReferenceReport(report);
+      trackEvolutionEvent("reference_analyzed");
       setReferenceRecipe({ name: reference.name, duration: video.duration, pace, averageShot, cutTimes: cutTimes.slice(0, 12) });
       setNotice("Reference analysis complete. This is a local visual estimate, not semantic AI analysis.");
       window.setTimeout(() => setNotice(""), 6000);
@@ -381,6 +388,7 @@ export default function App() {
             style: editStyle,
             onProgress: setRenderProgress
           });
+      trackEvolutionEvent("render_success");
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -393,6 +401,7 @@ export default function App() {
           ? "Video sequence exported as WebM from your trimmed source clips with original audio where supported. Transitions and MP4 export are still upcoming."
           : "Image montage exported as WebM with motion and the selected style. Audio and MP4 export are still upcoming.");
     } catch (error) {
+      trackEvolutionEvent("render_failure");
       setNotice(error instanceof Error ? error.message : "Video rendering failed. Try shorter clips or smaller source files.");
     } finally {
       setIsRendering(false);
@@ -438,6 +447,9 @@ export default function App() {
         <button className={mode === "manual" ? "nav-item active" : "nav-item"} onClick={() => setMode("manual")} aria-label="Manual Studio" title="Manual Studio">
           <Clapperboard size={18} /> <span>Manual Studio</span>
         </button>
+        <button className={mode === "collab" ? "nav-item active" : "nav-item"} onClick={() => setMode("collab")} aria-label="Collaboration mode" title="Collaboration mode">
+          <Sparkles size={18} /> <span>{language === "ru" ? "Совместный режим" : "Collaboration"}</span>
+        </button>
         <div className="side-divider" />
         <div className="side-label">PROJECT</div>
         <button className="nav-item" onClick={() => uploadRef.current?.click()} aria-label="Import media" title="Import media"><FolderOpen size={18} /><span>Import media</span></button>
@@ -450,15 +462,15 @@ export default function App() {
 
       <main className="main-area" id="home">
         <header className="topbar">
-          <div className="crumb"><span>Workspace</span><ChevronDown size={14} /><strong>{mode === "ai" ? "AI Creator" : "Manual Studio"}</strong><span className="crumb-divider">/</span><input className="project-name-input" aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></div>
+          <div className="crumb"><span>Workspace</span><ChevronDown size={14} /><strong>{mode === "ai" ? "AI Creator" : mode === "manual" ? "Manual Studio" : (language === "ru" ? "Совместный режим" : "Collaboration")}</strong><span className="crumb-divider">/</span><input className="project-name-input" aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></div>
           <div className="top-actions"><label className="language-switch"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value as Language)} aria-label="Language"><option value="en">English</option><option value="ru">Русский</option></select></label><span className="save-status"><span className="status-dot" /> Session only</span><button className="button button-quiet top-save" onClick={saveProject} aria-label="Save project"><Download size={16} /> Save project</button></div>
         </header>
 
         <section className="welcome-row">
           <div>
             <div className="eyebrow"><span className="eyebrow-line" /> YOUR STORY, YOUR RULES</div>
-            <h1>{mode === "ai" ? <>Make something<br /><span>worth watching.</span></> : <>Your timeline.<br /><span>Your creative control.</span></>}</h1>
-            <p className="welcome-copy">{mode === "ai" ? "Describe the video in your head. Build a plan, bring in your footage, and shape the final cut." : "Work directly with your media. No AI required — you stay in control of every creative decision."}</p>
+            <h1>{mode === "ai" ? <>Make something<br /><span>worth watching.</span></> : mode === "manual" ? <>Your timeline.<br /><span>Your creative control.</span></> : <>{language === "ru" ? "Ты и DRAVEX" : "You and DRAVEX"}<br /><span>{language === "ru" ? "в одной команде." : "in one creative team."}</span></>}</h1>
+            <p className="welcome-copy">{mode === "ai" ? "Describe the video in your head. Build a plan, bring in your footage, and shape the final cut." : mode === "manual" ? "Work directly with your media. No AI required — you stay in control of every creative decision." : (language === "ru" ? "Создай черновик с помощью ИИ, вручную меняй детали и оставляй только те изменения, которые тебе нравятся." : "Let AI prepare a draft, adjust every detail manually, and keep only the changes you approve.")}</p>
           </div>
           <div className="hero-orbit" aria-hidden="true"><div className="orbit-ring ring-one" /><div className="orbit-ring ring-two" /><div className="orbit-core"><Film size={34} /></div><span className="orbit-star star-a">✳</span><span className="orbit-star star-b">✦</span></div>
         </section>
@@ -466,7 +478,10 @@ export default function App() {
         <section className="mode-switch" aria-label="Editing mode">
           <button className={mode === "ai" ? "mode-option selected" : "mode-option"} onClick={() => setMode("ai")}><span className="mode-icon ai-icon"><Sparkles size={18} /></span><span><strong>AI Creator</strong><small>Plan with AI assistance</small></span>{mode === "ai" && <Check className="mode-check" size={17} />}</button>
           <button className={mode === "manual" ? "mode-option selected" : "mode-option"} onClick={() => setMode("manual")}><span className="mode-icon manual-icon"><Layers3 size={18} /></span><span><strong>Manual Studio</strong><small>Edit it your way</small></span>{mode === "manual" && <Check className="mode-check" size={17} />}</button>
+          <button className={mode === "collab" ? "mode-option selected" : "mode-option"} onClick={() => setMode("collab")}><span className="mode-icon collab-icon"><Heart size={18} /></span><span><strong>{language === "ru" ? "Совместный режим" : "Collaboration"}</strong><small>{language === "ru" ? "ИИ предлагает, ты решаешь" : "AI suggests, you decide"}</small></span>{mode === "collab" && <Check className="mode-check" size={17} />}</button>
         </section>
+        {mode === "collab" && <section className="collab-notice panel"><span className="collab-notice-icon"><ShieldCheck size={18} /></span><div><strong>{language === "ru" ? "Режим совместной работы" : "Collaboration mode"}</strong><p>{language === "ru" ? "ИИ-план — только черновик. Проверь его, редактируй клипы вручную и экспортируй результат, когда будешь готов. Принятие каждого предложения остаётся за тобой." : "The AI plan is a draft. Review it, edit clips manually, and export when ready. You stay in control of every proposed change."}</p></div></section>}
+        <EvolutionEngine language={language} />
 
         <section className="reference-lab panel">
           <div className="reference-lab-heading">
@@ -484,7 +499,7 @@ export default function App() {
           </div>}
         </section>
 
-        {mode === "ai" ? (
+        {mode !== "manual" ? (
           <section className="creator-grid">
             <div className="panel prompt-panel">
               <div className="panel-heading"><div><span className="step-number">01</span><div><h2>Describe your video</h2><p>Start with an idea. Be as specific as you like.</p></div></div><span className="panel-icon"><Sparkles size={18} /></span></div>

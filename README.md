@@ -4,8 +4,9 @@ DRAVEX is a mobile-first video creation workspace with two equally important pat
 
 - **AI Creator** — the intended end-to-end workflow: describe a video, add media, review an editable plan, then render the result. The first prototype uses a local planning scaffold; it does not yet connect to a generative AI model.
 - **Manual Studio** — edit your own media directly, without being required to use AI.
+- **Collaboration** — review an AI-prepared draft, then edit manually; the user retains creative control.
 
-The user chooses the workflow. A future mixed workflow may let users switch between AI assistance and manual control at any time.
+The workflow can be switched at any time. Collaboration currently combines the local planning scaffold with the existing manual editing controls; it does not yet connect a generative model.
 
 ## Principles
 
@@ -14,6 +15,10 @@ The user chooses the workflow. A future mixed workflow may let users switch betw
 - Preserve editable project data and support revisions.
 - Do not claim a video was generated or exported unless a real render completed.
 - Keep DRAVEX separate from the Grim_gg project.
+
+## Evolution Engine foundation
+
+The first Evolution Engine layer records workflow counters and voluntary user ratings in browser-local storage, and can check local browser capabilities (WebM recording, canvas capture, audio API, workers, secure context, and storage). It does not upload telemetry, media, filenames, or feedback. Users can inspect and clear the local history. This is a measurement and feedback foundation, not autonomous self-modifying code or model training. Safe code evolution still requires automated tests, benchmark comparisons, review gates, and a separate controlled CI workflow.
 
 ## Current prototype
 
@@ -37,12 +42,13 @@ npm run preview
 
 ## Roadmap
 
-1. Responsive app shell and local media bin.
-2. Manual clip controls and editable project persistence.
-3. Local image-to-video WebM rendering; next add video-clip rendering, audio, and MP4 export.
-4. AI planning connected to a model, with validated edit instructions and undo/revisions.
-5. Scene analysis, captions, music, transitions, multiple variants, and quality checks.
-6. Optional image/video/audio generation providers, subject to their availability, terms, and costs.
+1. Responsive app shell, local media bin, and three workflow modes (AI Creator, Manual Studio, Collaboration).
+2. Evolution Engine foundation: local workflow metrics, device diagnostics, and optional local feedback.
+3. Manual clip controls and editable project persistence.
+4. Local image-to-video WebM rendering and video sequence export; improve transitions, audio controls, and export reliability.
+5. AI planning connected to an optional model, with validated edit instructions, approval, and undo/revisions.
+6. Scene analysis, captions, music, transitions, multiple variants, and quality checks.
+7. Safe Evolution Engine: repeatable benchmark projects, regression tests, candidate experiments, measurable acceptance thresholds, and rollback.
 
 ## Current limitations
 
