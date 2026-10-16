@@ -212,28 +212,144 @@ export default function App() {
 
   const makePlan = () => {
     const imageClips = clips.filter((clip) => clip.kind === "image");
-    if (!prompt.trim() && imageClips.length === 0) {
-      setNotice("Describe the video or add images so DRAVEX can plan a montage.");
+    const videoClips = clips.filter((clip) => clip.kind === "video");
+    const audioClips = clips.filter((clip) => clip.kind === "audio");
+    if (!prompt.trim() && imageClips.length === 0 && videoClips.length === 0) {
+      setNotice(language === "ru" ? "Опиши идею или добавь видео/изображения, чтобы составить план." : "Describe the idea or add video/images so DRAVEX can plan an edit.");
       window.setTimeout(() => setNotice(""), 3500);
       return;
     }
+
     const idea = prompt.trim().replace(/[.!?]+$/, "");
-    const hasAudio = clips.some((clip) => clip.kind === "audio");
+    const lower = idea.toLocaleLowerCase();
+    const isRu = language === "ru";
     const recipe = editRecipes[editStyle];
-    const imageSummary = imageClips.length
-      ? `02 · IMAGE ANALYSIS — ${imageClips.length} image(s) will be scored for contrast, color, and visual impact. The strongest frame opens the montage.`
-      : "02 · VISUALS — Add images to enable automatic visual analysis and montage rendering.";
+    const duration = parseInt(targetLength, 10) || 30;
+    const category = /mlbb|mobile legends|мобайл легенд|мобайл легендс|клинт|fanny|фанни|ml|gaming|геймплей|игров/.test(lower) ? "gaming"
+      : /car|cars|авто|машин|gtr|gt-r|rs6|гонк|drift|дрифт/.test(lower) ? "cars"
+      : /travel|trip|путешеств|поездк|город|city|landscape|природ|nature/.test(lower) ? "travel"
+      : /tutorial|how to|guide|обуч|инструкц|урок|гайд|совет/.test(lower) ? "tutorial"
+      : /product|brand|реклам|товар|продукт|магазин|promo|промо/.test(lower) ? "promo"
+      : /story|истори|персонаж|герой|legend|легенд|anime|аниме|cinematic|кино/.test(lower) ? "story" : "general";
+
+    const scenes: Record<string, { hook: string; setup: string; build: string; climax: string; ending: string }> = {
+      gaming: isRu ? {
+        hook: "Открой с самого сильного фрага, ульты или спасения; не начинай с долгого вступления.",
+        setup: "За 2–4 секунды покажи героя/роль и ситуацию, чтобы зритель понял контекст.",
+        build: "Собери лучшие моменты по нарастанию: подготовка → первый успех → серия действий; убери беготню и пустые паузы.",
+        climax: "Поставь лучший килл, командный бой или камбэк на музыкальный акцент; короткий ударный зум только на моменте попадания.",
+        ending: "Заверши результатом боя или узнаваемым кадром героя и коротким ником/призывом."
+      } : {
+        hook: "Open on the strongest kill, ultimate, or clutch; skip a slow intro.",
+        setup: "Use 2–4 seconds to establish the hero/role and the situation.",
+        build: "Order the best moments as setup → first payoff → action streak; remove walking and dead time.",
+        climax: "Place the best kill, team fight, or comeback on a music accent; reserve impact zoom for the hit.",
+        ending: "Finish on the result or a recognizable hero frame with a short handle/call to action."
+      },
+      cars: isRu ? {
+        hook: "Начни с самого зрелищного проезда, звука двигателя или короткого кадра результата.",
+        setup: "Покажи автомобиль целиком, затем деталь — переднюю часть, колёса или салон.",
+        build: "Чередуй общий план, движение и крупные детали; убери повторяющиеся ракурсы.",
+        climax: "Оставь разгон, дрифт или лучший проезд для кульминации; не ускоряй кадр, если это портит ощущение скорости.",
+        ending: "Заверши чистым боковым/задним кадром и названием модели."
+      } : {
+        hook: "Lead with the best driving shot, engine moment, or result.",
+        setup: "Establish the full car, then reveal one distinctive detail.",
+        build: "Alternate wide shots, motion, and close details; remove repetitive angles.",
+        climax: "Save the strongest pull, drift, or pass for the climax; don't fake speed if it hurts clarity.",
+        ending: "Close on a clean hero angle and the car model."
+      },
+      travel: isRu ? {
+        hook: "Открой самым красивым или неожиданным кадром места.",
+        setup: "Быстро обозначь локацию и настроение поездки.",
+        build: "Проведи зрителя от общего вида к деталям и людям; сохраняй понятную последовательность.",
+        climax: "Покажи главный вид или событие ближе к последней трети ролика.",
+        ending: "Заверши спокойным запоминающимся кадром, не обрывая движение резко."
+      } : {
+        hook: "Open with the most beautiful or surprising view.",
+        setup: "Establish the location and mood quickly.",
+        build: "Move from wide views to details and people in a coherent sequence.",
+        climax: "Place the signature view or moment in the final third.",
+        ending: "Finish on a memorable calm shot rather than an abrupt cut."
+      },
+      tutorial: isRu ? {
+        hook: "Сразу покажи результат или проблему, которую ролик поможет решить.",
+        setup: "Одной короткой фразой обозначь задачу и кому пригодится инструкция.",
+        build: "Разбей объяснение на 2–4 шага; оставляй экранный текст коротким и читаемым.",
+        climax: "Покажи ключевой шаг крупно и без лишних эффектов.",
+        ending: "Покажи результат и один следующий шаг; не добавляй обещаний, которых нет в материалах."
+      } : {
+        hook: "Show the outcome or problem first.",
+        setup: "State the task and who the tutorial helps in one short line.",
+        build: "Break the process into 2–4 steps with short readable captions.",
+        climax: "Show the key step clearly, without distracting effects.",
+        ending: "Show the result and one next step; avoid unsupported claims."
+      },
+      promo: isRu ? {
+        hook: "Открой самым сильным визуальным преимуществом, а не длинным логотипом.",
+        setup: "Покажи продукт/бренд и одну конкретную потребность аудитории.",
+        build: "Выдели до трёх подтверждённых преимуществ через короткие кадры и подписи.",
+        climax: "Сведи внимание к главному преимуществу или демонстрации результата.",
+        ending: "Заверши чистым названием и понятным действием; не выдумывай цену или характеристики."
+      } : {
+        hook: "Lead with the clearest visual benefit, not a long logo intro.",
+        setup: "Show the product/brand and one audience need.",
+        build: "Highlight up to three supported benefits with short shots and captions.",
+        climax: "Focus attention on the key benefit or demonstrated outcome.",
+        ending: "Close with a clean name and clear call to action; don't invent prices or specifications."
+      },
+      story: isRu ? {
+        hook: "Открой интригующим кадром, который задаёт вопрос зрителю.",
+        setup: "Покажи героя и ситуацию без лишних объяснений.",
+        build: "Чередуй детали и общие планы; каждый следующий кадр должен развивать настроение или историю.",
+        climax: "Поставь эмоционально сильный кадр ближе к финалу и дай ему немного времени.",
+        ending: "Заверши выразительным кадром, который ощущается как финал, а не случайная остановка."
+      } : {
+        hook: "Open with an intriguing image that raises a question.",
+        setup: "Introduce the subject and situation without overexplaining.",
+        build: "Alternate details and wide shots; each shot should advance the mood or story.",
+        climax: "Place the strongest emotional frame near the end and let it breathe.",
+        ending: "Finish with a deliberate final image, not an arbitrary stop."
+      },
+      general: isRu ? {
+        hook: "Начни с самого понятного и цепляющего момента; убери пустое вступление.",
+        setup: "За первые секунды покажи главную тему и объясни, почему стоит смотреть дальше.",
+        build: "Чередуй общие и крупные планы, избегай повторов и слишком длинных одинаковых кадров.",
+        climax: "Поставь самый сильный доступный момент ближе к финалу.",
+        ending: "Заверши ясным итогом и чистым кадром."
+      } : {
+        hook: "Start with the clearest, most compelling moment; remove a slow intro.",
+        setup: "Establish the subject and why viewers should keep watching.",
+        build: "Alternate wide and close shots; avoid repetition and long static stretches.",
+        climax: "Place the strongest available moment near the end.",
+        ending: "Close with a clear payoff and clean frame."
+      }
+    };
+    const story = scenes[category];
+    const pacing = editStyle === "velocity" ? (isRu ? "Темп: короткие фрагменты 0,4–1,2 с на экшене; длиннее только перед кульминацией. Музыкальные удары пока нельзя определить автоматически." : "Pacing: 0.4–1.2 s action beats, longer only before the climax. Beat detection is not automated yet.")
+      : editStyle === "anime" ? (isRu ? "Темп: динамичные склейки по движению, крупные планы и редкие акценты; не добавляй вспышку на каждый кадр." : "Pacing: motion-matched cuts, close-ups, and sparse impact accents; don't flash every cut.")
+      : editStyle === "glitch" ? (isRu ? "Темп: глитч только на 1–2 ключевых акцентах; остальное изображение оставь читаемым." : "Pacing: reserve glitch for 1–2 key accents; keep the rest readable.")
+      : editStyle === "story" ? (isRu ? "Темп: дай важным кадрам раскрыться, используй немного осмысленных склеек." : "Pacing: let important shots breathe and use fewer purposeful cuts.")
+      : (isRu ? "Темп: чередуй плавные планы и короткие склейки, усиливая динамику к кульминации." : "Pacing: alternate smooth shots and short cuts, building toward the climax.");
+
+    const mediaLine = isRu
+      ? `МАТЕРИАЛЫ — ${videoClips.length} видео, ${imageClips.length} изображений, ${audioClips.length} аудиофайлов. Используй только реально импортированные материалы; анализ смысла кадров и речи пока недоступен.`
+      : `ASSETS — ${videoClips.length} videos, ${imageClips.length} images, ${audioClips.length} audio files. Use only imported assets; semantic scene and speech understanding is not available yet.`;
+    const target = isRu ? `ЦЕЛЬ — ${aspect}, ${targetLength}, стиль ${editStyle}. План рассчитан на эту длительность; настройки качества ${quality} пока не меняют фактическое разрешение экспорта.` : `TARGET — ${aspect}, ${targetLength}, style ${editStyle}. The plan targets this duration; the ${quality} selector does not yet change actual export resolution.`;
     const next = [
-      `01 · STORY — ${idea ? `Build the edit around “${idea}”.` : "Use the uploaded images as the story source and infer a visual sequence."}`,
-      imageSummary,
-      recipe.visuals,
-      recipe.rhythm,
-      hasAudio ? "04 · SOUND — Original audio from video clips can be included; separately imported audio files are not mixed into the export yet." : "04 · SOUND — Original video audio is preserved where supported, and imported audio files can be mixed into sequence exports at a fixed volume.",
-      recipe.finish
+      `01 · ${isRu ? "ЗАЦЕПКА" : "HOOK"} — ${story.hook}`,
+      `02 · ${isRu ? "КОНТЕКСТ" : "SETUP"} — ${story.setup}`,
+      `03 · ${isRu ? "РАЗВИТИЕ" : "BUILD"} — ${story.build}`,
+      `04 · ${isRu ? "РИТМ И СТИЛЬ" : "RHYTHM & STYLE"} — ${pacing}`,
+      `05 · ${isRu ? "КУЛЬМИНАЦИЯ" : "CLIMAX"} — ${story.climax}`,
+      `06 · ${isRu ? "ФИНАЛ" : "FINISH"} — ${story.ending}`,
+      mediaLine,
+      target,
+      isRu ? "ВАЖНО — это локальный сценарный помощник на правилах, а не подключённая языковая модель. Он не понимает содержимое видео как человек и не выполняет автоматически все монтажные действия из плана." : "LIMITATION — this is a local rule-based story planner, not a connected language model. It does not understand video content like a person or automatically perform every edit described."
     ];
     setPlan(next);
     trackEvolutionEvent("plan_created");
-    setNotice("Automatic edit plan prepared. Image scoring and style-aware motion run locally during rendering; this is not a connected AI model yet.");
+    setNotice(isRu ? "Создан более подробный план по теме запроса. Это рекомендации; монтаж ещё нужно проверить и при необходимости отредактировать." : "Created a more specific plan from your topic. These are recommendations; review the edit and adjust as needed.");
     window.setTimeout(() => setNotice(""), 6000);
   };
 
@@ -376,7 +492,7 @@ export default function App() {
                   trimEnd: clip.trimEnd && clip.trimEnd > (clip.trimStart ?? 0) ? clip.trimEnd : (clip.duration ?? 0)
                 }),
             audioTracks: audioClips.map(({ name, url }) => ({ name, url, volume: musicVolume / 100 })),
-            title: prompt || projectName,
+            title: (() => { const raw = prompt.trim().split(/[.!?\\n]/)[0]?.trim() || projectName; return raw.length > 48 ? `${raw.slice(0, 45).trimEnd()}…` : raw; })(),
             aspectRatio: aspect,
             onProgress: setRenderProgress
           })
