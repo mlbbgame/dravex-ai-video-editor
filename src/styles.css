@@ -534,3 +534,48 @@ textarea:focus { border-color: #b5f36d80; }
     justify-content: center;
   }
 }
+
+
+/* First real video timeline controls */
+.trim-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(90px, auto);
+  align-items: end;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255,255,255,.07);
+  background: rgba(10, 12, 18, .56);
+}
+.trim-controls-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #8af0c2;
+  font-size: 10px;
+  letter-spacing: .09em;
+}
+.trim-controls-heading span { color: #8d93a6; letter-spacing: 0; }
+.trim-controls label { display: grid; gap: 6px; color: #aeb4c5; font-size: 11px; }
+.trim-controls input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  background: #11141d;
+  color: #f4f5fb;
+  font: inherit;
+}
+.trim-duration {
+  padding-bottom: 11px;
+  color: #8af0c2;
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .trim-controls { padding: 12px; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trim-duration { grid-column: 1 / -1; padding-bottom: 0; text-align: left; }
+}
