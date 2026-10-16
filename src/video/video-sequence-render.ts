@@ -1,16 +1,44 @@
 export type VideoSegment = {
+  kind?: "video";
   name: string;
   url: string;
   trimStart: number;
   trimEnd: number;
 };
 
+export type ImageSegment = {
+  kind: "image";
+  name: string;
+  url: string;
+  duration?: number;
+};
+
+export type SequenceSegment = VideoSegment | ImageSegment;
+
 type SequenceOptions = {
-  segments: VideoSegment[];
+  segments: SequenceSegment[];
   title: string;
   aspectRatio: string;
   onProgress?: (progress: number) => void;
 };
+
+type LoadedVideo = {
+  kind: "video";
+  name: string;
+  video: HTMLVideoElement;
+  start: number;
+  end: number;
+  duration: number;
+};
+
+type LoadedImage = {
+  kind: "image";
+  name: string;
+  image: HTMLImageElement;
+  duration: number;
+};
+
+type LoadedSegment = LoadedVideo | LoadedImage;
 
 const dimensionsFor = (aspectRatio: string) => {
   if (aspectRatio === "16:9") return { width: 1280, height: 720 };
@@ -31,6 +59,15 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   });
 }
 
+function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Could not read image: ${segment.name}`));
+    image.src = segment.url;
+  });
+}
+
 function seek(video: HTMLVideoElement, time: number): Promise<void> {
   if (video.readyState >= 2 && Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -43,17 +80,22 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
 }
 
 export async function renderVideoSequence({ segments, title, aspectRatio, onProgress }: SequenceOptions): Promise<Blob> {
-  if (!segments.length) throw new Error("Import at least one video clip before rendering.");
+  if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
-  const loaded = await Promise.all(segments.map(async (segment) => {
-    const video = await loadVideo(segment);
-    const start = Math.max(0, Math.min(segment.trimStart || 0, Math.max(0, video.duration - 0.1)));
-    const requestedEnd = segment.trimEnd > 0 ? segment.trimEnd : video.duration;
+  const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
+    if (segment.kind === "image") {
+      const image = await loadImage(segment);
+      return { kind: "image", name: segment.name, image, duration: Math.max(1, Math.min(segment.duration ?? 3, 10)) };
+    }
+    const videoSegment = segment as VideoSegment;
+    const video = await loadVideo(videoSegment);
+    const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
+    const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
     const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
-    return { video, start, end, duration: end - start };
+    return { kind: "video", name: segment.name, video, start, end, duration: end - start };
   }));
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (totalDuration <= 0) throw new Error("The selected trim ranges are empty.");
@@ -64,12 +106,14 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not initialize the video renderer.");
+
   const videoStream = canvas.captureStream(24);
   const audioContext = typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   if (audioContext && audioDestination) {
-    for (const { video } of loaded) {
-      const source = audioContext.createMediaElementSource(video);
+    for (const item of loaded) {
+      if (item.kind !== "video") continue;
+      const source = audioContext.createMediaElementSource(item.video);
       source.connect(audioDestination);
     }
   }
@@ -85,7 +129,13 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
       videoStream.getTracks().forEach((track) => track.stop());
-      loaded.forEach(({ video }) => { video.pause(); video.removeAttribute("src"); video.load(); });
+      loaded.forEach((item) => {
+        if (item.kind === "video") {
+          item.video.pause();
+          item.video.removeAttribute("src");
+          item.video.load();
+        }
+      });
       void audioContext?.close();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) resolve(blob);
@@ -93,13 +143,15 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
     };
   });
 
-  const draw = (video: HTMLVideoElement) => {
+  const draw = (source: HTMLVideoElement | HTMLImageElement) => {
+    const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
+    const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
-    const scale = Math.max(width / video.videoWidth, height / video.videoHeight);
-    const drawWidth = video.videoWidth * scale;
-    const drawHeight = video.videoHeight * scale;
-    context.drawImage(video, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+    const scale = Math.max(width / sourceWidth, height / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
     const shade = context.createLinearGradient(0, height * 0.6, 0, height);
     shade.addColorStop(0, "rgba(5,7,12,0)");
     shade.addColorStop(1, "rgba(5,7,12,0.72)");
@@ -123,6 +175,18 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
   let completed = 0;
   try {
     for (const item of loaded) {
+      if (item.kind === "image") {
+        const segmentStartedAt = performance.now();
+        while (performance.now() - segmentStartedAt < item.duration * 1000) {
+          draw(item.image);
+          const segmentProgress = Math.min(1, (performance.now() - segmentStartedAt) / (item.duration * 1000));
+          onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        completed += item.duration;
+        continue;
+      }
+
       const { video, start, duration } = item;
       video.pause();
       await seek(video, start);
@@ -137,7 +201,8 @@ export async function renderVideoSequence({ segments, title, aspectRatio, onProg
       video.pause();
       completed += duration;
     }
-    draw(loaded[loaded.length - 1].video);
+    const last = loaded[loaded.length - 1];
+    draw(last.kind === "video" ? last.video : last.image);
     await new Promise((resolve) => window.setTimeout(resolve, 180));
     recorder.stop();
   } catch (error) {
