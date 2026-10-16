@@ -111,13 +111,20 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
+  // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
+  const videoCache = new Map<string, Promise<HTMLVideoElement>>();
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
       return { kind: "image", name: segment.name, image, duration: Math.max(1, Math.min(segment.duration ?? 3, 10)) };
     }
     const videoSegment = segment as VideoSegment;
-    const video = await loadVideo(videoSegment);
+    let pendingVideo = videoCache.get(videoSegment.url);
+    if (!pendingVideo) {
+      pendingVideo = loadVideo(videoSegment);
+      videoCache.set(videoSegment.url, pendingVideo);
+    }
+    const video = await pendingVideo;
     const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
     const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
     const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
@@ -156,8 +163,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const audioContext = typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   if (audioContext && audioDestination) {
+    const connectedVideoElements = new Set<HTMLVideoElement>();
     for (const item of loaded) {
-      if (item.kind !== "video") continue;
+      if (item.kind !== "video" || connectedVideoElements.has(item.video)) continue;
+      connectedVideoElements.add(item.video);
       const source = audioContext.createMediaElementSource(item.video);
       source.connect(audioDestination);
     }
@@ -182,12 +191,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
       videoStream.getTracks().forEach((track) => track.stop());
-      loaded.forEach((item) => {
-        if (item.kind === "video") {
-          item.video.pause();
-          item.video.removeAttribute("src");
-          item.video.load();
-        }
+      const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+      uniqueVideos.forEach((video) => {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
       });
       loadedAudio.forEach(({ audio }) => {
         audio.pause();
