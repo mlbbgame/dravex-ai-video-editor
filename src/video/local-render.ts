@@ -10,7 +10,6 @@ type RenderOptions = {
   style?: RenderStyle;
   suppressEffects?: boolean;
   suppressFlashes?: boolean;
-  suppressShake?: boolean;
   suppressTransitions?: boolean;
   quality?: string;
   onProgress?: (progress: number) => void;
@@ -73,7 +72,6 @@ export async function renderImageSlideshow({
   style = "cinematic",
   suppressEffects = false,
   suppressFlashes = false,
-  suppressShake = false,
   suppressTransitions = false,
   quality = "720p",
   onProgress
