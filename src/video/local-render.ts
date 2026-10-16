@@ -26,37 +26,6 @@ const loadImage = (url: string) =>
     image.src = url;
   });
 
-function visualScore(image: HTMLImageElement): number {
-  const sample = document.createElement("canvas");
-  sample.width = 32;
-  sample.height = 32;
-  const ctx = sample.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return image.width * image.height;
-  ctx.drawImage(image, 0, 0, sample.width, sample.height);
-  const pixels = ctx.getImageData(0, 0, sample.width, sample.height).data;
-  let brightness = 0;
-  let saturation = 0;
-  let contrast = 0;
-  const luminance: number[] = [];
-  for (let i = 0; i < pixels.length; i += 4) {
-    const r = pixels[i] / 255;
-    const g = pixels[i + 1] / 255;
-    const b = pixels[i + 2] / 255;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    brightness += luma;
-    saturation += max === 0 ? 0 : (max - min) / max;
-    luminance.push(luma);
-  }
-  brightness /= luminance.length;
-  saturation /= luminance.length;
-  for (const value of luminance) contrast += Math.abs(value - brightness);
-  contrast /= luminance.length;
-  // A heuristic for visual impact, not an AI model: reward readable contrast and vivid subjects.
-  return contrast * 0.55 + saturation * 0.3 + (1 - Math.abs(brightness - 0.52)) * 0.15;
-}
-
 export async function renderImageSlideshow({
   images,
   title,
