@@ -347,3 +347,13 @@ body {
   .dravex-music-empty > div { min-width: calc(100% - 60px); }
   .dravex-music-empty button { margin-left: 32px; }
 }
+
+.dravex-music-sync { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #34383e; border-radius: 11px; background: #141619; cursor: pointer; }
+.dravex-music-sync input { flex: 0 0 auto; width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--accent); }
+.dravex-music-sync > span { display: flex; flex-direction: column; gap: 4px; }
+.dravex-music-sync strong { color: #f2f4ee; font-size: 11px; }
+.dravex-music-sync small { color: #9da4ad; font-size: 10px; line-height: 1.5; }
+.dravex-current-track-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+.dravex-download-track { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid #34383e; border-radius: 9px; color: #e1e6db; background: #ffffff06; text-decoration: none; font-size: 10px; font-weight: 750; }
+.dravex-current-track-actions .dravex-return-editor { min-height: 40px; }
+@media (max-width: 420px) { .dravex-current-track-actions { flex-direction: column; } .dravex-current-track-actions > * { width: 100%; } }
