@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { stat } from "node:fs/promises";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
+import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
@@ -81,14 +82,36 @@ test("media type falls back to filename extension when a picker omits MIME metad
   expect(getMediaKind({ name: "clip.mp4", type: "image/jpeg" })).toBe("image");
 });
 
-test("short source videos get safe, evenly spaced cut points without frame scanning", () => {
-  const cuts = buildQuickVideoCandidates(9);
-  expect(cuts).toHaveLength(6);
-  expect(cuts[0].start).toBe(0);
-  expect(cuts[cuts.length - 1]?.end).toBe(9);
-  expect(cuts.every((cut) => cut.start >= 0 && cut.end <= 9 && cut.end > cut.start)).toBe(true);
+test("quick video cut points stay valid across the full duration range", () => {
+  for (const duration of [0.25, 0.5, 1, 2, 5, 9, 12, 15]) {
+    const cuts = buildQuickVideoCandidates(duration);
+    expect(cuts.length).toBeGreaterThanOrEqual(2);
+    expect(cuts.length).toBeLessThanOrEqual(8);
+    expect(cuts[0].start).toBeCloseTo(0, 6);
+    expect(cuts[cuts.length - 1]?.end).toBeCloseTo(duration, 6);
+    expect(cuts.every((cut) => cut.start >= 0 && cut.end <= duration && cut.end > cut.start)).toBe(true);
+    expect(cuts.every((cut, index) => index === 0 || Math.abs(cut.start - cuts[index - 1].end) < 1e-6)).toBe(true);
+  }
   expect(buildQuickVideoCandidates(Number.NaN)).toHaveLength(0);
   expect(buildQuickVideoCandidates(0.1)).toHaveLength(0);
+});
+
+test("fallback video planner covers short, medium, and long sources without invalid trims", () => {
+  for (const sourceDuration of [0.25, 0.5, 2, 5, 9, 15, 16, 30, 60, 300, 1800]) {
+    for (const targetDuration of [5, 15, 30, 60]) {
+      for (const shotLength of [1.05, 1.35, 2.2, 3.2]) {
+        const cuts = buildFallbackVideoCuts(sourceDuration, targetDuration, shotLength);
+        const expectedDuration = Math.min(sourceDuration, targetDuration);
+        expect(cuts.length).toBeGreaterThan(0);
+        expect(cuts.length).toBeLessThanOrEqual(Math.ceil(expectedDuration / shotLength));
+        expect(cuts.every((cut) => cut.trimStart >= 0 && cut.trimEnd <= sourceDuration + 1e-6 && cut.trimEnd > cut.trimStart)).toBe(true);
+        expect(cuts.reduce((sum, cut) => sum + cut.trimEnd - cut.trimStart, 0)).toBeCloseTo(expectedDuration, 5);
+        expect(cuts.every((cut, index) => index === 0 || cut.trimStart >= cuts[index - 1].trimStart)).toBe(true);
+      }
+    }
+  }
+  expect(buildFallbackVideoCuts(Number.NaN, 5)).toHaveLength(0);
+  expect(buildFallbackVideoCuts(5, 0)).toHaveLength(0);
 });
 
 test("camera motion profiles provide visible but controlled movement", () => {
@@ -162,4 +185,67 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(10_000);
+});
+
+
+test("one-button source-video montage renders and downloads a playable WebM", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const durationSlider = page.getByRole("slider", { name: "Длительность ролика в секундах" });
+  await durationSlider.focus();
+  await durationSlider.press("Home");
+
+  // Tiny, self-contained 2-second VP8/WebM clip; no external media or network access.
+  const sourceVideo = Buffer.from("GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAALEEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEjTbuMU6uEHFO7a1OsggKc7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjEuNy4xMDNXQYxMYXZmNjEuNy4xMDNEiYhAn0AAAAAAABZUrmvIrgEAAAAAAAA/14EBc8WIVK4ALmPToFCcgQAitZyDdW5kiIEAhoVWX1ZQOIOBASPjg4QdzWUA4JCwgUC6gUCagQJVsIRVuYEBElTDZ/tzc59jwIBnyJlFo4dFTkNPREVSRIeMTGF2ZjYxLjcuMTAzc3PWY8CLY8WIVK4ALmPToFBnyKFFo4dFTkNPREVSRIeUTGF2YzYxLjE5LjEwMSBsaWJ2cHhnyKFFo4hEVVJBVElPTkSHkzAwOjAwOjAyLjAwMDAwMDAwMAAfQ7Z1QPPngQCjxIEAAIDQAwCdASpAAEAAAEcIhYWImYSIAgICdaoD+AP6AgcaT8gtSEwBVjAA/v1u8//kb+PnRv/I4//8Sp7jieP//EaAo7CBAfQAMQIAARAQABgAGdf0DAAQoYArVAD+/W7z/+Rv4+dG/8jj//xKnuOJ4//8RoCjxIED6IDQAwCdASpAAEAAAEcIhYWImYSIAgICdaoD+AP6AgcaT8gtSEwBVjAA/v1u8//kb+PnRv/I4//8Sp7jieP//EaAo7CBBdwAMQIAARAQABgAGdf0DAAQoYArVAD+/W7z/+Rv4+dG/8jj//xKnuOJ4//8RoAcU7tro7uPs4EAt4r3gQHxggGj8IEDu5CzggPot4r3gQHxggGj8IF7", "base64");
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles({
+    name: "dravex-test-source.webm",
+    mimeType: "video/webm",
+    buffer: sourceVideo,
+  });
+
+  await expect(page.locator("video.dravex-preview")).toBeVisible();
+  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Автомонтаж" }).click();
+
+  const result = page.locator(".dravex-result");
+  await expect(result.getByText("Видео готово!")).toBeVisible({ timeout: 30_000 });
+  const outputVideo = result.locator("video.dravex-output");
+  await expect(outputVideo).toBeVisible();
+  await outputVideo.evaluate((video: HTMLVideoElement) => {
+    if (video.readyState >= 1) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Rendered video metadata did not load")), 10_000);
+      video.addEventListener("loadedmetadata", () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      video.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Rendered source-video montage could not be played back"));
+      }, { once: true });
+    });
+  });
+
+  const playback = await outputVideo.evaluate((video: HTMLVideoElement) => ({
+    duration: video.duration,
+    width: video.videoWidth,
+    height: video.videoHeight,
+    source: video.currentSrc,
+  }));
+  expect(playback.source).toMatch(/^blob:/);
+  expect(playback.duration).toBeGreaterThan(1);
+  expect(playback.duration).toBeLessThanOrEqual(2.5);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
+
+  const downloadPromise = page.waitForEvent("download");
+  await result.getByRole("link", { name: "Сохранить видео" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^dravex-video-.*\\.webm$/);
+  expect(await download.failure()).toBeNull();
+  const downloadedFile = await download.path();
+  expect(downloadedFile).toBeTruthy();
+  expect((await stat(downloadedFile!)).size).toBeGreaterThan(1_000);
 });
