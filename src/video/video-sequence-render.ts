@@ -30,6 +30,7 @@ type SequenceOptions = {
   aspectRatio: string;
   quality?: string;
   style?: SequenceRenderStyle;
+  effectStrength?: "soft" | "balanced" | "strong";
   suppressEffects?: boolean;
   suppressFlashes?: boolean;
   suppressShake?: boolean;
@@ -126,7 +127,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -283,7 +284,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
     // DRAVEX Camera V2: eased push/pull plus varied directional paths for stills.
-    const motion = suppressEffects ? 0 : style === "velocity" ? 0.16 : style === "anime" ? 0.115 : style === "glitch" ? 0.12 : style === "story" ? 0.055 : 0.105;
+    const strengthScale = effectStrength === "soft" ? 0.62 : effectStrength === "strong" ? 1.32 : 1;
+    const motion = suppressEffects ? 0 : (style === "velocity" ? 0.16 : style === "anime" ? 0.115 : style === "glitch" ? 0.12 : style === "story" ? 0.055 : 0.105) * strengthScale;
     const isPhoto = source instanceof HTMLImageElement;
     const eased = progress * progress * (3 - 2 * progress);
     const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
@@ -292,13 +294,13 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const scale = (isPhoto ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.065 : style === "anime" ? 0.045 : style === "glitch" ? 0.05 : style === "story" ? 0.018 : 0.045;
+    const panAmount = suppressEffects ? 0 : (style === "velocity" ? 0.065 : style === "anime" ? 0.045 : style === "glitch" ? 0.05 : style === "story" ? 0.018 : 0.045) * strengthScale;
     const panPhase = eased * Math.PI / 2;
     const pathX = [1, -1, 0.72, -0.72, 0.45, -0.45][cutIndex % 6];
     const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
     const panX = Math.sin(panPhase) * width * panAmount * pathX;
     const panY = Math.sin(panPhase) * height * panAmount * pathY;
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) : 0;
+    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
@@ -326,7 +328,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
-      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14);
+      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
       context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
       if (isPhoto) {
         context.translate(width / 2, height / 2);
@@ -358,8 +360,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       drawIncoming();
     } else if (transitionWindow && transitionType === 4) {
       // Short rotational reveal with a restrained zoom.
-      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.15 : 0.085);
-      const punch = 1 + (1 - transitionProgress) * 0.13;
+      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.15 : 0.085) * strengthScale;
+      const punch = 1 + (1 - transitionProgress) * 0.13 * strengthScale;
       context.translate(width / 2, height / 2);
       context.rotate(angle);
       context.globalAlpha = Math.min(1, transitionProgress * 2 + 0.05);
@@ -417,20 +419,20 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
     if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
-      const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12);
+      const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
     if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
-      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.16) * 0.2})`;
+      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.16) * 0.2 * strengthScale})`;
       context.fillRect(0, 0, width, height);
-      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.16) * 0.14})`;
+      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.16) * 0.14 * strengthScale})`;
       context.fillRect(Math.round(width * 0.012), 0, width, height);
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
     if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
-      const streakAlpha = (1 - cutProgress / 0.28) * 0.27;
+      const streakAlpha = (1 - cutProgress / 0.28) * 0.27 * strengthScale;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
       context.lineWidth = Math.max(2, width * 0.003);
