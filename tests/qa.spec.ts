@@ -249,3 +249,54 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(1_000);
 });
+
+
+test("long source-video montage handles 60-second input and exports the requested short edit", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const durationSlider = page.getByRole("slider", { name: "Длительность ролика в секундах" });
+  await durationSlider.focus();
+  await durationSlider.press("Home");
+
+  // A tiny 60-second VP8/WebM clip exercises the long-video frame-sampling path.
+  const sourceVideo = Buffer.from("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eL94EB8YIOwvCCASa7kbOCeRi3i/eBAfGCDsLwggGeu5Gzgn0At4v3gQHxgg7C8IICFruQs4KA6LeK94EB8YIRVvCBBLuQs4KE0LeK94EB8YIRVvCBfLuQs4KIuLeK94EB8YIRVvCB9LuRs4KMoLeL94EB8YIRVvCCAWy7kbOCkIi3i/eBAfGCEVbwggHku5GzgpRwt4v3gQHxghFW8IICXLuQs4KYWLeK94EB8YIT/vCBNruQs4KcQLeK94EB8YIT/vCBrruRs4KgKLeL94EB8YIT/vCCASa7kbOCpBC3i/eBAfGCE/7wggGeu5Gzgqf4t4v3gQHxghP+8IICFruQs4Kr4LeK94EB8YIWkvCBBLuQs4KvyLeK94EB8YIWkvCBfLuQs4KzsLeK94EB8YIWkvCB9LuRs4K3mLeL94EB8YIWkvCCAWy7kbOCu4C3i/eBAfGCFpLwggHku5Gzgr9ot4v3gQHxghaS8IICXLuQs4LDULeK94EB8YIZOvCBNruQs4LHOLeK94EB8YIZOvCBrruRs4LLILeK94EB8YIZOvCCASa7kbOCzwi3i/eBAfGCGTrwggGeu5GzgtLwt4v3gQHxghk68IICGLuQs4LW2LeK94EB8YIb0vCBBLuQs4LawLeK94EB8YIb0vCBfruQs4LeqLeK94EB8YIb0vCB+LuRs4LikLeL94EB8YIb0vCCAXK7kbOC5ni3i/eBAfGCG9LwggHs", "base64");
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles({
+    name: "dravex-test-long-source.webm",
+    mimeType: "video/webm",
+    buffer: sourceVideo,
+  });
+
+  await expect(page.locator("video.dravex-preview")).toBeVisible();
+  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Автомонтаж" }).click();
+
+  const result = page.locator(".dravex-result");
+  await expect(result.getByText("Видео готово!")).toBeVisible({ timeout: 60_000 });
+  const outputVideo = result.locator("video.dravex-output");
+  await expect(outputVideo).toBeVisible();
+  await outputVideo.evaluate((video: HTMLVideoElement) => {
+    if (video.readyState >= 1) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Long-source output metadata did not load")), 10_000);
+      video.addEventListener("loadedmetadata", () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      video.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Long-source output could not be played back"));
+      }, { once: true });
+    });
+  });
+  const playback = await outputVideo.evaluate((video: HTMLVideoElement) => ({
+    duration: video.duration,
+    width: video.videoWidth,
+    height: video.videoHeight,
+  }));
+  expect(playback.duration).toBeGreaterThan(3.5);
+  expect(playback.duration).toBeLessThanOrEqual(5.5);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
+});
