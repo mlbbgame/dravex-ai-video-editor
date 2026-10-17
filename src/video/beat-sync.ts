@@ -101,14 +101,26 @@ export function snapCutBoundariesToBeats(
   const boundaries = [0];
   const minimumGap = Math.min(0.48, targetDuration / Math.max(2, segmentCount * 1.25));
   const tolerance = Math.min(0.55, Math.max(0.22, preferredShotSeconds * 0.3));
+
   for (let index = 1; index < segmentCount; index += 1) {
     const ideal = targetDuration * index / segmentCount;
+    const remainingCuts = segmentCount - index;
+    // Reserve enough time for every remaining shot. Without this upper bound, a late beat
+    // can push one boundary past the end and collapse several final shots to zero length.
+    const minimum = boundaries[boundaries.length - 1] + minimumGap;
+    const maximum = targetDuration - remainingCuts * minimumGap;
+    if (minimum >= maximum) {
+      boundaries.push(ideal);
+      continue;
+    }
+
     const nearby = beats
-      .filter((beat) => beat > boundaries[boundaries.length - 1] + minimumGap && beat < targetDuration - minimumGap && Math.abs(beat - ideal) <= tolerance)
+      .filter((beat) => beat >= minimum && beat <= maximum && Math.abs(beat - ideal) <= tolerance)
       .sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
-    const chosen = nearby ?? ideal;
-    boundaries.push(Math.max(boundaries[boundaries.length - 1] + minimumGap, chosen));
+    const chosen = nearby ?? Math.max(minimum, Math.min(maximum, ideal));
+    boundaries.push(chosen);
   }
+
   boundaries.push(targetDuration);
-  return boundaries.map((value, index) => index === 0 ? 0 : index === boundaries.length - 1 ? targetDuration : Math.min(targetDuration, value));
+  return boundaries;
 }
