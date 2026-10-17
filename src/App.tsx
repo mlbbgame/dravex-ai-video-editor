@@ -617,11 +617,11 @@ export default function App() {
               <div><span className="dravex-eyebrow">DRAVEX AUDIO LAB</span><h1>Твоя музыка.<br /><span>Твой монтаж.</span></h1><p>Выбирай оригинальный бит или добавляй свой трек — всё обрабатывается на телефоне.</p></div>
             </div>
             <div className="dravex-music-safety"><CheckCircle2 size={16} /><span>Встроенные биты создаются самим DRAVEX. Мы не встраиваем в сайт чужие коммерческие песни.</span></div>
+            <label className="dravex-music-sync"><input type="checkbox" checked={beatSync} onChange={(event) => { setBeatSync(event.target.checked); invalidateOutput(); }} /><span><strong>Синхронизировать монтаж с битом</strong><small>DRAVEX попробует подстроить смену кадров под ритм выбранной музыки.</small></span></label>
             {musicFile && musicUrl ? <section className="dravex-current-track">
               <div className="dravex-current-track-top"><span className="dravex-track-icon"><Headphones size={19} /></span><div><strong>Выбранный трек</strong><small>{musicFile.name}</small></div><button type="button" aria-label="Убрать выбранную музыку" onClick={clearMusic}><X size={17} /></button></div>
               <audio controls preload="metadata" src={musicUrl}>Твой браузер не поддерживает аудиоплеер.</audio>
-              <p>Трек будет добавлен к следующему монтажу. Синхронизация с битом включается в дополнительных настройках.</p>
-              <button className="dravex-return-editor" type="button" onClick={() => setActiveTab("editor")}><ArrowLeft size={16} />Вернуться к монтажу</button>
+              <div className="dravex-current-track-actions"><a className="dravex-download-track" href={musicUrl} download={musicFile.name}><Download size={15} />Скачать аудио</a><button className="dravex-return-editor" type="button" onClick={() => setActiveTab("editor")}><ArrowLeft size={16} />Вернуться к монтажу</button></div>
             </section> : <section className="dravex-music-empty"><Headphones size={22} /><div><strong>Музыка пока не выбрана</strong><span>Создай один из оригинальных треков ниже или загрузи свой аудиофайл.</span></div><button type="button" onClick={() => musicInput.current?.click()}><Upload size={15} />Загрузить аудио</button></section>}
             <div className="dravex-music-heading"><div><h2>Оригинальные биты DRAVEX</h2><p>Создаются локально по нажатию · 30 секунд · без сторонних семплов из музыкальных библиотек</p></div><span>6 треков</span></div>
             <label className="dravex-music-search"><Search size={17} /><input value={musicQuery} onChange={(event) => setMusicQuery(event.target.value)} placeholder="Поиск по стилю или настроению…" aria-label="Поиск музыки" /></label>
