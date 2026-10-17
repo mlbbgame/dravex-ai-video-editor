@@ -39,7 +39,8 @@ const montageVariants: MontageVariant[] = [
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
-  const shotLength = style === "velocity" ? 1.05 : style === "story" ? 3.2 : 2.2;
+  // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
+  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
   const ranked = [...candidates].sort((a, b) => b.score - a.score);
@@ -52,7 +53,7 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   }
   for (const item of ranked) {
     if (selected.length >= count) break;
-    if (selected.every((existing) => Math.abs(existing.time - item.time) > 0.8)) selected.push(item);
+    if (selected.every((existing) => Math.abs(existing.time - item.time) > Math.max(0.8, shotLength * 0.82))) selected.push(item);
   }
   selected.sort((a, b) => a.time - b.time);
   if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
@@ -426,7 +427,7 @@ export default function App() {
           const beatAnalysis = await detectMusicBeats(musicUrl);
           const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
           if (usableBeats.length >= 3 && beatAnalysis.confidence !== "weak") {
-            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "story" ? 3.2 : 2.2;
+            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "glitch" ? 1.35 : actualStyle === "anime" ? 1.65 : actualStyle === "story" ? 3.2 : 2.2;
             const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
             segments = segments.map((segment, index) => {
               const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
