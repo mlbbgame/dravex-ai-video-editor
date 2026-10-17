@@ -512,7 +512,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     const last = loaded[loaded.length - 1];
     // Keep the final canvas frame alive long enough for mobile MediaRecorder implementations.
-    draw(last.kind === "video" ? last.video : last.image);
+    draw(last.kind === "video" ? last.video : last.image, 1, 1, loaded.length - 1);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     await new Promise((resolve) => window.setTimeout(resolve, 500));
 
