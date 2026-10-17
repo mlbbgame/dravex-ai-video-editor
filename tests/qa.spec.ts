@@ -354,7 +354,7 @@ for (const sourceDuration of [60, 300]) {
   expect(await download.failure()).toBeNull();
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
-  expect(download.suggestedFilename()).toMatch(/\\.webm$/);
+  expect(download.suggestedFilename()).toMatch(/\.webm$/);
   const probeOutput = execFileSync("ffprobe", [
     "-v", "error",
     "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height",
