@@ -238,7 +238,7 @@ export default function App() {
         try {
           const beatAnalysis = await detectMusicBeats(musicUrl);
           const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
-          if (usableBeats.length >= 2) {
+          if (usableBeats.length >= 3 && beatAnalysis.confidence !== "weak") {
             const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "story" ? 3.2 : 2.2;
             const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
             segments = segments.map((segment, index) => {
@@ -250,9 +250,9 @@ export default function App() {
               const start = Math.max(0, Math.min(Math.max(0, sourceVideoDuration - safeDuration), center - safeDuration / 2));
               return { ...videoSegment, trimStart: start, trimEnd: start + safeDuration };
             });
-            setMessage(`Ритм найден: подстроили монтаж под ${usableBeats.length} музыкальных акцентов.`);
+            setMessage(`Ритм найден (${beatAnalysis.confidence === "strong" ? "высокая" : "средняя"} уверенность): монтаж подстроен под ${usableBeats.length} музыкальных акцентов.`);
           } else {
-            setMessage("В треке мало выраженных ударов — используем обычный ритм монтажа.");
+            setMessage("Ритм трека определяется ненадёжно — используем ровный монтаж, чтобы не сбить темп.");
           }
         } catch {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
