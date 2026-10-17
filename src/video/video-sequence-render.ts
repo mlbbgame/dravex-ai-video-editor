@@ -189,6 +189,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const hasSourceVideo = loaded.some((item) => item.kind === "video");
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
+  const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
     for (const item of loaded) {
@@ -208,7 +209,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       source.connect(gain);
       gain.connect(audioDestination);
       item.audio.loop = true;
-      (item as typeof item & { renderGain?: GainNode }).renderGain = gain;
+      musicGainNodes.set(item.audio, gain);
     }
   }
   if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
@@ -486,7 +487,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const audioStart = audioContext.currentTime;
       await Promise.all(loadedAudio.map(async ({ audio, segment }) => {
         audio.currentTime = 0;
-        const gain = (loadedAudio.find((entry) => entry.audio === audio) as (typeof loadedAudio)[number] & { audio: HTMLAudioElement & { renderGain?: GainNode } })?.audio.renderGain;
+        const gain = musicGainNodes.get(audio);
         const targetVolume = Math.max(0, Math.min(1, segment.volume ?? 0.65));
         if (gain) {
           gain.gain.cancelScheduledValues(audioStart);
