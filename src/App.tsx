@@ -268,7 +268,9 @@ export default function App() {
     setError("");
     try {
       const previewDuration = 4.8;
-      const previewStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
+      const previewStyle: Exclude<EditStyle, "auto"> = style === "auto"
+        ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
+        : style;
       const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
         ? mediaFiles.slice(0, 6).map((file, index) => ({
             kind: "image" as const,
@@ -286,6 +288,7 @@ export default function App() {
         style: previewStyle,
         effectStrength,
         transitionMode,
+        suppressAudio: true,
         targetDurationSeconds: previewDuration,
         onProgress: setPreviewProgress
       });
