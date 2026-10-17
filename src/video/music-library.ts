@@ -49,23 +49,28 @@ export async function loadMusicTrack(preset: MusicPreset): Promise<File> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
   let response: Response;
+  let blob: Blob;
   try {
     response = await fetch(preset.audioUrl, {
       mode: "cors",
       credentials: "omit",
       signal: controller.signal
     });
+    if (!response.ok) {
+      throw new Error(`Не удалось загрузить «${preset.title}». Попробуй другой трек.`);
+    }
+    // Keep the timeout active while the response body downloads too.
+    blob = await response.blob();
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error(`Загрузка «${preset.title}» заняла слишком много времени. Проверь интернет или выбери другой трек.`);
     }
+    if (error instanceof Error && error.message.startsWith("Не удалось загрузить")) throw error;
     throw new Error(`Не удалось подключиться к музыкальному источнику для «${preset.title}». Проверь интернет и попробуй снова.`);
   } finally {
     window.clearTimeout(timeoutId);
   }
 
-  if (!response.ok) throw new Error(`Не удалось загрузить «${preset.title}». Попробуй другой трек.`);
-  const blob = await response.blob();
   if (!blob.size) throw new Error(`Трек «${preset.title}» оказался пустым. Попробуй другой.`);
 
   // Some media hosts return application/octet-stream even for playable audio.
