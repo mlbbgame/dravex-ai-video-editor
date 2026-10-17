@@ -6,6 +6,7 @@ import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type 
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
+import { buildFallbackVideoCuts } from "./video/segment-planner";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -463,18 +464,13 @@ export default function App() {
             : actualStyle === "anime" ? 1.65
             : actualStyle === "story" ? 3.2
             : 2.2;
-          const shotCount = Math.max(1, Math.ceil(renderDuration / shotLength));
-          const shotDuration = renderDuration / shotCount;
-          segments = Array.from({ length: shotCount }, (_, index) => {
-            const maxStart = Math.max(0, sourceVideoDuration - shotDuration);
-            const start = shotCount === 1 ? 0 : maxStart * index / (shotCount - 1);
-            return {
-              name: videoFile!.name,
-              url: videoUrl,
-              trimStart: start,
-              trimEnd: start + shotDuration
-            };
-          });
+          const fallbackCuts = buildFallbackVideoCuts(sourceVideoDuration, renderDuration, shotLength);
+          segments = fallbackCuts.map((cut) => ({
+            name: videoFile!.name,
+            url: videoUrl,
+            trimStart: cut.trimStart,
+            trimEnd: cut.trimEnd
+          }));
           analysisFallback = true;
           setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
           if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
