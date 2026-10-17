@@ -6,6 +6,7 @@ import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRe
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
+import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -225,7 +226,11 @@ export default function App() {
     const images = files.filter((file) => getMediaKind(file) === "image");
     if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
       setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
-      event.target.value = "";
+      return;
+    }
+    const intake = assessMediaSelection(files);
+    if (!intake.valid) {
+      setError(intake.errors.join(" "));
       return;
     }
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
@@ -236,7 +241,7 @@ export default function App() {
     setPreviewUrl("");
     setPreviewStatus("");
     setError("");
-    setMessage("");
+    setMessage(intake.warnings.join(" "));
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
     event.target.value = "";
