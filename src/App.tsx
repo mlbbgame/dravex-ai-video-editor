@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
-import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
@@ -416,6 +416,7 @@ export default function App() {
       let segments: Array<VideoSegment | ImageSegment>;
       let renderDuration = duration;
       let sourceVideoDuration = 0;
+      let analysisFallback = false;
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
       if (isImageMode) {
         const photoCount = mediaFiles.length;
@@ -443,14 +444,41 @@ export default function App() {
         }));
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
-        const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
-        sourceVideoDuration = analysis.duration;
-        renderDuration = Math.min(duration, analysis.duration);
-        if (style === "auto") {
-          const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
-          actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+        try {
+          const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+          sourceVideoDuration = analysis.duration;
+          renderDuration = Math.min(duration, analysis.duration);
+          if (style === "auto") {
+            const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
+            actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+          }
+          segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+        } catch (analysisError) {
+          // A failed frame scan should not block a usable video export when metadata is readable.
+          sourceVideoDuration = await getVideoDuration(videoUrl);
+          renderDuration = Math.min(duration, sourceVideoDuration);
+          if (style === "auto") actualStyle = "cinematic";
+          const shotLength = actualStyle === "velocity" ? 1.05
+            : actualStyle === "glitch" ? 1.35
+            : actualStyle === "anime" ? 1.65
+            : actualStyle === "story" ? 3.2
+            : 2.2;
+          const shotCount = Math.max(1, Math.ceil(renderDuration / shotLength));
+          const shotDuration = renderDuration / shotCount;
+          segments = Array.from({ length: shotCount }, (_, index) => {
+            const maxStart = Math.max(0, sourceVideoDuration - shotDuration);
+            const start = shotCount === 1 ? 0 : maxStart * index / (shotCount - 1);
+            return {
+              name: videoFile!.name,
+              url: videoUrl,
+              trimStart: start,
+              trimEnd: start + shotDuration
+            };
+          });
+          analysisFallback = true;
+          setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
+          if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
         }
-        segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
       if (musicUrl && musicFile && beatSync) {
@@ -481,7 +509,7 @@ export default function App() {
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
       setStage("rendering");
-      setMessage("Собираем видео и применяем выбранный стиль…");
+      setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
       const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }] : [];
       const blob = await renderVideoSequence({
         segments,
@@ -499,7 +527,7 @@ export default function App() {
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
       setStage("done");
-      setMessage("Готово! Посмотри результат и сохрани видео.");
+      setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : "Готово! Посмотри результат и сохрани видео.");
     } catch (caught) {
       setStage("error");
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
