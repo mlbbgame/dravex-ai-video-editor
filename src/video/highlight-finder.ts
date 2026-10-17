@@ -30,21 +30,57 @@ export type HighlightProgress = {
 };
 
 function waitForMetadata(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve, reject) => {
-    if (video.readyState >= 1 && Number.isFinite(video.duration)) {
-      resolve();
-      return;
-    }
-    const loaded = () => { cleanup(); resolve(); };
-    const failed = () => { cleanup(); reject(new Error("The browser could not read this video. Try a common MP4 or WebM file.")); };
+    let timeoutId = 0;
     const cleanup = () => {
-      video.removeEventListener("loadedmetadata", loaded);
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", checkReady);
+      video.removeEventListener("durationchange", checkReady);
       video.removeEventListener("error", failed);
     };
-    video.addEventListener("loadedmetadata", loaded, { once: true });
+    const checkReady = () => {
+      if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+        cleanup();
+        resolve();
+      }
+    };
+    const failed = () => {
+      cleanup();
+      reject(new Error("Браузер не смог прочитать видео. Попробуй MP4 (H.264) или WebM с известной длительностью."));
+    };
+
+    video.addEventListener("loadedmetadata", checkReady);
+    video.addEventListener("durationchange", checkReady);
     video.addEventListener("error", failed, { once: true });
-    video.load();
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Браузер не смог определить длительность видео за 20 секунд. Попробуй MP4 (H.264) или более короткий файл."));
+    }, 20_000);
+    // Metadata may already have loaded before listeners were attached.
+    checkReady();
+    if (video.readyState < 1) video.load();
   });
+}
+
+/** Read duration without sampling frames, used as a safe fallback for auto-montage. */
+export async function getVideoDuration(url: string): Promise<number> {
+  const video = document.createElement("video");
+  video.preload = "metadata";
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+  try {
+    await waitForMetadata(video);
+    return video.duration;
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }
 }
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
