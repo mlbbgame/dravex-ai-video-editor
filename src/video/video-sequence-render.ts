@@ -313,7 +313,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         audio.removeAttribute("src");
         audio.load();
       });
-      void audioContext?.close();
+      if (audioContext && audioContext !== preparedAudioContext) void audioContext.close();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) resolve(blob);
       else {
