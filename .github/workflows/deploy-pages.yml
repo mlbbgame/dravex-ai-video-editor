@@ -1,4 +1,4 @@
-name: Deploy DRAVEX to GitHub Pages
+name: Deploy DRAVEX primary site to GitHub Pages
 
 on:
   push:
@@ -18,38 +18,46 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out main site
+      - name: Check out DRAVEX app (promoted from preview)
         uses: actions/checkout@v4
+        with:
+          ref: rebuild/one-button-auto-montage
+          path: app-source
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install main dependencies
+
+      - name: Install DRAVEX dependencies
+        working-directory: app-source
         run: npm install --no-audit --no-fund
-      - name: Build main site
+
+      # The former root app is retired from the public build.
+      # Build the preview app at the primary URL and keep /preview/ as an alias.
+      - name: Build primary DRAVEX site
+        working-directory: app-source
         run: npm run build
-      # Keep the redesign isolated under /preview/ until Android smoke tests pass.
-      # Rebuild preview whenever main changes so fixes on the preview branch can be tested.
-      # Prefer stable mobile codecs while validating the Android export flow.
-      - name: Check out DRAVEX preview branch
-        uses: actions/checkout@v4
-        with:
-          ref: rebuild/one-button-auto-montage
-          path: preview-source
-      - name: Install preview dependencies
-        working-directory: preview-source
-        run: npm install --no-audit --no-fund
-      - name: Build preview site
-        working-directory: preview-source
+
+      - name: Place primary site at repository root
+        run: |
+          mkdir -p dist
+          cp -R app-source/dist/. dist/
+
+      - name: Build /preview/ compatibility alias
+        working-directory: app-source
         run: npm run build -- --base=/dravex-ai-video-editor/preview/
-      - name: Add preview under /preview/
+
+      - name: Add preview alias
         run: |
           mkdir -p dist/preview
-          cp -R preview-source/dist/. dist/preview/
+          cp -R app-source/dist/. dist/preview/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -62,15 +70,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy DRAVEX primary site
         id: deployment
         uses: actions/deploy-pages@v4
-
-# Rebuild the isolated /preview/ app after the Android no-music recorder fix.
-# Refresh preview with the action/velocity transition upgrade for Android smoke testing.
-# Rebuild preview with real shot transitions, source-audio preservation, and improved pacing.
-# Rebuild preview with expanded photo motion and transition effects for Android testing.
-
-# Rebuild preview with music beat sync, export quality options, and local project saving.
-# Rebuild preview with improved photo framing, auto-director pacing, beat timing, and stronger transitions.
-# Rebuild preview with per-photo reorder/remove controls and safer image URL lifecycle.
