@@ -267,8 +267,6 @@ export async function analyzeWithAIDirector(
   const motionValues = samples.map((sample) => sample.motion);
   const referenceMotion = motionValues.reduce((sum, value) => sum + value, 0) / Math.max(1, motionValues.length);
   const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
-  const nearestSampleIndex = (index: number) => selectedIndices.reduce((best, candidateIndex) =>
-    Math.abs(candidateIndex - index) < Math.abs(best - index) ? candidateIndex : best, selectedIndices[0]);
   const indexed = candidates.map((candidate, index) => {
     const isModelSample = sampledPosition.has(index);
     const objects = isModelSample ? detectionsByCandidate.get(index) ?? [] : [];
