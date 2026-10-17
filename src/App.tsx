@@ -5,6 +5,7 @@ import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
+import { getMediaKind } from "./video/media-kind";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -119,7 +120,7 @@ export default function App() {
   const musicInput = useRef<HTMLInputElement>(null);
   const videoFile = mediaFiles[0] ?? null;
   const videoUrl = mediaUrls[0] ?? "";
-  const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => file.type.startsWith("image/"));
+  const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
@@ -203,9 +204,9 @@ export default function App() {
     // Reset immediately so choosing the same file again still fires a change event.
     event.target.value = "";
     if (!files.length) return;
-    const hasInvalid = files.some((file) => !file.type.startsWith("video/") && !file.type.startsWith("image/"));
-    const videos = files.filter((file) => file.type.startsWith("video/"));
-    const images = files.filter((file) => file.type.startsWith("image/"));
+    const hasInvalid = files.some((file) => getMediaKind(file) === "unknown");
+    const videos = files.filter((file) => getMediaKind(file) === "video");
+    const images = files.filter((file) => getMediaKind(file) === "image");
     if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
       setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
       event.target.value = "";
