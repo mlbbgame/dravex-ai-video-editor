@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, Zap, ScanLine, Save, FolderOpen } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen } from "lucide-react";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -195,6 +195,7 @@ export default function App() {
       setMessage(isImageMode ? "Подготавливаем фотографии…" : "Смотрим на смену кадров и подбираем темп…");
       let segments: Array<VideoSegment | ImageSegment>;
       let renderDuration = duration;
+      let sourceVideoDuration = 0;
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
       if (isImageMode) {
         actualStyle = style === "auto" ? "cinematic" : actualStyle;
@@ -202,6 +203,7 @@ export default function App() {
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
         const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+        sourceVideoDuration = analysis.duration;
         renderDuration = Math.min(duration, analysis.duration);
         if (style === "auto") {
           const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
@@ -222,9 +224,9 @@ export default function App() {
               const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
               if (segment.kind === "image") return { ...segment, duration: nextDuration };
               const videoSegment = segment as VideoSegment;
+              const safeDuration = Math.min(nextDuration, Math.max(0.2, sourceVideoDuration));
               const center = (videoSegment.trimStart + videoSegment.trimEnd) / 2;
-              const safeDuration = Math.min(nextDuration, isImageMode ? nextDuration : Math.max(0.2, videoSegment.trimEnd - videoSegment.trimStart) * 1.8);
-              const start = Math.max(0, center - safeDuration / 2);
+              const start = Math.max(0, Math.min(Math.max(0, sourceVideoDuration - safeDuration), center - safeDuration / 2));
               return { ...videoSegment, trimStart: start, trimEnd: start + safeDuration };
             });
             setMessage(`Ритм найден: подстроили монтаж под ${usableBeats.length} музыкальных акцентов.`);
