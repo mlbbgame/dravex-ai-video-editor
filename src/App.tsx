@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
-import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
+import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
@@ -407,6 +407,12 @@ export default function App() {
 
   const createMontage = async () => {
     if (!mediaFiles.length || busy) return;
+    // Unlock Web Audio immediately during the tap, before long source-video analysis
+    // can outlive the browser's transient user activation.
+    let preparedAudioContext: AudioContext | undefined;
+    if (!isImageMode || (musicUrl && musicFile)) {
+      preparedAudioContext = prepareAudioContextForUserGesture() ?? undefined;
+    }
     setError("");
     setOutputUrl("");
     setRenderProgress(0);
@@ -517,7 +523,8 @@ export default function App() {
         effectStrength,
         transitionMode,
         targetDurationSeconds: renderDuration,
-        onProgress: setRenderProgress
+        onProgress: setRenderProgress,
+        audioContext: preparedAudioContext
       });
       const nextUrl = URL.createObjectURL(blob);
       setOutputUrl(nextUrl);
@@ -528,6 +535,10 @@ export default function App() {
       setStage("error");
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
       setMessage("");
+    } finally {
+      if (preparedAudioContext && preparedAudioContext.state !== "closed") {
+        void preparedAudioContext.close().catch(() => {});
+      }
     }
   };
 
