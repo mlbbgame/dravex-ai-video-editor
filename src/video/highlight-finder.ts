@@ -29,6 +29,15 @@ export type HighlightProgress = {
   time: number;
 };
 
+/**
+ * Very short clips use deterministic cuts to avoid expensive/flaky seeks on mobile.
+ * Longer short-form clips should sample real frames so montage selection can respond
+ * to motion and contrast instead of assigning synthetic, nearly identical scores.
+ */
+export function shouldUseQuickVideoCandidates(duration: number): boolean {
+  return Number.isFinite(duration) && duration >= 0.25 && duration <= 3;
+}
+
 /** Build deterministic cut points for short clips without seeking through every frame. */
 export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
   if (!Number.isFinite(duration) || duration < 0.25) return [];
@@ -176,7 +185,7 @@ export async function analyzeVideoForHighlights(
     }
     // Short clips do not need expensive frame-by-frame seeking. On Android this
     // avoids flaky seek events while still producing a clean, evenly spaced edit.
-    if (duration <= 15) {
+    if (shouldUseQuickVideoCandidates(duration)) {
       const candidates = buildQuickVideoCandidates(duration);
       const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
         time, score, motion, contrast
