@@ -48,7 +48,11 @@ export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> 
       fluxSum += flux[i];
     }
     const averageFlux = fluxSum / Math.max(1, frameCount - 1);
-    const threshold = Math.max(averageFlux * 1.35, 0.0025);
+    let energySum = 0;
+    for (let i = 0; i < energy.length; i += 1) energySum += energy[i];
+    const averageEnergy = energySum / Math.max(1, energy.length);
+    // Relative threshold adapts to quiet and heavily compressed tracks; keep a tiny floor for silence/noise.
+    const threshold = Math.max(averageFlux * 1.2, averageEnergy * 0.035, 0.00012);
     const peakFrames: number[] = [];
     let lastPeakTime = -1;
     for (let i = 2; i < frameCount - 2; i += 1) {
@@ -66,11 +70,18 @@ export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> 
     }
 
     const beats = peakFrames.map((frame) => Number((frame * hopSeconds).toFixed(3)));
-    return {
-      duration: buffer.duration,
-      beats,
-      confidence: beats.length >= 12 ? "strong" : beats.length >= 5 ? "moderate" : "weak"
-    };
+    const intervals = beats.slice(1).map((beat, index) => beat - beats[index]).filter((interval) => interval >= 0.22 && interval <= 2.5);
+    const meanInterval = intervals.reduce((sum, interval) => sum + interval, 0) / Math.max(1, intervals.length);
+    const intervalDeviation = intervals.length
+      ? intervals.reduce((sum, interval) => sum + Math.abs(interval - meanInterval), 0) / intervals.length
+      : Number.POSITIVE_INFINITY;
+    const regularity = intervals.length >= 4 && meanInterval > 0 ? Math.max(0, 1 - intervalDeviation / meanInterval) : 0;
+    const confidence = beats.length >= 12 && regularity >= 0.28
+      ? "strong"
+      : beats.length >= 5 && regularity >= 0.12
+        ? "moderate"
+        : "weak";
+    return { duration: buffer.duration, beats, confidence };
   } finally {
     await context.close().catch(() => undefined);
   }
@@ -90,14 +101,26 @@ export function snapCutBoundariesToBeats(
   const boundaries = [0];
   const minimumGap = Math.min(0.48, targetDuration / Math.max(2, segmentCount * 1.25));
   const tolerance = Math.min(0.55, Math.max(0.22, preferredShotSeconds * 0.3));
+
   for (let index = 1; index < segmentCount; index += 1) {
     const ideal = targetDuration * index / segmentCount;
+    const remainingCuts = segmentCount - index;
+    // Reserve enough time for every remaining shot. Without this upper bound, a late beat
+    // can push one boundary past the end and collapse several final shots to zero length.
+    const minimum = boundaries[boundaries.length - 1] + minimumGap;
+    const maximum = targetDuration - remainingCuts * minimumGap;
+    if (minimum >= maximum) {
+      boundaries.push(ideal);
+      continue;
+    }
+
     const nearby = beats
-      .filter((beat) => beat > boundaries[boundaries.length - 1] + minimumGap && beat < targetDuration - minimumGap && Math.abs(beat - ideal) <= tolerance)
+      .filter((beat) => beat >= minimum && beat <= maximum && Math.abs(beat - ideal) <= tolerance)
       .sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
-    const chosen = nearby ?? ideal;
-    boundaries.push(Math.max(boundaries[boundaries.length - 1] + minimumGap, chosen));
+    const chosen = nearby ?? Math.max(minimum, Math.min(maximum, ideal));
+    boundaries.push(chosen);
   }
+
   boundaries.push(targetDuration);
-  return boundaries.map((value, index) => index === 0 ? 0 : index === boundaries.length - 1 ? targetDuration : Math.min(targetDuration, value));
+  return boundaries;
 }

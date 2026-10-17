@@ -29,22 +29,77 @@ export type HighlightProgress = {
   time: number;
 };
 
+/** Build deterministic cut points for short clips without seeking through every frame. */
+export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
+  if (!Number.isFinite(duration) || duration < 0.25) return [];
+  const count = Math.max(2, Math.min(8, Math.ceil(duration / 1.5)));
+  const segmentDuration = duration / count;
+  return Array.from({ length: count }, (_, index) => {
+    const start = index * segmentDuration;
+    const end = Math.min(duration, (index + 1) * segmentDuration);
+    return {
+      time: (start + end) / 2,
+      start,
+      end,
+      score: 1 - index / (count * 10),
+      motion: 0,
+      contrast: 0
+    };
+  });
+}
+
 function waitForMetadata(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve, reject) => {
-    if (video.readyState >= 1 && Number.isFinite(video.duration)) {
-      resolve();
-      return;
-    }
-    const loaded = () => { cleanup(); resolve(); };
-    const failed = () => { cleanup(); reject(new Error("The browser could not read this video. Try a common MP4 or WebM file.")); };
+    let timeoutId = 0;
     const cleanup = () => {
-      video.removeEventListener("loadedmetadata", loaded);
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", checkReady);
+      video.removeEventListener("durationchange", checkReady);
       video.removeEventListener("error", failed);
     };
-    video.addEventListener("loadedmetadata", loaded, { once: true });
+    const checkReady = () => {
+      if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+        cleanup();
+        resolve();
+      }
+    };
+    const failed = () => {
+      cleanup();
+      reject(new Error("Браузер не смог прочитать видео. Попробуй MP4 (H.264) или WebM с известной длительностью."));
+    };
+
+    video.addEventListener("loadedmetadata", checkReady);
+    video.addEventListener("durationchange", checkReady);
     video.addEventListener("error", failed, { once: true });
-    video.load();
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Браузер не смог определить длительность видео за 20 секунд. Попробуй MP4 (H.264) или более короткий файл."));
+    }, 20_000);
+    // Metadata may already have loaded before listeners were attached.
+    checkReady();
+    if (video.readyState < 1) video.load();
   });
+}
+
+/** Read duration without sampling frames, used as a safe fallback for auto-montage. */
+export async function getVideoDuration(url: string): Promise<number> {
+  const video = document.createElement("video");
+  video.preload = "metadata";
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+  try {
+    await waitForMetadata(video);
+    return video.duration;
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }
 }
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
@@ -119,20 +174,37 @@ export async function analyzeVideoForHighlights(
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
+    // Short clips do not need expensive frame-by-frame seeking. On Android this
+    // avoids flaky seek events while still producing a clean, evenly spaced edit.
+    if (duration <= 15) {
+      const candidates = buildQuickVideoCandidates(duration);
+      const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
+        time, score, motion, contrast
+      }));
+      onProgress?.({ current: candidates.length, total: candidates.length, time: duration });
+      return { duration, samples, candidates };
+    }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
     canvas.height = 45;
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
-    // Cap frame sampling so long videos remain practical on Android phones.
-    // At most about 300 samples are inspected, with a minimum 1.5-second interval.
-    const interval = Math.max(1.5, duration / 300, duration > 1800 ? 4 : 0);
+    // Keep frame analysis bounded for mobile browsers: at most about 60 samples.
+    // A wider interval on long clips reduces seeking overhead without scanning every frame.
+    const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
     let previous: Uint8ClampedArray | null = null;
+    const analysisStartedAt = performance.now();
+    // Never let frame scanning monopolize a phone for several minutes. The caller
+    // can fall back to evenly spaced cuts while still exporting a usable video.
+    const analysisBudgetMs = duration > 1800 ? 60_000 : 90_000;
 
     for (let index = 0; index < total; index += 1) {
+      if (performance.now() - analysisStartedAt > analysisBudgetMs) {
+        throw new Error("Анализ длинного видео занял слишком много времени — используем равномерный монтаж.");
+      }
       const time = Math.min(duration - 0.08, index * interval + Math.min(0.12, interval * 0.08));
       await seekTo(video, time);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -181,8 +253,7 @@ export async function analyzeVideoForHighlights(
     for (const peak of peaks) {
       const bucket = Math.min(bucketCount - 1, Math.floor(peak.time / bucketWidth));
       if (!bucketPeaks.some((item) => Math.min(bucketCount - 1, Math.floor(item.time / bucketWidth)) === bucket)) bucketPeaks.push(peak);
-    }
-    const selectedPeaks = [...bucketPeaks];
+    }    const selectedPeaks = [...bucketPeaks];
     for (const peak of peaks) {
       if (selectedPeaks.length >= 100) break;
       if (selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;

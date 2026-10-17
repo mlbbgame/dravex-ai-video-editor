@@ -23,6 +23,34 @@ export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" 
 
 export type SequenceSegment = VideoSegment | ImageSegment;
 
+/**
+ * Keep the whole source visible when its aspect ratio differs from the output.
+ * When ratios match, fill the frame instead of needlessly shrinking photos over
+ * a blurred duplicate background.
+ */
+export function shouldContainSource(sourceAspect: number, outputAspect: number): boolean {
+  if (!Number.isFinite(sourceAspect) || !Number.isFinite(outputAspect) || sourceAspect <= 0 || outputAspect <= 0) {
+    return true;
+  }
+  return Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
+}
+
+export type CameraMotionProfile = { zoom: number; pan: number };
+
+/** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
+export function getCameraMotionProfile(
+  style: SequenceRenderStyle,
+  strength: "soft" | "balanced" | "strong" = "balanced"
+): CameraMotionProfile {
+  const scale = strength === "soft" ? 0.72 : strength === "strong" ? 1.28 : 1;
+  const base = style === "velocity" ? { zoom: 0.145, pan: 0.072 }
+    : style === "anime" ? { zoom: 0.12, pan: 0.055 }
+      : style === "glitch" ? { zoom: 0.125, pan: 0.058 }
+        : style === "story" ? { zoom: 0.072, pan: 0.032 }
+          : { zoom: 0.115, pan: 0.052 };
+  return { zoom: base.zoom * scale, pan: base.pan * scale };
+}
+
 type SequenceOptions = {
   segments: SequenceSegment[];
   audioTracks?: AudioSegment[];
@@ -30,12 +58,16 @@ type SequenceOptions = {
   aspectRatio: string;
   quality?: string;
   style?: SequenceRenderStyle;
+  effectStrength?: "soft" | "balanced" | "strong";
+  transitionMode?: "auto" | "cinematic" | "action";
   suppressEffects?: boolean;
   suppressFlashes?: boolean;
   suppressShake?: boolean;
   suppressTransitions?: boolean;
+  suppressAudio?: boolean;
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
+  audioContext?: AudioContext;
 };
 
 type LoadedVideo = {
@@ -56,10 +88,189 @@ type LoadedImage = {
 
 type LoadedSegment = LoadedVideo | LoadedImage;
 
+type EbmlSize = { length: number; value: number; unknown: boolean };
+type EbmlElement = { start: number; idLength: number; sizeStart: number; sizeLength: number; dataStart: number; dataEnd: number; size: number };
+
+function ebmlVintLength(firstByte: number, maxLength = 8): number {
+  let marker = 0x80;
+  let length = 1;
+  while (length <= maxLength && (firstByte & marker) === 0) {
+    marker >>= 1;
+    length += 1;
+  }
+  return length <= maxLength ? length : 0;
+}
+
+function readEbmlSize(bytes: Uint8Array, offset: number): EbmlSize | null {
+  if (offset >= bytes.length) return null;
+  const length = ebmlVintLength(bytes[offset], 8);
+  if (!length || offset + length > bytes.length) return null;
+  const marker = 1 << (8 - length);
+  let value = bytes[offset] & (marker - 1);
+  let unknown = value === marker - 1;
+  for (let index = 1; index < length; index += 1) {
+    value = value * 256 + bytes[offset + index];
+    if (bytes[offset + index] !== 0xff) unknown = false;
+  }
+  return { length, value, unknown };
+}
+
+function encodeEbmlSize(value: number, preferredLength = 1): Uint8Array {
+  for (let length = Math.max(1, preferredLength); length <= 8; length += 1) {
+    if (value > 2 ** (7 * length) - 2) continue;
+    const encoded = new Uint8Array(length);
+    let remaining = value;
+    for (let index = length - 1; index >= 0; index -= 1) {
+      encoded[index] = remaining & 0xff;
+      remaining = Math.floor(remaining / 256);
+    }
+    encoded[0] |= 1 << (8 - length);
+    return encoded;
+  }
+  throw new Error("WebM metadata size is too large to finalize.");
+}
+
+function ebmlIdHex(bytes: Uint8Array, offset: number, length: number): string {
+  return Array.from(bytes.slice(offset, offset + length), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function findEbmlElement(
+  bytes: Uint8Array,
+  start: number,
+  end: number,
+  wantedId: string
+): EbmlElement | null {
+  let offset = start;
+  while (offset + 5 < end) {
+    const idLength = ebmlVintLength(bytes[offset], 4);
+    if (!idLength || offset + idLength >= end) return null;
+    const sizeStart = offset + idLength;
+    const size = readEbmlSize(bytes, sizeStart);
+    if (!size) return null;
+    const dataStart = sizeStart + size.length;
+    const dataEnd = size.unknown ? end : dataStart + size.value;
+    if (dataEnd > end || dataEnd < dataStart) return null;
+    if (ebmlIdHex(bytes, offset, idLength) === wantedId) {
+      return { start: offset, idLength, sizeStart, sizeLength: size.length, dataStart, dataEnd, size: dataEnd - dataStart };
+    }
+    if (size.unknown) return null;
+    offset = dataEnd;
+  }
+  return null;
+}
+
+/**
+ * MediaRecorder WebM blobs can omit the Duration element, which makes browsers
+ * report video.duration === Infinity and prevents reliable seeking. Add or update
+ * the Matroska Duration value without re-encoding the recorded frames.
+ */
+async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
+  if (!blob.type.includes("webm") || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return blob;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const segmentStart = (() => {
+    for (let index = 0; index + 4 <= bytes.length; index += 1) {
+      if (bytes[index] === 0x18 && bytes[index + 1] === 0x53 && bytes[index + 2] === 0x80 && bytes[index + 3] === 0x67) return index;
+    }
+    return -1;
+  })();
+  if (segmentStart < 0) return blob;
+
+  const segmentSize = readEbmlSize(bytes, segmentStart + 4);
+  if (!segmentSize) return blob;
+  const segmentDataStart = segmentStart + 4 + segmentSize.length;
+  const segmentDataEnd = segmentSize.unknown ? bytes.length : Math.min(bytes.length, segmentDataStart + segmentSize.value);
+  const info = findEbmlElement(bytes, segmentDataStart, segmentDataEnd, "1549a966");
+  if (!info) return blob;
+
+  let timecodeScale = 1_000_000;
+  let durationElement: EbmlElement | null = null;
+  let cursor = info.dataStart;
+  while (cursor + 2 < info.dataEnd) {
+    const idLength = ebmlVintLength(bytes[cursor], 4);
+    if (!idLength) break;
+    const sizeStart = cursor + idLength;
+    const size = readEbmlSize(bytes, sizeStart);
+    if (!size) break;
+    const dataStart = sizeStart + size.length;
+    const dataEnd = size.unknown ? info.dataEnd : dataStart + size.value;
+    if (dataEnd > info.dataEnd || dataEnd < dataStart) break;
+    const id = ebmlIdHex(bytes, cursor, idLength);
+    if (id === "2ad7b1" && size.value > 0 && size.value <= 8) {
+      let scale = 0;
+      for (let index = dataStart; index < dataEnd; index += 1) scale = scale * 256 + bytes[index];
+      if (scale > 0) timecodeScale = scale;
+    } else if (id === "4489") {
+      durationElement = { start: cursor, idLength, sizeStart, sizeLength: size.length, dataStart, dataEnd, size: size.value };
+    }
+    if (size.unknown) break;
+    cursor = dataEnd;
+  }
+
+  const durationValue = durationSeconds * 1_000_000_000 / timecodeScale;
+  if (durationElement) {
+    const patched = bytes.slice();
+    const view = new DataView(patched.buffer, patched.byteOffset, patched.byteLength);
+    if (durationElement.size === 4) view.setFloat32(durationElement.dataStart, durationValue, false);
+    else if (durationElement.size === 8) view.setFloat64(durationElement.dataStart, durationValue, false);
+    else return blob;
+    return new Blob([patched], { type: blob.type });
+  }
+
+  const durationBytes = new Uint8Array(11);
+  durationBytes[0] = 0x44;
+  durationBytes[1] = 0x89;
+  durationBytes[2] = 0x88;
+  new DataView(durationBytes.buffer).setFloat64(3, durationValue, false);
+
+  const infoId = bytes.slice(info.start, info.start + info.idLength);
+  const infoContent = bytes.slice(info.dataStart, info.dataEnd);
+  const newInfoSize = infoContent.length + durationBytes.length;
+  const encodedInfoSize = encodeEbmlSize(newInfoSize, info.sizeLength);
+  const newInfo = new Uint8Array(infoId.length + encodedInfoSize.length + newInfoSize);
+  newInfo.set(infoId, 0);
+  newInfo.set(encodedInfoSize, infoId.length);
+  newInfo.set(infoContent, infoId.length + encodedInfoSize.length);
+  newInfo.set(durationBytes, infoId.length + encodedInfoSize.length + infoContent.length);
+
+  const infoDelta = newInfo.length - (info.dataEnd - info.start);
+  let patched = new Uint8Array(bytes.length + infoDelta);
+  patched.set(bytes.slice(0, info.start), 0);
+  patched.set(newInfo, info.start);
+  patched.set(bytes.slice(info.dataEnd), info.start + newInfo.length);
+
+  if (!segmentSize.unknown) {
+    const encodedSegmentSize = encodeEbmlSize(segmentSize.value + infoDelta, segmentSize.length);
+    const oldSizeEnd = segmentStart + 4 + segmentSize.length;
+    if (encodedSegmentSize.length === segmentSize.length) {
+      patched.set(encodedSegmentSize, segmentStart + 4);
+    } else {
+      const resized = new Uint8Array(patched.length + encodedSegmentSize.length - segmentSize.length);
+      resized.set(patched.slice(0, segmentStart + 4), 0);
+      resized.set(encodedSegmentSize, segmentStart + 4);
+      resized.set(patched.slice(oldSizeEnd), segmentStart + 4 + encodedSegmentSize.length);
+      patched = resized;
+    }
+  }
+  return new Blob([patched], { type: blob.type });
+}
+
+/** Unlock Web Audio synchronously inside a user gesture before video analysis awaits. */
+export function prepareAudioContextForUserGesture(): AudioContext | null {
+  if (typeof AudioContext === "undefined") return null;
+  try {
+    const audioContext = new AudioContext();
+    if (audioContext.state === "suspended") void audioContext.resume().catch(() => {});
+    return audioContext;
+  } catch {
+    return null;
+  }
+}
+
 const dimensionsFor = (aspectRatio: string, quality = "720p") => {
   const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
   let base: { width: number; height: number };
-  if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
+  if (quality === "preview") base = aspectRatio === "16:9" ? { width: 480, height: 270 } : aspectRatio === "1:1" ? { width: 360, height: 360 } : aspectRatio === "4:5" ? { width: 360, height: 450 } : { width: 360, height: 640 };
+  else if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
   else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
   else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
   else base = { width: 720, height: 1280 };
@@ -72,9 +283,31 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     video.preload = "auto";
     video.muted = false;
     video.playsInline = true;
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", loaded);
+      video.removeEventListener("error", failed);
+    };
+    const loaded = () => {
+      cleanup();
+      resolve(video);
+    };
+    const failed = () => {
+      cleanup();
+      reject(new Error(`Could not read video: ${segment.name}. Try MP4 (H.264) or WebM.`));
+    };
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      reject(new Error(`Видео «${segment.name}» не открылось за 20 секунд. Попробуй MP4 (H.264) или более короткий файл.`));
+    }, 20_000);
+    video.addEventListener("loadedmetadata", loaded, { once: true });
+    video.addEventListener("error", failed, { once: true });
     video.src = segment.url;
-    video.onloadedmetadata = () => resolve(video);
-    video.onerror = () => reject(new Error(`Could not read video: ${segment.name}`));
+    video.load();
   });
 }
 
@@ -126,7 +359,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -147,6 +380,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       videoCache.set(videoSegment.url, pendingVideo);
     }
     const video = await pendingVideo;
+    if (suppressAudio) video.muted = true;
     const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
     const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
     const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
@@ -186,9 +420,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
-  const hasSourceVideo = loaded.some((item) => item.kind === "video");
-  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? new AudioContext() : null;
+  const hasSourceVideo = !suppressAudio && loaded.some((item) => item.kind === "video");
+  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
+  const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
     for (const item of loaded) {
@@ -203,10 +438,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     for (const item of loadedAudio) {
       const source = audioContext.createMediaElementSource(item.audio);
       const gain = audioContext.createGain();
-      gain.gain.value = Math.max(0, Math.min(1, item.segment.volume ?? 0.65));
+      // Fade automation is scheduled once the render starts to avoid abrupt music edges.
+      gain.gain.value = 0;
       source.connect(gain);
       gain.connect(audioDestination);
+      item.audio.loop = true;
+      musicGainNodes.set(item.audio, gain);
     }
+  }
+  if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
+    throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
   }
   const stream = new MediaStream([
     ...videoStream.getVideoTracks(),
@@ -215,13 +456,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (!stream.getVideoTracks().some((track) => track.readyState === "live")) {
     throw new Error("Не удалось запустить видеопоток с холста. Перезагрузи страницу и попробуй ещё раз.");
   }
-  const bitrate = quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
+  if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
+  }
+  const bitrate = quality === "preview" ? 1_200_000 : quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
   const chunks: BlobPart[] = [];
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => reject(new Error("The browser stopped recording unexpectedly."));
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       stream.getTracks().forEach((track) => track.stop());
       videoStream.getTracks().forEach((track) => track.stop());
       const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
@@ -235,10 +479,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         audio.removeAttribute("src");
         audio.load();
       });
-      void audioContext?.close();
+      if (audioContext && audioContext !== preparedAudioContext) void audioContext.close();
       const blob = new Blob(chunks, { type: mimeType });
-      if (blob.size) resolve(blob);
-      else {
+      if (blob.size) {
+        try {
+          resolve(await finalizeWebmDuration(blob, totalDuration));
+        } catch {
+          // Preserve a playable recording even if an unusual WebM variant cannot be patched.
+          resolve(blob);
+        }
+      } else {
         const videoTrackState = videoStream.getVideoTracks().map((track) => track.readyState).join(",") || "нет";
         reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${mimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
       }
@@ -262,35 +512,66 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionDuration = style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
-    const transitionType = cutIndex % 8;
+    const actionTransitions = [0, 3, 4, 5, 7];
+    // Auto mode follows the edit's visual language instead of cycling through every
+    // transition at random: calm edits stay clean, action edits use short impact reveals.
+    const calmTransitions = [8, 0, 8, 0];
+    const animeTransitions = [0, 3, 4, 7];
+    const glitchTransitions = [0, 3, 5, 7];
+    const transitionIndex = Math.max(0, cutIndex - 1);
+    const transitionType = transitionMode === "cinematic"
+      ? (cutIndex % 2 === 0 ? 8 : 0)
+      : transitionMode === "action"
+        ? actionTransitions[transitionIndex % actionTransitions.length]
+        : style === "cinematic" || style === "story"
+          ? calmTransitions[transitionIndex % calmTransitions.length]
+          : style === "glitch"
+            ? glitchTransitions[transitionIndex % glitchTransitions.length]
+            : style === "anime"
+              ? animeTransitions[transitionIndex % animeTransitions.length]
+              : actionTransitions[transitionIndex % actionTransitions.length];
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
     // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
-    // Ken Burns camera movement for still photos: alternating push/pull and four gentle pan paths.
-    const motion = suppressEffects ? 0 : style === "velocity" ? 0.105 : style === "anime" ? 0.075 : style === "glitch" ? 0.085 : style === "story" ? 0.035 : 0.07;
-    const travel = cutIndex % 2 === 0 ? progress : 1 - progress;
+    // DRAVEX Camera V2: eased push/pull plus varied directional paths for stills.
+    const strengthScale = effectStrength === "soft" ? 0.72 : effectStrength === "strong" ? 1.28 : 1;
+    const cameraMotion = getCameraMotionProfile(style, effectStrength);
+    const motion = suppressEffects ? 0 : cameraMotion.zoom;
     const isPhoto = source instanceof HTMLImageElement;
-    const zoom = (isPhoto ? 1.015 : 1.025) + travel * motion;
-    const scale = (isPhoto ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
+    const eased = progress * progress * (3 - 2 * progress);
+    const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
+    const zoomBase = isPhoto ? 1.035 : 1.04;
+    const zoom = zoomBase + (zoomDirection > 0 ? eased : 1 - eased) * motion;
+    // Avoid destroying the subject when a landscape clip is exported as a vertical Short.
+    // Use a blurred fill behind a contained foreground whenever source/output framing differs noticeably.
+    const sourceAspect = sourceWidth / sourceHeight;
+    const outputAspect = width / height;
+    const useContain = shouldContainSource(sourceAspect, outputAspect);
+    const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.048 : style === "anime" ? 0.034 : style === "glitch" ? 0.04 : style === "story" ? 0.012 : 0.032;
-    const panPhase = progress * Math.PI / 2;
-    const panX = Math.sin(panPhase) * width * panAmount * ([1, -1, 0, 0][cutIndex % 4]);
-    const panY = Math.sin(panPhase) * height * panAmount * ([0, 0, 1, -1][cutIndex % 4]);
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) : 0;
+    const panAmount = suppressEffects ? 0 : cameraMotion.pan;
+    // Travel across the frame instead of easing from a static center to one side.
+    // The symmetric path makes movement perceptible at the start and end of each still.
+    const panPhase = eased * Math.PI;
+    const pathX = [1, -1, 0.72, -0.72, 0.45, -0.45][cutIndex % 6];
+    const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
+    const panX = Math.cos(panPhase) * width * panAmount * pathX;
+    const panY = Math.cos(panPhase) * height * panAmount * pathY;
+    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
     const drawY = (height - drawHeight) / 2 + offsetY;
     const drawIncoming = () => {
-      if (isPhoto) {
+      if (useContain) {
+        // A soft, darkened fill avoids black bars while keeping the entire photo/clip visible.
         context.save();
         context.filter = "blur(24px) brightness(0.58) saturate(0.88)";
         const backgroundScale = Math.max(width / sourceWidth, height / sourceHeight) * 1.18;
@@ -312,9 +593,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
-      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14);
+      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
       context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
-      if (isPhoto) {
+      if (useContain) {
         context.translate(width / 2, height / 2);
         context.scale(punch, punch);
         context.translate(-width / 2, -height / 2);
@@ -324,6 +605,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         const dh = drawHeight * punch;
         context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
       }
+    } else if (transitionWindow && transitionType === 8) {
+      // A true crossfade keeps the outgoing frame underneath and fades the new shot in.
+      context.globalAlpha = transitionProgress;
+      drawIncoming();
     } else if (transitionWindow && (transitionType === 1 || transitionType === 2)) {
       // Directional wipes alternate left-to-right and right-to-left.
       const revealWidth = width * Math.max(0.025, transitionProgress);
@@ -344,12 +629,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       drawIncoming();
     } else if (transitionWindow && transitionType === 4) {
       // Short rotational reveal with a restrained zoom.
-      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.15 : 0.085);
-      const punch = 1 + (1 - transitionProgress) * 0.13;
+      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.15 : 0.085) * strengthScale;
+      const punch = 1 + (1 - transitionProgress) * 0.13 * strengthScale;
       context.translate(width / 2, height / 2);
       context.rotate(angle);
       context.globalAlpha = Math.min(1, transitionProgress * 2 + 0.05);
-      if (isPhoto) {
+      if (useContain) {
         context.scale(punch, punch);
         context.translate(-width / 2, -height / 2);
         drawIncoming();
@@ -403,20 +688,39 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
     if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
-      const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12);
+      const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
     if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
-      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.16) * 0.2})`;
+      const glitchStrength = (1 - cutProgress / 0.16) * strengthScale;
+      // Split short horizontal slices for a more readable digital-impact effect than a full-frame tint alone.
+      context.save();
+      context.globalAlpha = Math.min(0.34, 0.22 * glitchStrength);
+      context.globalCompositeOperation = "screen";
+      const bands = [
+        { y: 0.22, h: 0.055, x: -0.018 },
+        { y: 0.48, h: 0.035, x: 0.024 },
+        { y: 0.71, h: 0.045, x: -0.012 }
+      ];
+      for (const band of bands) {
+        context.save();
+        context.beginPath();
+        context.rect(0, height * band.y, width, height * band.h);
+        context.clip();
+        context.drawImage(source, drawX + width * band.x * glitchStrength, drawY, drawWidth, drawHeight);
+        context.fillStyle = band.x > 0 ? "rgba(255,35,100,0.34)" : "rgba(40,220,255,0.34)";
+        context.fillRect(0, height * band.y, width, height * band.h);
+        context.restore();
+      }
+      context.restore();
+      context.fillStyle = `rgba(40,220,255,${glitchStrength * 0.12})`;
       context.fillRect(0, 0, width, height);
-      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.16) * 0.14})`;
-      context.fillRect(Math.round(width * 0.012), 0, width, height);
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
     if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
-      const streakAlpha = (1 - cutProgress / 0.28) * 0.27;
+      const streakAlpha = (1 - cutProgress / 0.28) * 0.27 * strengthScale;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
       context.lineWidth = Math.max(2, width * 0.003);
@@ -470,12 +774,26 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   let completed = 0;
   try {
     if (audioContext && loadedAudio.length) {
-      await Promise.all(loadedAudio.map(async ({ audio }) => {
+      const audioStart = audioContext.currentTime;
+      await Promise.all(loadedAudio.map(async ({ audio, segment }) => {
         audio.currentTime = 0;
+        const gain = musicGainNodes.get(audio);
+        const targetVolume = Math.max(0, Math.min(1, segment.volume ?? 0.65));
+        if (gain) {
+          gain.gain.cancelScheduledValues(audioStart);
+          const fadeInSeconds = Math.min(0.65, totalDuration * 0.15);
+          const fadeOutSeconds = Math.min(0.9, totalDuration * 0.2);
+          const endTime = audioStart + totalDuration;
+          const fadeStart = Math.max(audioStart + fadeInSeconds, endTime - fadeOutSeconds);
+          gain.gain.setValueAtTime(0, audioStart);
+          gain.gain.linearRampToValueAtTime(targetVolume, audioStart + fadeInSeconds);
+          gain.gain.setValueAtTime(targetVolume, fadeStart);
+          gain.gain.linearRampToValueAtTime(0, endTime);
+        }
         try {
           await audio.play();
         } catch {
-          throw new Error("The browser blocked audio playback during export. Tap Create montage again and allow media playback.");
+          throw new Error("Браузер заблокировал музыку при экспорте. Нажми «Создать монтаж» ещё раз; если не поможет, обнови страницу и попробуй Chrome.");
         }
       }));
     }
