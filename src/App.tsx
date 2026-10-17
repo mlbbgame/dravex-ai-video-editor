@@ -391,12 +391,13 @@ export default function App() {
             const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => { setStyle(variant.style); setTransitionMode(variant.transition); setEffectStrength(variant.strength); invalidateOutput(); }} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass}`}>
-                {mediaFiles.length > 0 ? (isImageMode
+                {mediaFiles.length > 0 && isImageMode
                   ? <img src={mediaUrls[0]} alt="" loading="lazy" />
-                  : <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />)
-                  : <span className="dravex-variant-placeholder"><Icon size={30} /></span>}
+                  : mediaFiles.length > 0 && selected
+                    ? <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />
+                    : <span className="dravex-variant-placeholder"><Icon size={30} /><small>{mediaFiles.length ? "Выбери для просмотра" : "Твой материал"}</small></span>}
                 <span className="dravex-variant-overlay" />
-                <span className="dravex-variant-tag">STYLE</span>
+                <span className="dravex-variant-tag">{selected ? "LIVE PREVIEW" : "STYLE PREVIEW"}</span>
                 {selected && <span className="dravex-variant-check"><CheckCircle2 size={17} /></span>}
               </span>
               <span className="dravex-variant-copy"><strong>{variant.title}</strong><small>{variant.note}</small></span>
