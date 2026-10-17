@@ -36,13 +36,15 @@ export type TimelineAudioTrack = {
   gain: number;
   fadeInSeconds: number;
   fadeOutSeconds: number;
+  /** Current browser renderer loops music to cover the rendered visual duration. */
+  loop: boolean;
 };
 
 export type EditTimeline = {
   schemaVersion: 1;
   targetDuration: number;
   aspectRatio: "9:16" | "16:9" | "1:1" | "4:5";
-  resolution: "720p" | "1080p";
+  resolution: "preview" | "720p" | "1080p" | "4K";
   frameRate: 24 | 25 | 30 | 50 | 60;
   clips: TimelineClip[];
   audioTracks: TimelineAudioTrack[];
@@ -56,7 +58,7 @@ const TIME_TOLERANCE_SECONDS = 0.05;
 const MIN_PLAYBACK_RATE = 0.25;
 const MAX_PLAYBACK_RATE = 4;
 const supportedRatios = new Set(["9:16", "16:9", "1:1", "4:5"]);
-const supportedResolutions = new Set(["720p", "1080p"]);
+const supportedResolutions = new Set(["preview", "720p", "1080p", "4K"]);
 const supportedFrameRates = new Set([24, 25, 30, 50, 60]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -255,10 +257,12 @@ export function validateEditTimeline(input: unknown, sources: readonly TimelineS
         errors.push(`${prefix} source range exceeds the source duration.`);
       }
 
-      if (isFiniteNumber(timelineStart) && isFiniteNumber(timelineEnd)
+      if (typeof rawTrack.loop !== "boolean") {
+        errors.push(`${prefix} loop must be boolean.`);
+      } else if (rawTrack.loop === false && isFiniteNumber(timelineStart) && isFiniteNumber(timelineEnd)
         && validRange(rawTrack.sourceRange)
         && Math.abs((timelineEnd - timelineStart) - (rawTrack.sourceRange.end - rawTrack.sourceRange.start)) > TIME_TOLERANCE_SECONDS) {
-        errors.push(`${prefix} timeline duration must match its source range in schema v1.`);
+        errors.push(`${prefix} timeline duration must match its source range when looping is disabled.`);
       }
 
       if (!isFiniteNumber(rawTrack.gain) || rawTrack.gain < 0 || rawTrack.gain > 1) {
