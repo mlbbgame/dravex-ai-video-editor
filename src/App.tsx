@@ -197,13 +197,18 @@ export default function App() {
     setMessage("");
   };
 
+  const invalidateOutput = () => {
+    setOutputUrl("");
+    setError("");
+    setMessage("");
+    setStage(mediaFiles.length ? "ready" : "empty");
+  };
+
   const clearMusic = () => {
     setMusicFile(null);
     setMusicUrl("");
     if (musicInput.current) musicInput.current.value = "";
-    setOutputUrl("");
-    setError("");
-    setMessage("");
+    invalidateOutput();
   };
 
   const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -217,9 +222,7 @@ export default function App() {
     setMusicFile(file);
     setMusicUrl(URL.createObjectURL(file));
     event.target.value = "";
-    setOutputUrl("");
-    setError("");
-    setMessage("");
+    invalidateOutput();
   };
 
   const createMontage = async () => {
@@ -356,17 +359,17 @@ export default function App() {
         <div className="dravex-styles">
           {styleOptions.map((option) => {
             const Icon = option.icon;
-            return <button key={option.id} type="button" className={`dravex-style ${style === option.id ? "is-selected" : ""}`} onClick={() => setStyle(option.id)} aria-pressed={style === option.id}><span className="dravex-style-icon"><Icon size={18} /></span><span className="dravex-style-copy"><strong>{option.title}</strong><small>{option.note}</small></span>{style === option.id && <CheckCircle2 className="dravex-style-check" size={18} />}</button>;
+            return <button key={option.id} type="button" className={`dravex-style ${style === option.id ? "is-selected" : ""}`} onClick={() => { setStyle(option.id); invalidateOutput(); }} aria-pressed={style === option.id}><span className="dravex-style-icon"><Icon size={18} /></span><span className="dravex-style-copy"><strong>{option.title}</strong><small>{option.note}</small></span>{style === option.id && <CheckCircle2 className="dravex-style-check" size={18} />}</button>;
           })}
         </div>
 
         <details className="dravex-more">
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
           <div className="dravex-more-content">
-            <label className="dravex-duration"><span>Максимальная длина</span><select value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
-            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => setQuality(event.target.value as "720p" | "1080p")}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
+            <label className="dravex-duration"><span>Максимальная длина</span><select value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
+            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><div className="dravex-music-actions"><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
-            <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => setBeatSync(event.target.value === "on")}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
+            <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => { setBeatSync(event.target.value === "on"); invalidateOutput(); }}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
           <div className="dravex-project-actions">
             <button type="button" onClick={saveProject} disabled={!mediaFiles.length || projectBusy}><Save size={15} />{projectBusy ? "Сохраняем…" : "Сохранить проект"}</button>
