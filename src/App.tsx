@@ -1,868 +1,386 @@
-import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { renderImageSlideshow } from "./video/local-render";
-import { renderVideoSequence } from "./video/video-sequence-render";
-import { extractPromptDuration, generateLocalPlan, getPromptRenderPreferences, inferPromptSettings, makeOverlayTitle } from "./video/plan-generator";
-import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightProgress, type HighlightVariant } from "./video/highlight-finder";
-import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
-import SelfIntroVideo from "./components/SelfIntroVideo";
-import {
-  Aperture, ArrowDown, ArrowRight, ArrowUp, AudioLines, Check, ScanSearch,
-  ChevronDown, Clapperboard, Download, FileVideo, Film, FolderOpen, Gauge,
-  Layers3, MonitorPlay, Music2, Plus, Settings2, Heart,
-  ShieldCheck, Sparkles, Trash2, Upload, WandSparkles, X
-} from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowLeft, ArrowRight, Trash2 } from "lucide-react";
+import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
+import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
+import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 
+type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
+type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
-type Language = "en" | "ru";
-const russianText: Record<string, string> = {"WORKSPACE":"РАБОЧЕЕ ПРОСТРАНСТВО","PROJECT":"ПРОЕКТ","Import media":"Импортировать медиа","Local renderer exports WebM from trimmed video clips and mixed video/image sequences, and can mix imported audio files at a fixed level. Transitions, volume automation, MP4 export, and connected AI generation are still in development.":"Локальный движок экспортирует WebM из обрезанных видео и смешанных последовательностей видео/изображений, а также добавляет импортированные аудиофайлы с фиксированной громкостью. Переходы, автоматизация громкости, MP4 и подключение ИИ ещё разрабатываются.",
-"Local export applies the selected visual style, subtle camera motion, cut flashes, and vignette to video/image sequences. Beat detection, AI scene understanding, and MP4 export are not connected yet.":"Локальный экспорт применяет выбранный визуальный стиль, движение камеры, вспышки на склейках и виньетирование к последовательности видео и изображений. Определение битов, анализ сцен ИИ и экспорт MP4 пока не подключены.","CLIP TRIM":"ОБРЕЗКА КЛИПА","Seconds":"Секунды","Start":"Начало","End":"Конец","selected":"выбрано","Rendering your ordered video and image clips with source audio locally in your browser…":"Создаём последовательность видео и изображений с исходным звуком прямо в браузере…","Rendering your montage with imported background audio locally in your browser…":"Создаём монтаж с импортированной фоновой музыкой прямо в браузере…","Rendering trimmed video clips with their original audio locally in your browser…":"Создаём обрезанные видеоклипы с исходным звуком прямо в браузере…","Montage exported as WebM with imported background audio, cinematic motion, and style-based cut accents. MP4 export and automatic beat detection are still in development.":"Монтаж экспортирован в WebM с фоновой музыкой, кинематографичным движением и акцентами на склейках. MP4 и автоматическое определение битов ещё разрабатываются.","Video sequence exported as styled WebM with cinematic motion, cut accents, and original audio where supported. MP4 export and automatic beat detection are still in development.":"Последовательность экспортирована в WebM с кинематографичным движением, акцентами на склейках и исходным звуком, если браузер его поддерживает. MP4 и автоматическое определение битов ещё разрабатываются.","Rendering a short image montage locally in your browser…":"Создаём короткий видеомонтаж из изображений прямо в браузере…","Import at least one video clip or image before rendering.":"Перед экспортом импортируй хотя бы один видеоклип или изображение.","Mixed video/image sequence exported as WebM in timeline order. Original video audio is included when supported by the browser; separate audio files, transitions, and MP4 export are still upcoming.":"Смешанная последовательность видео и изображений экспортирована в WebM в порядке монтажной шкалы. Исходный звук видео включён, если браузер поддерживает запись аудиодорожки; отдельные аудиофайлы, переходы и MP4 добавим позже.","Image montage exported as WebM with motion and the selected style. Audio generation and MP4 export are still in development.":"Монтаж из изображений экспортирован в WebM с движением и выбранным стилем. Генерация звука и экспорт MP4 ещё разрабатываются.","Save project file":"Сохранить файл проекта","Local-first prototype":"Локальный прототип","Your media stays in this browser session.":"Ваши медиафайлы остаются в текущем сеансе браузера.","Early prototype":"Ранний прототип","Session only":"Только текущий сеанс","Save project":"Сохранить проект","YOUR STORY, YOUR RULES":"ТВОЯ ИСТОРИЯ — ТВОИ ПРАВИЛА","Make something":"Создай нечто","worth watching.":"Достойное просмотра.","Your timeline.":"Твоя монтажная шкала.","Your creative control.":"Твой творческий контроль.","Describe the video in your head. Build a plan, bring in your footage, and shape the final cut.":"Опиши видео, которое представляешь. Составь план, добавь материалы и создай финальный монтаж.","Work directly with your media. No AI required — you stay in control of every creative decision.":"Работай напрямую со своими материалами. ИИ не обязателен — каждое творческое решение остаётся за тобой.","Plan with AI assistance":"Планирование с помощью ИИ","Edit it your way":"Монтируй по-своему","Describe your video":"Опиши своё видео",
-"Tip: describe the mood, story, and editing style in your prompt.":"Подсказка: опиши настроение, сюжет и стиль монтажа в запросе.","Teach DRAVEX with a reference":"Научи DRAVEX на примере","Import a video into the media library, then inspect its pacing and likely cuts.":"Импортируй видео в медиатеку, чтобы изучить темп и вероятные склейки.","No reference video imported":"Референсное видео не импортировано","The first imported video will be analyzed locally.":"Первое импортированное видео будет проанализировано прямо в браузере.","Use Import to choose a video from your device.":"Нажми «Импорт», чтобы выбрать видео на устройстве.","Analyzing…":"Анализируем…","Analyze reference":"Анализировать пример","Import a reference video first, then analyze its editing rhythm.":"Сначала импортируй пример видео, затем проанализируй ритм монтажа.","Analyzing reference video locally in your browser…":"Анализируем пример видео прямо в браузере…","This local first pass detects visual changes; it does not yet understand the story, spoken words, or music beats.":"Этот первый локальный анализ обнаруживает визуальные изменения, но пока не понимает сюжет, речь или музыкальный ритм.","Reference analysis complete. This is a local visual estimate, not semantic AI analysis.":"Анализ примера завершён. Это локальная оценка изображения, а не семантический анализ ИИ.","This video could not be read by the browser.":"Браузер не смог прочитать это видео.","The reference video is too short or its duration is unavailable.":"Референс слишком короткий или длительность недоступна.","Frame analysis is not supported in this browser.":"Этот браузер не поддерживает анализ кадров.","Could not sample a frame from this video.":"Не удалось получить кадр из видео.","Reference analysis failed.":"Не удалось проанализировать пример.","Start with an idea. Be as specific as you like.":"Начни с идеи. Чем подробнее, тем лучше.","YOUR CREATIVE BRIEF":"ТВОЯ ИДЕЯ","A cinematic night drive through a neon city, fast cuts synced to the beat, dramatic opening and a powerful finish…":"Кинематографичная ночная поездка по неоновому городу, быстрый монтаж в ритм музыки, драматичное начало и мощный финал…","Mood":"Настроение","Story":"История","Editing style":"Стиль монтажа","Set the direction":"Настрой видео","Adjust the output to fit your platform.":"Настрой результат под свою платформу.","Aspect ratio":"Соотношение сторон","Target length":"Длительность","Output quality":"Качество видео","Overlay title text":"Добавлять текстовый заголовок","Build my video plan":"Создать план видео","Local planning demo — no external AI model is connected yet.":"Локальная демонстрация планирования — внешняя модель ИИ пока не подключена.","Your creative plan":"Твой план видео","A first outline for your next cut.":"Первый набросок будущего ролика.","DRAFT":"ЧЕРНОВИК","YOUR NEXT IDEA":"ТВОЯ СЛЕДУЮЩАЯ ИДЕЯ","Your next idea starts here":"Твоя следующая идея начинается здесь","Your outline will appear here after you describe the video and build a plan.":"Здесь появится план после того, как ты опишешь видео и создашь план.","Waiting for your brief":"Ожидаем твою идею","Draft ready to review":"Черновик готов к просмотру","Create automatic montage":"Создать автоматический монтаж","Local prototype: WebM export from images with automatic visual scoring and style-aware motion. Audio mixing, MP4, and mixed image/video timelines are still in development.":"Первая версия создаёт WebM из изображений прямо на устройстве. Экспорт MP4, звук и обработка видеоклипов пока не поддерживаются.","YOUR ASSETS":"ТВОИ МАТЕРИАЛЫ","Media library":"Медиатека","Add media":"Добавить медиа","Drop your media into the story":"Добавь материалы в проект","Or tap to browse files on your device":"Или нажми, чтобы выбрать файлы на устройстве","VIDEO · IMAGE · AUDIO":"ВИДЕО · ИЗОБРАЖЕНИЯ · АУДИО","PREVIEW":"ПРЕДПРОСМОТР","Your preview lives here":"Здесь будет предпросмотр","Import media to get started.":"Импортируй файлы, чтобы начать.","No media selected":"Медиа не выбраны","EDITING WORKSPACE":"МОНТАЖНОЕ ПРОСТРАНСТВО","Timeline":"Монтажная шкала","FOUNDATION":"ОСНОВА","Export project":"Экспорт проекта","Your timeline is ready":"Монтажная шкала готова","Add media to start building your sequence.":"Добавь медиафайлы, чтобы начать собирать последовательность.","Add first clip":"Добавить первый клип","This build supports clip trim points, local WebM export of ordered video/image sequences, and imported background audio mixed in the browser. Transitions, advanced volume controls, MP4 export, and connected AI generation are still in development.":"Эта версия поддерживает обрезку клипов, локальный экспорт последовательности видео/изображений в WebM и добавление фонового аудио в браузере. Переходы, расширенные настройки громкости, MP4 и подключение ИИ ещё разрабатываются.","BUILDING THE FUTURE OF VIDEO":"СОЗДАЁМ БУДУЩЕЕ ВИДЕО","Your choice. Your workflow.":"Твой выбор. Твой рабочий процесс.","Dismiss message":"Закрыть сообщение","Add more":"Добавить ещё","Move clip up":"Переместить клип вверх","Move clip down":"Переместить клип вниз","Remove clip":"Удалить клип","Move up":"Вверх","Move down":"Вниз","Remove":"Удалить","MEDIA":"МЕДИА","BETA":"БЕТА","Describe the video you want to make first.":"Сначала опиши видео, которое хочешь создать.","Draft plan created locally. This is a planning preview, not a rendered video.":"Черновой план создан локально. Это предварительный план, а не готовое видео.","Add at least one image to render a short video. Video-clip rendering is coming later.":"Добавь хотя бы одно изображение, чтобы создать короткое видео. Обработка видеоклипов появится позже.","Rendering a short video locally in your browser…":"Создаём короткое видео прямо в браузере…","Automatic montage rendered as WebM with image scoring, camera motion, crossfades, and the selected visual style. Audio mixing and MP4 export are still upcoming.":"Видео создано и скачано в формате WebM. Эта версия использует изображения, движение и заголовок; звук и экспорт MP4 добавим позже.","Video rendering failed. Please try fewer or smaller images.":"Не удалось создать видео. Попробуй использовать меньше изображений или файлы меньшего размера.","Project settings exported as a .dravex.json file. Source media is not embedded.":"Настройки проекта экспортированы в файл .dravex.json. Исходные медиафайлы в него не включены.","Choose a video, image, or audio file.":"Выбери видео, изображение или аудиофайл.","Import your clips, choose the order, preview each item, and prepare a project file. More precise timeline tools and finished-video rendering are still being built.":"Импортируй клипы, выбери их порядок, просмотри каждый файл и подготовь файл проекта. Точные инструменты монтажа и экспорт готового видео ещё разрабатываются.","Language":"Язык","Edit style":"Стиль монтажа","Velocity / Fast Cuts":"Velocity / быстрые склейки","Anime / AMV":"Аниме / AMV","Cinematic":"Кинематографичный","Glitch / Cyberpunk":"Глитч / киберпанк","Clean Storytelling":"Чистое повествование","02 · VISUALS — Pick the strongest action shots and build speed ramps into key moments.":"02 · ВИЗУАЛ — Выбери самые сильные экшен-кадры и добавь ускорения в ключевых моментах.","03 · RHYTHM — Cut on the beat; alternate quick bursts with short slow-motion accents.":"03 · РИТМ — Режь в такт музыке, чередуя быстрые фрагменты с короткими замедлениями.","05 · FINISH — Save the biggest reveal for the music drop and end on a clean loop.":"05 · ФИНАЛ — Прибереги главный момент для музыкального дропа и закончи плавной зацикленной сценой.","02 · VISUALS — Frame the hero clearly; use close-ups, impact poses, and dramatic contrast.":"02 · ВИЗУАЛ — Чётко покажи героя: используй крупные планы, эффектные позы и драматичный контраст.","03 · RHYTHM — Use fast motion cuts, brief impact flashes, shake, and whoosh accents sparingly.":"03 · РИТМ — Используй быстрые склейки по движению, короткие вспышки, тряску и звуки ударов умеренно.","05 · FINISH — Build toward one signature hero moment, then finish with a strong freeze-frame.":"05 · ФИНАЛ — Подведи монтаж к главному моменту героя и заверши выразительным стоп-кадром.","02 · VISUALS — Establish the scene, then use deliberate close-ups and controlled movement.":"02 · ВИЗУАЛ — Сначала покажи обстановку, затем добавь осмысленные крупные планы и плавное движение.","03 · RHYTHM — Let emotional shots breathe; use smooth zooms and only a few purposeful cuts.":"03 · РИТМ — Дай эмоциональным кадрам раскрыться; используй плавные приближения и немного точных склеек.","05 · FINISH — Resolve the story with a memorable final frame and a gentle fade.":"05 · ФИНАЛ — Заверши историю запоминающимся кадром и мягким затемнением.","02 · VISUALS — Use bold silhouettes, neon contrast, and clean focal points for each shot.":"02 · ВИЗУАЛ — Используй выразительные силуэты, неоновый контраст и чёткий центр внимания.","03 · RHYTHM — Place brief glitch or RGB-split accents on selected beats, not every cut.":"03 · РИТМ — Добавляй короткие глитч-эффекты и RGB-смещение на отдельных ударах, а не при каждой склейке.","05 · FINISH — Hit one controlled digital distortion at the climax, then return to a crisp image.":"05 · ФИНАЛ — Добавь один цифровой сбой в кульминации и вернись к чёткому изображению.","02 · VISUALS — Choose readable shots that clearly show the subject and what is happening.":"02 · ВИЗУАЛ — Выбирай понятные кадры, где хорошо видны герой и происходящее.","03 · RHYTHM — Keep cuts purposeful, captions short, and the story easy to follow without sound.":"03 · РИТМ — Делай осмысленные склейки, короткие подписи и понятную историю даже без звука.","05 · FINISH — Deliver a clear payoff and finish before the idea starts to feel repetitive.":"05 · ФИНАЛ — Дай зрителю понятную развязку и закончи до того, как монтаж начнёт повторяться.","Choose music that matches the edit rhythm; generated audio is not available yet.":"Подбери музыку под ритм монтажа; генерация звука пока недоступна."};
-function translateText(value: string, language: Language): string {
-  if (language === "en") return value;
-  const trimmed = value.trim();
-  if (russianText[trimmed]) return value.replace(trimmed, russianText[trimmed]);
-  const durationMatch = trimmed.match(/^(\d+) seconds?$/);
-  if (durationMatch) return `${durationMatch[1]} сек.`;
-  if (trimmed === "2 minutes") return "2 минуты";
-  if (trimmed === "5 minutes") return "5 минут";
-  if (trimmed === "10+ minutes") return "10+ минут";
-  if (trimmed.startsWith("01 · OPEN — Start with a clear visual hook for")) return trimmed.replace("01 · OPEN — Start with a clear visual hook for", "01 · НАЧАЛО — Начни с яркого визуального момента для");
-  if (trimmed === "02 · SELECT — Use your imported footage as the primary visual source.") return "02 · ОТБОР — Используй импортированные материалы как основной визуальный источник.";
-  if (trimmed === "02 · VISUALS — Add your own clips or images; generative media is not connected yet.") return "02 · ВИЗУАЛ — Добавь свои клипы или изображения; генерация материалов пока не подключена.";
-  if (trimmed === "03 · BUILD — Arrange the strongest moments into a beginning, middle, and ending.") return "03 · СБОРКА — Расположи лучшие моменты в начале, середине и финале.";
-  if (trimmed === "04 · SOUND — Review the imported audio and keep dialogue understandable.") return "04 · ЗВУК — Проверь импортированное аудио и сохрани разборчивость диалогов.";
-  if (trimmed === "04 · SOUND — Add music or voiceover later; no audio has been generated.") return "04 · ЗВУК — Позже добавь музыку или озвучку; аудио ещё не создано.";
-  if (trimmed.startsWith("05 · FINISH — Prepare a ")) return trimmed.replace("05 · FINISH — Prepare a", "05 · ФИНАЛ — Подготовь композицию").replace(" composition, target length ", ", длительность ").replace(", export target ", ", качество экспорта ");
-  let match = trimmed.match(/^Added (\d+) media files? to this session\.$/);
-  if (match) return `Добавлено медиафайлов: ${match[1]}.`;
-  match = trimmed.match(/^(\d+) video(s?) · (.+) known duration$/);
-  if (match) return `${match[1]} видео · ${match[3]} — известная длительность`;
-  match = trimmed.match(/^(\d+) media files added$/);
-  if (match) return `Добавлено медиафайлов: ${match[1]}`;
-  match = trimmed.match(/^Rendering video… (\d+)%$/);
-  if (match) return `Создаём видео… ${match[1]}%`;
-  return value;
-}
-function localize(node: ReactNode, language: Language): ReactNode {
-  if (typeof node === "string") return translateText(node, language);
-  if (Array.isArray(node)) return node.map((child) => localize(child, language));
-  if (!isValidElement(node)) return node;
-  const props = node.props as Record<string, unknown>;
-  const nextProps: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key === "children") nextProps.children = localize(value as ReactNode, language);
-    else if ((key === "placeholder" || key === "title" || key === "aria-label") && typeof value === "string") nextProps[key] = translateText(value, language);
-    else nextProps[key] = value;
+const styleOptions: Array<{ id: EditStyle; title: string; note: string; icon: typeof Sparkles }> = [
+  { id: "auto", title: "Автоматически", note: "Темп, движение и эффекты", icon: Sparkles },
+  { id: "velocity", title: "Динамичный", note: "Быстрые склейки", icon: WandSparkles },
+  { id: "cinematic", title: "Кино", note: "Плавный ритм", icon: Film },
+  { id: "story", title: "Спокойный", note: "Мягкая подача", icon: Play },
+  { id: "anime", title: "Аниме", note: "Яркий контраст", icon: Sparkles },
+  { id: "glitch", title: "Глитч", note: "Цифровые вспышки", icon: ScanLine }
+];
+
+function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
+  const shotLength = style === "velocity" ? 1.05 : style === "story" ? 3.2 : 2.2;
+  const usableDuration = Math.min(sourceDuration, targetDuration);
+  const count = Math.max(1, Math.ceil(usableDuration / shotLength));
+  const ranked = [...candidates].sort((a, b) => b.score - a.score);
+  const selected: HighlightMoment[] = [];
+  for (let bucket = 0; bucket < count; bucket += 1) {
+    const from = sourceDuration * bucket / count;
+    const to = sourceDuration * (bucket + 1) / count;
+    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 1.15)));
+    if (best) selected.push(best);
   }
-  return cloneElement(node as ReactElement<Record<string, unknown>>, nextProps as Partial<Record<string, unknown>>);
-}
-
-type Mode = "ai" | "manual" | "collab";
-type EditStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
-type ClipKind = "video" | "audio" | "image";
-type ReferenceRecipe = { name: string; duration: number; pace: "Fast" | "Medium" | "Slow"; averageShot: number; cutTimes: number[] };
-type ReferenceLink = { id: string; url: string; platform: "TikTok" | "YouTube"; videoId: string };
-
-type LearnedProfile = { pace: "Fast" | "Medium" | "Slow"; sampleCount: number; helpful: number; unhelpful: number; averageShot: number; lastUpdated: string };
-const LEARNING_MEMORY_KEY = "dravex-learning-memory-v1";
-function loadLearningMemory(): LearnedProfile[] {
-  try {
-    const raw = window.localStorage.getItem(LEARNING_MEMORY_KEY);
-    if (!raw) return [];
-    const value: unknown = JSON.parse(raw);
-    if (!Array.isArray(value)) return [];
-    return value.filter((item): item is LearnedProfile => item && ["Fast", "Medium", "Slow"].includes(item.pace) && Number.isFinite(item.sampleCount) && Number.isFinite(item.helpful) && Number.isFinite(item.unhelpful) && Number.isFinite(item.averageShot));
-  } catch { return []; }
-}
-function persistLearningMemory(profiles: LearnedProfile[]): boolean {
-  try { window.localStorage.setItem(LEARNING_MEMORY_KEY, JSON.stringify(profiles)); return true; }
-  catch { return false; }
-}
-
-function parseReferenceLink(raw: string): Omit<ReferenceLink, "id"> | null {
-  try {
-    const parsed = new URL(raw.trim());
-    const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
-    if (host === "youtube.com" || host === "youtu.be" || host === "music.youtube.com") {
-      let videoId = "";
-      if (host === "youtu.be") videoId = parsed.pathname.split("/").filter(Boolean)[0] ?? "";
-      else if (parsed.pathname === "/watch") videoId = parsed.searchParams.get("v") ?? "";
-      else {
-        const match = parsed.pathname.match(/^\/(?:shorts|embed|live)\/([\w-]+)/);
-        videoId = match?.[1] ?? "";
-      }
-      return /^[\w-]{11}$/.test(videoId) ? { url: parsed.href, platform: "YouTube", videoId } : null;
-    }
-    if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
-      const match = parsed.pathname.match(/\/video\/(\d+)/);
-      return match ? { url: parsed.href, platform: "TikTok", videoId: match[1] } : null;
-    }
-    return null;
-  } catch {
-    return null;
+  for (const item of ranked) {
+    if (selected.length >= count) break;
+    if (selected.every((existing) => Math.abs(existing.time - item.time) > 0.8)) selected.push(item);
   }
+  selected.sort((a, b) => a.time - b.time);
+  if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
+  const segments: VideoSegment[] = [];
+  let remaining = usableDuration;
+  for (const moment of selected) {
+    if (remaining <= 0.15) break;
+    const duration = Math.min(shotLength, remaining, sourceDuration);
+    const start = Math.max(0, Math.min(sourceDuration - duration, moment.time - duration / 2));
+    segments.push({ name: file.name, url, trimStart: start, trimEnd: start + duration });
+    remaining -= duration;
+  }
+  if (remaining > 0.15) {
+    const step = Math.max(shotLength, sourceDuration / Math.max(1, Math.ceil(sourceDuration / shotLength)));
+    for (let start = 0; remaining > 0.15; start += step) {
+      const duration = Math.min(shotLength, remaining, sourceDuration);
+      const safeStart = Math.max(0, Math.min(sourceDuration - duration, start % Math.max(0.1, sourceDuration - duration + 0.1)));
+      segments.push({ name: file.name, url, trimStart: safeStart, trimEnd: safeStart + duration });
+      remaining -= duration;
+      if (segments.length > 200) break;
+    }
+  }
+  return segments;
 }
-type MediaClip = {
-  id: string;
-  name: string;
-  kind: ClipKind;
-  url: string;
-  bytes: number;
-  duration?: number;
-  trimStart?: number;
-  trimEnd?: number;
-};
-
-const uid = () => `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const formatTime = (seconds?: number) => {
-  if (!seconds || !Number.isFinite(seconds)) return "—";
-  const total = Math.floor(seconds);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-};
-const formatBytes = (bytes: number) =>
-  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>("ai");
-  const [language, setLanguage] = useState<Language>("en");
-  const [clips, setClips] = useState<MediaClip[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [aspect, setAspect] = useState("9:16");
-  const [quality, setQuality] = useState("1080p");
-  const [targetLength, setTargetLength] = useState("30 seconds");
-  const [editStyle, setEditStyle] = useState<EditStyle>("velocity");
-  const [showTitleOverlay, setShowTitleOverlay] = useState(false);
-  const [plan, setPlan] = useState<string[]>([]);
-  const [notice, setNotice] = useState("");
-  const [projectName, setProjectName] = useState("Untitled project");
-  const [isRendering, setIsRendering] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [musicFile, setMusicFile] = useState<File | null>(null);
+  const [musicUrl, setMusicUrl] = useState("");
+  const [stage, setStage] = useState<Stage>("empty");
+  const [duration, setDuration] = useState(30);
+  const [style, setStyle] = useState<EditStyle>("auto");
+  const [quality, setQuality] = useState<"720p" | "1080p">("720p");
+  const [beatSync, setBeatSync] = useState(true);
+  const [projectMessage, setProjectMessage] = useState("");
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [scan, setScan] = useState<HighlightProgress>({ current: 0, total: 0, time: 0 });
   const [renderProgress, setRenderProgress] = useState(0);
-  const [musicVolume, setMusicVolume] = useState(65);
-  const [playheadTime, setPlayheadTime] = useState(0);
-  const [referenceReport, setReferenceReport] = useState<string[]>([]);
-  const [referenceLinkInput, setReferenceLinkInput] = useState("");
-  const [referenceLinks, setReferenceLinks] = useState<ReferenceLink[]>([]);
-  const [referenceLinkError, setReferenceLinkError] = useState("");
-  const [referenceRecipe, setReferenceRecipe] = useState<ReferenceRecipe | null>(null);
-  const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
-  const [learnedProfiles, setLearnedProfiles] = useState<LearnedProfile[]>(() => loadLearningMemory());
-  const [isAnalyzingHighlights, setIsAnalyzingHighlights] = useState(false);
-  const [highlightProgress, setHighlightProgress] = useState<HighlightProgress | null>(null);
-  const [highlightVariants, setHighlightVariants] = useState<HighlightVariant[]>([]);
-  const [selectedHighlightVariant, setSelectedHighlightVariant] = useState<HighlightVariant["id"]>("cinematic");
-  const [highlightSourceId, setHighlightSourceId] = useState<string | null>(null);
-  const uploadRef = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [outputUrl, setOutputUrl] = useState("");
+  const [outputName, setOutputName] = useState("");
+  const [cutCount, setCutCount] = useState(0);
+  const [usedStyle, setUsedStyle] = useState("");
+  const videoInput = useRef<HTMLInputElement>(null);
+  const musicInput = useRef<HTMLInputElement>(null);
+  const mediaUrlsRef = useRef<string[]>([]);
+  const videoFile = mediaFiles[0] ?? null;
+  const videoUrl = mediaUrls[0] ?? "";
+  const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => file.type.startsWith("image/"));
+  const busy = stage === "analyzing" || stage === "rendering";
 
-  const activeClip = clips.find((clip) => clip.id === activeId) ?? clips[0] ?? null;
-  const videoCount = clips.filter((clip) => clip.kind === "video").length;
-  const totalBytes = clips.reduce((sum, clip) => sum + clip.bytes, 0);
-  const estimatedDuration = useMemo(
-    () => clips.reduce((sum, clip) => {
-      if (clip.kind === "video" && clip.duration) {
-        const start = Math.max(0, clip.trimStart ?? 0);
-        const end = Math.min(clip.duration, clip.trimEnd ?? clip.duration);
-        return sum + Math.max(0, end - start);
-      }
-      if (clip.kind === "image") return sum + 3;
-      return sum + (clip.duration ?? 0);
-    }, 0),
-    [clips]
-  );
+  useEffect(() => () => { mediaUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
-  const addFiles = (fileList: FileList | null) => {
-    if (!fileList?.length) return;
-    const accepted = Array.from(fileList).filter((file) =>
-      file.type.startsWith("video/") || file.type.startsWith("audio/") || file.type.startsWith("image/")
-    );
-    const newClips = accepted.map((file): MediaClip => ({
-      id: uid(),
-      name: file.name,
-      kind: file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "image",
-      url: URL.createObjectURL(file),
-      bytes: file.size
-    }));
-    setClips((current) => [...current, ...newClips]);
-    if (newClips.length) trackEvolutionEvent("media_imported");
-    if (!activeId && newClips[0]) setActiveId(newClips[0].id);
-    setNotice(newClips.length ? `Added ${newClips.length} media file${newClips.length === 1 ? "" : "s"} to this session.` : "Choose a video, image, or audio file.");
-    window.setTimeout(() => setNotice(""), 4000);
-    if (uploadRef.current) uploadRef.current.value = "";
-  };
+  useEffect(() => {
+    let active = true;
+    loadLocalProject().then((project) => {
+      if (!active || !project || !project.files?.length) return;
+      const restoredUrls = project.files.map((file) => URL.createObjectURL(file));
+      mediaUrlsRef.current = restoredUrls;
+      setMediaFiles(project.files);
+      setMediaUrls(restoredUrls);
+      setMusicFile(project.musicFile ?? null);
+      setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
+      setStyle((project.style as EditStyle) || "auto");
+      setDuration(project.duration || 30);
+      setQuality(project.quality || "720p");
+      setBeatSync(project.beatSync !== false);
+      setStage("ready");
+      setProjectMessage("Найден сохранённый проект на этом устройстве.");
+    }).catch(() => { /* A private browser or disabled IndexedDB must not prevent editing. */ });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
+  useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
 
-  const removeClip = (id: string) => {
-    trackEvolutionEvent("clip_changed");
-    const clip = clips.find((item) => item.id === id);
-    const next = clips.filter((item) => item.id !== id);
-    if (clip && !next.some((item) => item.url === clip.url)) URL.revokeObjectURL(clip.url);
-    setClips(next);
-    if (activeId === id) setActiveId(next[0]?.id ?? null);
-  };
-
-  const moveClip = (id: string, direction: -1 | 1) => {
-    trackEvolutionEvent("clip_changed");
-    setClips((current) => {
-      const index = current.findIndex((clip) => clip.id === id);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= current.length) return current;
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  };
-
-  const splitClipAtPlayhead = () => {
-    if (!activeClip || activeClip.kind !== "video" || !activeClip.duration) return;
-    const start = Math.max(0, activeClip.trimStart ?? 0);
-    const end = Math.min(activeClip.duration, activeClip.trimEnd ?? activeClip.duration);
-    const splitAt = playheadTime;
-    if (splitAt <= start + 0.1 || splitAt >= end - 0.1) {
-      setNotice(language === "ru"
-        ? "Поставь видео на паузу или перемотай внутрь выбранного диапазона, затем раздели клип."
-        : "Seek inside the selected trim range, then split the clip.");
-      window.setTimeout(() => setNotice(""), 4500);
-      return;
-    }
-    const first: MediaClip = { ...activeClip, id: uid(), name: activeClip.name.replace(/\.[^.]+$/, "") + " · 1", trimStart: start, trimEnd: splitAt };
-    const second: MediaClip = { ...activeClip, id: uid(), name: activeClip.name.replace(/\.[^.]+$/, "") + " · 2", trimStart: splitAt, trimEnd: end };
-    setClips((current) => {
-      const index = current.findIndex((clip) => clip.id === activeClip.id);
-      if (index < 0) return current;
-      const next = [...current];
-      next.splice(index, 1, first, second);
-      return next;
-    });
-    setActiveId(second.id);
-    trackEvolutionEvent("clip_changed");
-    setNotice(language === "ru" ? "Клип разделён на две части по текущей позиции воспроизведения." : "Clip split into two segments at the current playhead.");
-    window.setTimeout(() => setNotice(""), 4500);
-  };
-
-  const makePlan = () => {
-    if (!prompt.trim() && !clips.some((clip) => clip.kind === "image" || clip.kind === "video")) {
-      setNotice(language === "ru"
-        ? "Опиши видео или добавь видео/изображения, чтобы DRAVEX мог подготовить план."
-        : "Describe the video or add video/images so DRAVEX can prepare a plan.");
-      window.setTimeout(() => setNotice(""), 3500);
-      return;
-    }
-    const inferred = inferPromptSettings(prompt, language);
-    const promptDuration = extractPromptDuration(prompt);
-    const resolvedStyle = inferred.style ?? editStyle;
-    const resolvedAspect = inferred.aspectRatio ?? aspect;
-    if (promptDuration && promptDuration !== targetLength) setTargetLength(promptDuration);
-    if (inferred.style && inferred.style !== editStyle) setEditStyle(inferred.style);
-    if (inferred.aspectRatio && inferred.aspectRatio !== aspect) setAspect(inferred.aspectRatio);
-    const next = generateLocalPlan({
-      prompt,
-      style: resolvedStyle,
-      duration: promptDuration ?? targetLength,
-      aspectRatio: resolvedAspect,
-      quality,
-      language,
-      videoNames: clips.filter((clip) => clip.kind === "video").map((clip) => clip.name),
-      imageNames: clips.filter((clip) => clip.kind === "image").map((clip) => clip.name),
-      hasAudio: clips.some((clip) => clip.kind === "audio")
-    });
-    setPlan([...inferred.reasons.map((reason) => `AUTO · ${reason}`), ...next]);
-    trackEvolutionEvent("plan_created");
-    setNotice(language === "ru"
-      ? "DRAVEX подобрал стиль и формат из запроса. Проверь автоматически выбранные настройки перед экспортом."
-      : "DRAVEX inferred the style and format from your brief. Review the automatically selected settings before export.");
-    window.setTimeout(() => setNotice(""), 6000);
-  };
-
-  const addReferenceLink = () => {
-    const parsed = parseReferenceLink(referenceLinkInput);
-    if (!parsed) {
-      setReferenceLinkError("Paste a full TikTok video URL or a YouTube / Shorts URL. Short TikTok share links (vm.tiktok.com) cannot be resolved in this browser-only version.");
-      return;
-    }
-    setReferenceLinks((current) => current.some((item) => item.url === parsed.url)
-      ? current
-      : [...current, { ...parsed, id: uid() }]);
-    setReferenceLinkInput("");
-    setReferenceLinkError("");
-    setNotice("Reference link added. The embedded player can be viewed, but its frames cannot be analyzed by this browser-only app.");
-    window.setTimeout(() => setNotice(""), 6000);
-  };
-
-  const analyzeReference = async () => {
-    const reference = clips.find((clip) => clip.kind === "video");
-    if (!reference) {
-      setNotice("Import a reference video first, then analyze its editing rhythm.");
-      window.setTimeout(() => setNotice(""), 4000);
-      return;
-    }
-    setIsAnalyzingReference(true);
-    setReferenceReport([]);
-    setReferenceRecipe(null);
-    setNotice("Analyzing reference video locally in your browser…");
+  const saveProject = async () => {
+    if (!mediaFiles.length || projectBusy) return;
+    setProjectBusy(true);
+    setProjectMessage("");
     try {
-      const video = document.createElement("video");
-      video.preload = "auto";
-      video.muted = true;
-      video.playsInline = true;
-      video.src = reference.url;
-      await new Promise<void>((resolve, reject) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error("This video could not be read by the browser."));
-      });
-      const duration = Math.min(video.duration || 0, 120);
-      if (!Number.isFinite(duration) || duration < 1) throw new Error("The reference video is too short or its duration is unavailable.");
-      const canvas = document.createElement("canvas");
-      canvas.width = 64;
-      canvas.height = 36;
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) throw new Error("Frame analysis is not supported in this browser.");
-      const sampleTimes = Array.from({ length: Math.max(2, Math.ceil(duration * 2)) }, (_, i) => Math.min(i * 0.5 + 0.05, Math.max(0.05, duration - 0.08)));
-      let previous: Uint8ClampedArray | null = null;
-      const cutTimes: number[] = [];
-      for (const time of sampleTimes) {
-        await new Promise<void>((resolve, reject) => {
-          const onSeeked = () => { video.removeEventListener("error", onError); resolve(); };
-          const onError = () => { video.removeEventListener("seeked", onSeeked); reject(new Error("Could not sample a frame from this video.")); };
-          video.addEventListener("seeked", onSeeked, { once: true });
-          video.addEventListener("error", onError, { once: true });
-          video.currentTime = time;
-        });
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-        let luma = 0;
-        for (let i = 0; i < pixels.length; i += 4) luma += (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722);
-        luma /= (pixels.length / 4);
-        if (previous) {
-          let difference = 0;
-          for (let i = 0; i < pixels.length; i += 4) {
-            difference += (Math.abs(pixels[i] - previous[i]) + Math.abs(pixels[i + 1] - previous[i + 1]) + Math.abs(pixels[i + 2] - previous[i + 2])) / 3;
-          }
-          difference /= (pixels.length / 4);
-          if (difference > 42 && time > 0.4 && (cutTimes.length === 0 || time - cutTimes[cutTimes.length - 1] >= 1)) cutTimes.push(time);
-        }
-        previous = new Uint8ClampedArray(pixels);
-      }
-      const averageShot = duration / Math.max(1, cutTimes.length + 1);
-      const pace: ReferenceRecipe["pace"] = averageShot < 1.5 ? "Fast" : averageShot < 3.5 ? "Medium" : "Slow";
-      const report = [
-        `REFERENCE — ${reference.name}`,
-        `DURATION — About ${Math.round(video.duration)} seconds`,
-        `EDITING RHYTHM — ${pace}; estimated average shot length ${averageShot.toFixed(1)} seconds`,
-        `SCENE CHANGES — About ${cutTimes.length} likely visual cuts detected`,
-        cutTimes.length ? `CUT MARKERS — ${cutTimes.slice(0, 12).map((time) => `${time.toFixed(1)}s`).join(", ")}` : "CUT MARKERS — No clear cuts detected at the sampled intervals",
-        "LIMITATION — This local first pass detects visual changes; it does not yet understand the story, spoken words, or music beats."
-      ];
-      setReferenceReport(report);
-      trackEvolutionEvent("reference_analyzed");
-      setReferenceRecipe({ name: reference.name, duration: video.duration, pace, averageShot, cutTimes: cutTimes.slice(0, 12) });
-      setLearnedProfiles((current) => {
-        const existing = current.find((profile) => profile.pace === pace);
-        const next = existing
-          ? current.map((profile) => profile.pace === pace
-              ? { ...profile, sampleCount: profile.sampleCount + 1, averageShot: Number(((profile.averageShot * profile.sampleCount + averageShot) / (profile.sampleCount + 1)).toFixed(2)), lastUpdated: new Date().toISOString() }
-              : profile)
-          : [...current, { pace, sampleCount: 1, helpful: 0, unhelpful: 0, averageShot: Number(averageShot.toFixed(2)), lastUpdated: new Date().toISOString() }];
-        persistLearningMemory(next);
-        return next;
-      });
-      setNotice("Reference analysis complete. This is a local visual estimate, not semantic AI analysis.");
-      window.setTimeout(() => setNotice(""), 6000);
-      video.removeAttribute("src");
-      video.load();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Reference analysis failed.");
-      window.setTimeout(() => setNotice(""), 5000);
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, quality, beatSync });
+      setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
+    } catch (caught) {
+      setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
     } finally {
-      setIsAnalyzingReference(false);
+      setProjectBusy(false);
     }
   };
 
-
-  const rateLearnedRecipe = (helpful: boolean) => {
-    if (!referenceRecipe) return;
-    setLearnedProfiles((current) => {
-      const existing = current.find((profile) => profile.pace === referenceRecipe.pace);
-      const next = existing
-        ? current.map((profile) => profile.pace === referenceRecipe.pace
-            ? { ...profile, helpful: profile.helpful + (helpful ? 1 : 0), unhelpful: profile.unhelpful + (helpful ? 0 : 1), lastUpdated: new Date().toISOString() }
-            : profile)
-        : [...current, { pace: referenceRecipe.pace, sampleCount: 1, helpful: helpful ? 1 : 0, unhelpful: helpful ? 0 : 1, averageShot: Number(referenceRecipe.averageShot.toFixed(2)), lastUpdated: new Date().toISOString() }];
-      const saved = persistLearningMemory(next);
-      setNotice(language === "ru"
-        ? (saved ? "Оценка сохранена. DRAVEX учтёт её в следующих рекомендациях." : "Браузер не смог сохранить память. Проверь настройки сайта.")
-        : (saved ? "Feedback saved. DRAVEX will use it in future recommendations." : "Browser storage failed. Check site settings."));
-      return next;
-    });
-  };
-
-  const clearLearningMemory = () => {
+  const restoreProject = async () => {
+    if (projectBusy) return;
+    setProjectBusy(true);
     try {
-      window.localStorage.removeItem(LEARNING_MEMORY_KEY);
-      setLearnedProfiles([]);
-      setNotice(language === "ru" ? "Память обучения очищена на этом устройстве." : "Learning memory cleared on this device.");
-    } catch {
-      setNotice(language === "ru" ? "Не удалось очистить память браузера." : "Could not clear browser learning memory.");
-    }
-  };
-
-  const analyzeHighlights = async () => {
-    const source = activeClip?.kind === "video" ? activeClip : clips.find((clip) => clip.kind === "video");
-    if (!source) {
-      setNotice(language === "ru" ? "Сначала импортируй длинное видео, из которого нужно выбрать лучшие моменты." : "Import a source video before looking for highlights.");
-      window.setTimeout(() => setNotice(""), 4500);
-      return;
-    }
-    setIsAnalyzingHighlights(true);
-    setHighlightProgress(null);
-    setHighlightVariants([]);
-    setHighlightSourceId(source.id);
-    setNotice(language === "ru" ? "Сканируем видео локально. Длинные файлы могут анализироваться несколько минут." : "Scanning video locally. Long files may take several minutes.");
-    try {
-      const result = await analyzeVideoForHighlights(source.url, setHighlightProgress);
-      const variants = buildHighlightVariants(result.candidates, result.duration);
-      setHighlightVariants(variants);
-      const bestLearned = [...learnedProfiles].sort((left, right) => (right.helpful - right.unhelpful) - (left.helpful - left.unhelpful))[0];
-      const hasPositiveLearning = Boolean(bestLearned && bestLearned.helpful > bestLearned.unhelpful);
-      setSelectedHighlightVariant(hasPositiveLearning && bestLearned ? (bestLearned.pace === "Fast" ? "aggressive" : bestLearned.pace === "Slow" ? "slow" : "cinematic") : "cinematic");
-      setHighlightSourceId(source.id);
-      setNotice(language === "ru"
-        ? `Анализ завершён: найдено ${result.candidates.length} визуальных моментов. Выбери вариант и проверь его перед экспортом.`
-        : `Scan complete: ${result.candidates.length} visual moments found. Choose a cut and review it before export.`);
-      window.setTimeout(() => setNotice(""), 6000);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : (language === "ru" ? "Не удалось проанализировать видео." : "Video analysis failed."));
-      window.setTimeout(() => setNotice(""), 6000);
+      const project = await loadLocalProject();
+      if (!project || !project.files?.length) {
+        setProjectMessage("Сохранённый проект не найден. Сначала сохрани текущий проект.");
+        return;
+      }
+      mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (musicUrl) URL.revokeObjectURL(musicUrl);
+      const restoredUrls = project.files.map((file) => URL.createObjectURL(file));
+      mediaUrlsRef.current = restoredUrls;
+      setMediaFiles(project.files);
+      setMediaUrls(restoredUrls);
+      setMusicFile(project.musicFile ?? null);
+      setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
+      setStyle((project.style as EditStyle) || "auto");
+      setDuration(project.duration || 30);
+      setQuality(project.quality || "720p");
+      setBeatSync(project.beatSync !== false);
+      setStage("ready");
+      setOutputUrl("");
+      setProjectMessage("Проект восстановлен.");
+    } catch (caught) {
+      setProjectMessage(caught instanceof Error ? caught.message : "Не удалось восстановить проект.");
     } finally {
-      setIsAnalyzingHighlights(false);
-      setHighlightProgress(null);
+      setProjectBusy(false);
     }
   };
 
-  const applyHighlightVariant = (variant: HighlightVariant) => {
-    const source = clips.find((clip) => clip.id === highlightSourceId && clip.kind === "video");
-    if (!source) {
-      setNotice(language === "ru" ? "Исходное видео больше не найдено. Запусти анализ снова." : "The source video is no longer available. Analyze it again.");
-      window.setTimeout(() => setNotice(""), 4500);
+  const onMediaSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const hasInvalid = files.some((file) => !file.type.startsWith("video/") && !file.type.startsWith("image/"));
+    const videos = files.filter((file) => file.type.startsWith("video/"));
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
+      setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
+      event.target.value = "";
       return;
     }
-    if (!variant.moments.length) return;
-    const cutClips: MediaClip[] = variant.moments.map((moment, index) => ({
-      ...source,
-      id: uid(),
-      name: `${source.name.replace(/\.[^.]+$/, "")} · ${String(index + 1).padStart(2, "0")}`,
-      bytes: index === 0 ? source.bytes : 0,
-      duration: moment.end - moment.start,
-      trimStart: moment.start,
-      trimEnd: moment.end
-    }));
-    setClips((current) => {
-      const currentIndex = current.findIndex((clip) => clip.id === source.id);
-      if (currentIndex < 0) return current;
-      const next = [...current];
-      next.splice(currentIndex, 1, ...cutClips);
-      return next;
-    });
-    setActiveId(cutClips[0].id);
-    setTargetLength(`${Math.max(1, Math.round(variant.duration))} seconds`);
-    setEditStyle(variant.id === "aggressive" ? "velocity" : variant.id === "cinematic" ? "cinematic" : "story");
-    setMode("ai");
-    setNotice(language === "ru"
-      ? `В монтаж добавлено ${cutClips.length} выбранных фрагментов (~${Math.round(variant.duration)} с). Исходные моменты сохранены как обрезки; перед экспортом проверь последовательность.`
-      : `${cutClips.length} selected segments added (~${Math.round(variant.duration)} s). Review the sequence before exporting.`);
-    window.setTimeout(() => setNotice(""), 6500);
+    mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+    const nextUrls = files.map((file) => URL.createObjectURL(file));
+    mediaUrlsRef.current = nextUrls;
+    setMediaFiles(files);
+    setMediaUrls(nextUrls);
+    setOutputUrl("");
+    setError("");
+    setMessage("");
+    setStage("ready");
+    setScan({ current: 0, total: 0, time: 0 });
+    event.target.value = "";
   };
 
-  const applyReferenceRecipe = () => {
-    if (!referenceRecipe) return;
-    const fast = referenceRecipe.pace === "Fast";
-    const slow = referenceRecipe.pace === "Slow";
-    const shotRange = fast ? "0.5–1.2 s" : slow ? "2.5–4 s" : "1.2–2.5 s";
-    const ruShotRange = fast ? "0,5–1,2 с" : slow ? "2,5–4 с" : "1,2–2,5 с";
-    const recipe = language === "ru" ? [
-      `РЕЦЕПТ МОНТАЖА — по примеру «${referenceRecipe.name}»`,
-      `01 · ЗАЦЕПКА — начни с самого сильного момента в первые 1–2 секунды.`,
-      `02 · ТЕМП — ${referenceRecipe.pace === "Fast" ? "быстрый" : referenceRecipe.pace === "Slow" ? "медленный" : "средний"} ритм; ориентир длительности кадра ${ruShotRange}.`,
-      `03 · СКЛЕЙКИ — обнаружено примерно ${referenceRecipe.cutTimes.length} вероятных смен кадра; используй метки как подсказки, а не точные границы.`,
-      `04 · РАЗВИТИЕ — чередуй основные моменты с короткими переходными кадрами, сохраняя выбранный стиль «${editStyle}».`,
-      `05 · ФИНАЛ — оставь сильнейший момент ближе к концу и заверши чистым кадром.`,
-      `ОГРАНИЧЕНИЕ — это рецепт по визуальному темпу, а не понимание сюжета или музыки.`
-    ] : [
-      `EDIT RECIPE — inspired by “${referenceRecipe.name}”`,
-      "01 · HOOK — open with the strongest moment in the first 1–2 seconds.",
-      `02 · PACING — ${referenceRecipe.pace.toLowerCase()} rhythm; target shot length around ${shotRange}.`,
-      `03 · CUTS — about ${referenceRecipe.cutTimes.length} likely visual changes detected; use markers as guides, not exact edit points.`,
-      `04 · BUILD — alternate key moments with short connective shots, keeping the selected “${editStyle}” style.`,
-      "05 · FINISH — save a strong moment for the ending and finish on a clean frame.",
-      "LIMITATION — this recipe reflects visual pacing, not story or music understanding."
-    ];
-    setPlan(recipe);
-    setMode("ai");
-    setNotice(language === "ru" ? "Рецепт перенесён в план монтажа. Это рекомендации по темпу, а не автоматическая нарезка исходного видео." : "Recipe added to your edit plan. These are pacing guidelines, not automatic trimming of the source video.");
-    window.setTimeout(() => setNotice(""), 5000);
+  const moveMedia = (index: number, direction: -1 | 1) => {
+    if (busy) return;
+    const target = index + direction;
+    if (target < 0 || target >= mediaFiles.length) return;
+    const nextFiles = [...mediaFiles];
+    const nextUrls = [...mediaUrls];
+    [nextFiles[index], nextFiles[target]] = [nextFiles[target], nextFiles[index]];
+    [nextUrls[index], nextUrls[target]] = [nextUrls[target], nextUrls[index]];
+    mediaUrlsRef.current = nextUrls;
+    setMediaFiles(nextFiles);
+    setMediaUrls(nextUrls);
+    setOutputUrl("");
+    setError("");
+    setStage("ready");
   };
 
-  const renderVideo = async () => {
-    const videoClips = clips.filter((clip) => clip.kind === "video");
-    const audioClips = clips.filter((clip) => clip.kind === "audio");
-    const visualClips = clips.filter((clip) => clip.kind === "video" || clip.kind === "image");
-    const images = clips.filter((clip) => clip.kind === "image").map(({ name, url }) => ({ name, url }));
-    const renderPreferences = getPromptRenderPreferences(prompt);
-    if (!visualClips.length) {
-      setNotice("Import at least one video clip or image before rendering.");
-      window.setTimeout(() => setNotice(""), 5000);
+  const removeMediaAt = (index: number) => {
+    if (busy) return;
+    const removedUrl = mediaUrls[index];
+    if (removedUrl) URL.revokeObjectURL(removedUrl);
+    const nextFiles = mediaFiles.filter((_, itemIndex) => itemIndex !== index);
+    const nextUrls = mediaUrls.filter((_, itemIndex) => itemIndex !== index);
+    mediaUrlsRef.current = nextUrls;
+    setMediaFiles(nextFiles);
+    setMediaUrls(nextUrls);
+    setOutputUrl("");
+    setError("");
+    setMessage("");
+    setStage(nextFiles.length ? "ready" : "empty");
+    setScan({ current: 0, total: 0, time: 0 });
+  };
+
+  const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("audio/")) {
+      setError("Выбери аудиофайл, который поддерживает браузер.");
       return;
     }
-    setIsRendering(true);
+    if (musicUrl) URL.revokeObjectURL(musicUrl);
+    setMusicFile(file);
+    setMusicUrl(URL.createObjectURL(file));
+    setError("");
+  };
+
+  const createMontage = async () => {
+    if (!mediaFiles.length || busy) return;
+    setError("");
+    setOutputUrl("");
     setRenderProgress(0);
-    setNotice(audioClips.length
-      ? "Rendering your montage with imported background audio locally in your browser…"
-      : videoClips.length
-        ? "Rendering trimmed video clips with their original audio locally in your browser…"
-        : "Rendering a short image montage locally in your browser…");
+    setScan({ current: 0, total: 0, time: 0 });
     try {
-      const useSequenceRenderer = videoClips.length > 0 || audioClips.length > 0;
-      const blob = useSequenceRenderer
-        ? await renderVideoSequence({
-            segments: visualClips.map((clip) => clip.kind === "image"
-              ? { kind: "image" as const, name: clip.name, url: clip.url, duration: 3 }
-              : {
-                  kind: "video" as const,
-                  name: clip.name,
-                  url: clip.url,
-                  trimStart: clip.trimStart ?? 0,
-                  trimEnd: clip.trimEnd && clip.trimEnd > (clip.trimStart ?? 0) ? clip.trimEnd : (clip.duration ?? 0)
-                }),
-            audioTracks: audioClips.map(({ name, url }) => ({ name, url, volume: musicVolume / 100 })),
-            title: showTitleOverlay ? makeOverlayTitle(prompt, projectName) : "",
-            aspectRatio: aspect,
-            quality,
-            style: editStyle,
-            ...renderPreferences,
-            targetDurationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
-            onProgress: setRenderProgress
-          })
-        : await renderImageSlideshow({
-            images,
-            title: showTitleOverlay ? makeOverlayTitle(prompt, projectName) : "",
-            aspectRatio: aspect,
-            durationSeconds: targetLength.toLowerCase().includes("minute") ? (parseInt(targetLength, 10) || 2) * 60 : (parseInt(targetLength, 10) || 15),
-            style: editStyle,
-            quality,
-            ...renderPreferences,
-            onProgress: setRenderProgress
-          });
-      trackEvolutionEvent("render_success");
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${projectName.trim().replace(/[^a-z0-9-_]+/gi, "-") || "dravex-video"}.webm`;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice(audioClips.length
-        ? "Montage exported as WebM with imported background audio, cinematic motion, and style-based cut accents. MP4 export and automatic beat detection are still in development."
-        : videoClips.length
-          ? "Video sequence exported as styled WebM with cinematic motion, cut accents, and original audio where supported. MP4 export and automatic beat detection are still in development."
-          : "Image montage exported as WebM with motion and the selected style. Audio generation and MP4 export are still in development.");
-    } catch (error) {
-      trackEvolutionEvent("render_failure");
-      setNotice(error instanceof Error ? error.message : "Video rendering failed. Try shorter clips or smaller source files.");
-    } finally {
-      setIsRendering(false);
-      setRenderProgress(0);
+      setStage("analyzing");
+      setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
+      let segments: Array<VideoSegment | ImageSegment>;
+      let renderDuration = duration;
+      let sourceVideoDuration = 0;
+      let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
+      if (isImageMode) {
+        const photoCount = mediaFiles.length;
+        // Auto-director treats the selected duration as a ceiling: it avoids holding a small photo set on screen for 6–10 seconds per image.
+        actualStyle = style === "auto"
+          ? (photoCount >= 4 || (musicFile !== null && beatSync) ? "velocity" : "cinematic")
+          : actualStyle;
+        const shotSeconds = actualStyle === "velocity" ? (musicFile && beatSync ? 1.25 : 1.55)
+          : actualStyle === "glitch" ? 1.35
+          : actualStyle === "anime" ? 1.65
+          : actualStyle === "story" ? 3.1
+          : 2.35;
+        renderDuration = Math.min(duration, Math.max(4, photoCount * shotSeconds));
+        const rhythm = actualStyle === "velocity" ? [0.72, 1.04, 1.2, 0.84, 1.1]
+          : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
+          : actualStyle === "story" ? [1.12, 0.92, 1.08, 1, 0.9]
+          : [0.9, 1.08, 1, 1.12, 0.9];
+        const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length]);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        segments = mediaFiles.map((file, index) => ({
+          kind: "image" as const,
+          name: file.name,
+          url: mediaUrls[index],
+          duration: renderDuration * weights[index] / totalWeight
+        }));
+        setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
+      } else {
+        const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+        sourceVideoDuration = analysis.duration;
+        renderDuration = Math.min(duration, analysis.duration);
+        if (style === "auto") {
+          const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
+          actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+        }
+        segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+      }
+      if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
+      if (musicUrl && musicFile && beatSync) {
+        setMessage("Анализируем музыкальный ритм…");
+        try {
+          const beatAnalysis = await detectMusicBeats(musicUrl);
+          const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
+          if (usableBeats.length >= 2) {
+            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "story" ? 3.2 : 2.2;
+            const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
+            segments = segments.map((segment, index) => {
+              const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
+              if (segment.kind === "image") return { ...segment, duration: nextDuration };
+              const videoSegment = segment as VideoSegment;
+              const safeDuration = Math.min(nextDuration, Math.max(0.2, sourceVideoDuration));
+              const center = (videoSegment.trimStart + videoSegment.trimEnd) / 2;
+              const start = Math.max(0, Math.min(Math.max(0, sourceVideoDuration - safeDuration), center - safeDuration / 2));
+              return { ...videoSegment, trimStart: start, trimEnd: start + safeDuration };
+            });
+            setMessage(`Ритм найден: подстроили монтаж под ${usableBeats.length} музыкальных акцентов.`);
+          } else {
+            setMessage("В треке мало выраженных ударов — используем обычный ритм монтажа.");
+          }
+        } catch {
+          setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
+        }
+      }
+      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : styleOptions.find((item) => item.id === style)?.title ?? "Автоматический");
+      setCutCount(segments.length);
+      setStage("rendering");
+      setMessage("Собираем видео и применяем выбранный стиль…");
+      const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: 0.72 }] : [];
+      const blob = await renderVideoSequence({
+        segments,
+        audioTracks,
+        title: "",
+        aspectRatio: "9:16",
+        quality,
+        style: actualStyle as SequenceRenderStyle,
+        targetDurationSeconds: renderDuration,
+        onProgress: setRenderProgress
+      });
+      const nextUrl = URL.createObjectURL(blob);
+      setOutputUrl(nextUrl);
+      setOutputName(`dravex-video-${Date.now()}.webm`);
+      setStage("done");
+      setMessage("Готово! Посмотри результат и сохрани видео.");
+    } catch (caught) {
+      setStage("error");
+      setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
+      setMessage("");
     }
   };
 
-  const saveProject = () => {
-    const project = {
-      app: "DRAVEX",
-      schemaVersion: 1,
-      savedAt: new Date().toISOString(),
-      projectName,
-      mode,
-      prompt,
-      settings: { aspectRatio: aspect, resolution: quality, targetLength },
-      media: clips.map(({ id, name, kind, bytes, duration, trimStart, trimEnd }) => ({ id, name, kind, bytes, duration, trimStart, trimEnd })),
-      storyboard: plan,
-      limitations: "Media files are not embedded. Re-import source files when reopening this project. No finished video render is included."
-    };
-    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${projectName.trim().replace(/[^a-z0-9-_]+/gi, "-") || "dravex-project"}.dravex.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setNotice("Project settings exported as a .dravex.json file. Source media is not embedded.");
-    window.setTimeout(() => setNotice(""), 4500);
-  };
+  return (
+    <main className="dravex-app">
+      <header className="dravex-header">
+        <a className="dravex-brand" href="#" aria-label="DRAVEX home"><span className="dravex-brand-mark"><Film size={21} /></span><span>DRAVEX</span></a>
+        <span className="dravex-local"><span />Работает в браузере</span>
+      </header>
 
-  return localize((
-    <div className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="#home" aria-label="DRAVEX home">
-          <span className="brand-mark"><Aperture size={22} strokeWidth={2.2} /></span>
-          <span className="brand-word">DRAVEX<span className="brand-dot">.</span><small>VIDEO STUDIO</small></span>
-        </a>
-        <div className="side-label">WORKSPACE</div>
-        <button className={mode === "ai" ? "nav-item active" : "nav-item"} onClick={() => setMode("ai")} aria-label="AI Creator" title="AI Creator">
-          <WandSparkles size={18} /> <span>AI Creator</span><span className="nav-tag">BETA</span>
-        </button>
-        <button className={mode === "manual" ? "nav-item active" : "nav-item"} onClick={() => setMode("manual")} aria-label="Manual Studio" title="Manual Studio">
-          <Clapperboard size={18} /> <span>Manual Studio</span>
-        </button>
-        <button className={mode === "collab" ? "nav-item active" : "nav-item"} onClick={() => setMode("collab")} aria-label="Collaboration mode" title="Collaboration mode">
-          <Sparkles size={18} /> <span>{language === "ru" ? "Совместный режим" : "Collaboration"}</span>
-        </button>
-        <div className="side-divider" />
-        <div className="side-label">PROJECT</div>
-        <button className="nav-item" onClick={() => uploadRef.current?.click()} aria-label="Import media" title="Import media"><FolderOpen size={18} /><span>Import media</span></button>
-        <button className="nav-item" onClick={saveProject} aria-label="Save project file" title="Save project file"><Download size={18} /><span>Save project file</span></button>
-        <div className="sidebar-bottom">
-          <div className="privacy-card"><ShieldCheck size={17} /><div><strong>Local-first prototype</strong><span>Your media stays in this browser session.</span></div></div>
-          <div className="user-mini"><div className="user-avatar">D</div><div><strong>DRAVEX Studio</strong><span>Early prototype</span></div><Settings2 size={17} /></div>
-        </div>
-      </aside>
-
-      <main className="main-area" id="home">
-        <header className="topbar">
-          <div className="crumb"><span>Workspace</span><ChevronDown size={14} /><strong>{mode === "ai" ? "AI Creator" : mode === "manual" ? "Manual Studio" : (language === "ru" ? "Совместный режим" : "Collaboration")}</strong><span className="crumb-divider">/</span><input className="project-name-input" aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></div>
-          <div className="top-actions"><label className="language-switch"><span className="sr-only">Language</span><select value={language} onChange={(event) => setLanguage(event.target.value as Language)} aria-label="Language"><option value="en">English</option><option value="ru">Русский</option></select></label><span className="save-status"><span className="status-dot" /> Session only</span><button className="button button-quiet top-save" onClick={saveProject} aria-label="Save project"><Download size={16} /> Save project</button></div>
-        </header>
-
-        <section className="welcome-row">
-          <div>
-            <div className="eyebrow"><span className="eyebrow-line" /> YOUR STORY, YOUR RULES</div>
-            <h1>{mode === "ai" ? <>Make something<br /><span>worth watching.</span></> : mode === "manual" ? <>Your timeline.<br /><span>Your creative control.</span></> : <>{language === "ru" ? "Ты и DRAVEX" : "You and DRAVEX"}<br /><span>{language === "ru" ? "в одной команде." : "in one creative team."}</span></>}</h1>
-            <p className="welcome-copy">{mode === "ai" ? "Describe the video in your head. Build a plan, bring in your footage, and shape the final cut." : mode === "manual" ? "Work directly with your media. No AI required — you stay in control of every creative decision." : (language === "ru" ? "Создай черновик с помощью ИИ, вручную меняй детали и оставляй только те изменения, которые тебе нравятся." : "Let AI prepare a draft, adjust every detail manually, and keep only the changes you approve.")}</p>
-          </div>
-          <div className="hero-orbit" aria-hidden="true"><div className="orbit-ring ring-one" /><div className="orbit-ring ring-two" /><div className="orbit-core"><Film size={34} /></div><span className="orbit-star star-a">✳</span><span className="orbit-star star-b">✦</span></div>
-        </section>
-
-        <section className="mode-switch" aria-label="Editing mode">
-          <button className={mode === "ai" ? "mode-option selected" : "mode-option"} onClick={() => setMode("ai")}><span className="mode-icon ai-icon"><Sparkles size={18} /></span><span><strong>AI Creator</strong><small>Plan with AI assistance</small></span>{mode === "ai" && <Check className="mode-check" size={17} />}</button>
-          <button className={mode === "manual" ? "mode-option selected" : "mode-option"} onClick={() => setMode("manual")}><span className="mode-icon manual-icon"><Layers3 size={18} /></span><span><strong>Manual Studio</strong><small>Edit it your way</small></span>{mode === "manual" && <Check className="mode-check" size={17} />}</button>
-          <button className={mode === "collab" ? "mode-option selected" : "mode-option"} onClick={() => setMode("collab")}><span className="mode-icon collab-icon"><Heart size={18} /></span><span><strong>{language === "ru" ? "Совместный режим" : "Collaboration"}</strong><small>{language === "ru" ? "ИИ предлагает, ты решаешь" : "AI suggests, you decide"}</small></span>{mode === "collab" && <Check className="mode-check" size={17} />}</button>
-        </section>
-        {mode === "collab" && <section className="collab-notice panel"><span className="collab-notice-icon"><ShieldCheck size={18} /></span><div><strong>{language === "ru" ? "Режим совместной работы" : "Collaboration mode"}</strong><p>{language === "ru" ? "ИИ-план — только черновик. Проверь его, редактируй клипы вручную и экспортируй результат, когда будешь готов. Принятие каждого предложения остаётся за тобой." : "The AI plan is a draft. Review it, edit clips manually, and export when ready. You stay in control of every proposed change."}</p></div></section>}
-        <SelfIntroVideo language={language} />
-        <EvolutionEngine language={language} />
-
-        <section className="highlight-director panel">
-          <div className="highlight-director-heading">
-            <div>
-              <span className="section-kicker">DRAVEX · AUTO HIGHLIGHT DIRECTOR</span>
-              <h2>{language === "ru" ? "Найти лучшие моменты" : "Find the best moments"}</h2>
-              <p>{language === "ru" ? "Выбери длинное видео — DRAVEX просканирует его и соберёт три версии эдита разного темпа. Обработка идёт на устройстве." : "Choose a long video. DRAVEX scans it locally and prepares three edit rhythms."}</p>
-            </div>
-            <span className="highlight-director-icon"><WandSparkles size={22} /></span>
-          </div>
-          <div className="highlight-director-controls">
-            <div className="highlight-source-info">
-              <strong>{activeClip?.kind === "video" ? activeClip.name : clips.find((clip) => clip.kind === "video")?.name ?? (language === "ru" ? "Видео ещё не добавлено" : "No source video yet")}</strong>
-              <span>{language === "ru" ? "Совет: выбери видео в медиатеке, затем запусти анализ. Для двухчасового файла сканирование может занять время." : "Tip: select a video in the media library before scanning. A two-hour file may take time."}</span>
-            </div>
-            <button className="button button-primary" onClick={analyzeHighlights} disabled={isAnalyzingHighlights || !clips.some((clip) => clip.kind === "video")}>
-              <ScanSearch size={16} /> {isAnalyzingHighlights ? (language === "ru" ? "Анализируем…" : "Scanning…") : (language === "ru" ? "Анализировать видео" : "Analyze video")} <ArrowRight size={16} />
-            </button>
-          </div>
-          {isAnalyzingHighlights && <div className="highlight-progress" role="status" aria-live="polite">
-            <div className="highlight-progress-track"><span style={{ width: highlightProgress ? `${Math.round(highlightProgress.current / highlightProgress.total * 100)}%` : "2%" }} /></div>
-            <p>{language === "ru"
-              ? highlightProgress ? `Просмотр кадра ${highlightProgress.current} из ${highlightProgress.total} · позиция ${formatTime(highlightProgress.time)}` : "Подготавливаем видео к анализу…"
-              : highlightProgress ? `Sampling frame ${highlightProgress.current} of ${highlightProgress.total} · ${formatTime(highlightProgress.time)}` : "Preparing video for analysis…"}</p>
-          </div>}
-          {highlightVariants.length > 0 && <div className="highlight-results">
-            <div className="highlight-results-intro">
-              <strong>{language === "ru" ? "Три черновых варианта" : "Three draft cuts"}</strong>
-              <span>{language === "ru" ? "Длина выбрана по доступным моментам; каждый фрагмент можно проверить в монтажной шкале." : "Length is chosen from available moments. Review each cut in the timeline."}</span>
-            </div>
-            <div className="highlight-variant-grid">
-              {highlightVariants.map((variant) => <button key={variant.id} className={selectedHighlightVariant === variant.id ? "highlight-variant selected" : "highlight-variant"} onClick={() => setSelectedHighlightVariant(variant.id)} aria-pressed={selectedHighlightVariant === variant.id}>
-                <span className="highlight-variant-top"><span className="highlight-variant-dot" />{variant.title}</span>
-                <strong>{Math.round(variant.duration)}<small> {language === "ru" ? "сек" : "sec"}</small></strong>
-                <span className="highlight-variant-description">{variant.description}</span>
-                <span className="highlight-variant-meta">{variant.moments.length} {language === "ru" ? "фрагментов" : "segments"} · {variant.shotLength.toFixed(1)}s {language === "ru" ? "на фрагмент" : "per shot"}</span>
-                <span className="highlight-variant-action">{selectedHighlightVariant === variant.id ? (language === "ru" ? "Выбран" : "Selected") : (language === "ru" ? "Выбрать вариант" : "Select cut")}</span>
-              </button>)}
-            </div>
-            <div className="highlight-selected-footer">
-              <div><strong>{language === "ru" ? "Выбрано:" : "Selected:"} {highlightVariants.find((variant) => variant.id === selectedHighlightVariant)?.title}</strong><span>{language === "ru" ? "Применение заменит исходный клип последовательностью выбранных обрезок. Можно отменить вручную, удалив их и импортировав исходник снова." : "Applying replaces the source clip with selected trims. Re-import the source to start over."}</span></div>
-              <button className="button button-primary" onClick={() => {
-                const variant = highlightVariants.find((item) => item.id === selectedHighlightVariant);
-                if (variant) applyHighlightVariant(variant);
-              }}><Check size={16} /> {language === "ru" ? "Применить к монтажу" : "Apply to timeline"} <ArrowRight size={16} /></button>
-            </div>
-            <div className="highlight-candidate-note">
-              <ShieldCheck size={15} />
-              <span>{language === "ru" ? "Важно: это первая эвристическая версия — она оценивает визуальные изменения, движение и контраст, но ещё не распознаёт сюжет, конкретных персонажей, эмоции или смысл диалогов. Всегда просматривай выбранные моменты." : "Important: this first heuristic version scores visual change, motion, and contrast. It does not understand plot, specific characters, emotions, or dialogue yet. Always review the selected moments."}</span>
-            </div>
-          </div>}
-        </section>
-
-        <section className="reference-lab panel">
-          <div className="reference-lab-heading">
-            <div><span className="section-kicker">REFERENCE LAB · FIRST STEP</span><h2>Teach DRAVEX with a reference</h2><p>Import a video into the media library, then inspect its pacing and likely cuts.</p></div>
-            <span className="reference-lab-icon"><ScanSearch size={20} /></span>
-          </div>
-          <div className="reference-link-entry">
-            <label className="field-label" htmlFor="reference-video-url">TIKTOK / YOUTUBE SHORTS LINK</label>
-            <div className="reference-link-form">
-              <input id="reference-video-url" type="url" value={referenceLinkInput} onChange={(event) => { setReferenceLinkInput(event.target.value); setReferenceLinkError(""); }} placeholder="https://www.tiktok.com/@creator/video/… or https://youtube.com/shorts/…" />
-              <button className="button button-primary" type="button" onClick={addReferenceLink} disabled={!referenceLinkInput.trim()}>Add reference <ArrowRight size={16} /></button>
-            </div>
-            {referenceLinkError && <p className="reference-link-error" role="alert">{referenceLinkError}</p>}
-            <p className="reference-link-note">Links open in an official embedded player. Browser security prevents DRAVEX from reading frames or audio inside TikTok / YouTube players, so upload a video file below to analyze its actual cut rhythm. TikTok short share links may need to be opened and copied as a full video URL.</p>
-            {referenceLinks.length > 0 && <div className="reference-link-list">
-              {referenceLinks.map((item) => <article className="reference-link-card" key={item.id}>
-                <div className="reference-link-card-head">
-                  <strong>{item.platform} reference</strong>
-                  <div className="reference-link-actions">
-                    <a href={item.url} target="_blank" rel="noreferrer">Open original ↗</a>
-                    <button type="button" className="reference-remove" onClick={() => setReferenceLinks((current) => current.filter((link) => link.id !== item.id))} aria-label="Remove reference">Remove</button>
-                  </div>
-                </div>
-                <div className="reference-embed-wrap">
-                  <iframe
-                    src={item.platform === "YouTube" ? `https://www.youtube-nocookie.com/embed/${item.videoId}` : `https://www.tiktok.com/player/v1/${item.videoId}?music_info=1&description=1`}
-                    title={`${item.platform} reference video`}
-                    loading="lazy"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
-                  />
-                </div>
-                <p className="reference-link-note">Saved for this browser session. To analyze editing rhythm, add a local copy of this video to the media library and use “Analyze reference”.</p>
-              </article>)}
-            </div>}
-          </div>
-          <div className="reference-lab-actions">
-            <div className="reference-source"><strong>{clips.find((clip) => clip.kind === "video")?.name ?? "No reference video imported"}</strong><span>{clips.some((clip) => clip.kind === "video") ? "The first imported video will be analyzed locally." : "Use Import to choose a video from your device."}</span></div>
-            <button className="button button-primary" onClick={analyzeReference} disabled={isAnalyzingReference || !clips.some((clip) => clip.kind === "video")}>{isAnalyzingReference ? "Analyzing…" : "Analyze reference"} <ArrowRight size={16} /></button>
-          </div>
-          {referenceReport.length > 0 && <div className="reference-report" aria-live="polite">{referenceReport.map((line, index) => <p key={index}>{line}</p>)}</div>}
-          {referenceRecipe && <div className="reference-recipe">
-            <div><strong>{language === "ru" ? "РЕЦЕПТ МОНТАЖА" : "EDIT RECIPE"}</strong><p>{language === "ru" ? "DRAVEX превратил найденный темп в практические подсказки для нового ролика." : "DRAVEX has turned the detected pacing into practical guidelines for a new edit."}</p></div>
-            <button className="button button-primary" onClick={applyReferenceRecipe}><WandSparkles size={16} /> {language === "ru" ? "Использовать рецепт в плане" : "Use recipe in plan"} <ArrowRight size={15} /></button>
-          </div>}
-          <div className="learning-memory-panel">
-            <div className="learning-memory-heading">
-              <div><strong>{language === "ru" ? "ПАМЯТЬ ОБУЧЕНИЯ DRAVEX" : "DRAVEX LEARNING MEMORY"}</strong><p>{language === "ru" ? "Сохраняется на этом устройстве и помогает выбирать темп в следующих проектах." : "Saved on this device and used to guide pacing choices in future projects."}</p></div>
-              <span className="learning-memory-count">{learnedProfiles.reduce((sum, profile) => sum + profile.sampleCount, 0)} {language === "ru" ? "образцов" : "samples"}</span>
-            </div>
-            {learnedProfiles.length ? <div className="learning-profile-list">{learnedProfiles.map((profile) => <div className="learning-profile-row" key={profile.pace}><span><strong>{language === "ru" ? (profile.pace === "Fast" ? "Быстрый" : profile.pace === "Slow" ? "Медленный" : "Средний") : profile.pace}</strong><small>{language === "ru" ? "Средний кадр: " + profile.averageShot.toFixed(1) + " с" : "Avg. shot: " + profile.averageShot.toFixed(1) + "s"}</small></span><span>{language === "ru" ? "оценки +" + profile.helpful + " / −" + profile.unhelpful : "👍 " + profile.helpful + " / 👎 " + profile.unhelpful}</span></div>)}</div> : <p className="learning-memory-empty">{language === "ru" ? "Память пока пуста. Проанализируй референс, затем оцени рецепт." : "Memory is empty. Analyze a reference, then rate its recipe."}</p>}
-            <div className="learning-memory-actions">
-              <button className="button button-quiet" onClick={() => rateLearnedRecipe(true)} disabled={!referenceRecipe}>{language === "ru" ? "Полезный рецепт 👍" : "Helpful recipe 👍"}</button>
-              <button className="button button-quiet" onClick={() => rateLearnedRecipe(false)} disabled={!referenceRecipe}>{language === "ru" ? "Неудачный рецепт 👎" : "Not helpful 👎"}</button>
-              <button className="button button-quiet" onClick={clearLearningMemory} disabled={!learnedProfiles.length}>{language === "ru" ? "Очистить память" : "Clear memory"}</button>
-            </div>
-            <p className="learning-memory-disclaimer">{language === "ru" ? "Это локальная память монтажных правил, а не переобучение нейросети. Ссылки TikTok/YouTube пока нельзя автоматически анализировать по кадрам и звуку." : "This is local memory for editing heuristics, not neural-network training. TikTok/YouTube frames and audio cannot yet be analyzed automatically."}</p>
-          </div>
-        </section>
-
-        {mode !== "manual" ? (
-          <section className="creator-grid">
-            <div className="panel prompt-panel">
-              <div className="panel-heading"><div><span className="step-number">01</span><div><h2>Describe your video</h2><p>Start with an idea. Be as specific as you like.</p></div></div><span className="panel-icon"><Sparkles size={18} /></span></div>
-              <label className="field-label" htmlFor="video-prompt">YOUR CREATIVE BRIEF</label>
-              <textarea id="video-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="A cinematic night drive through a neon city, fast cuts synced to the beat, dramatic opening and a powerful finish…" rows={5} />
-              <p className="prompt-guidance">Tip: describe the mood, story, and editing style in your prompt.</p>
-              <div className="panel-separator" />
-              <div className="panel-heading compact"><div><span className="step-number">02</span><div><h2>Set the direction</h2><p>Adjust the output to fit your platform.</p></div></div></div>
-              <div className="settings-grid">
-                <label className="setting-field"><span>Edit style</span><select value={editStyle} onChange={(event) => setEditStyle(event.target.value as EditStyle)}><option value="velocity">Velocity / Fast Cuts</option><option value="anime">Anime / AMV</option><option value="cinematic">Cinematic</option><option value="glitch">Glitch / Cyberpunk</option><option value="story">Clean Storytelling</option></select></label>
-                <label className="setting-field"><span>Aspect ratio</span><select value={aspect} onChange={(event) => setAspect(event.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option><option>4:5</option></select></label>
-                <label className="setting-field"><span>Target length</span><select value={targetLength} onChange={(event) => setTargetLength(event.target.value)}>{!["15 seconds", "30 seconds", "60 seconds", "90 seconds", "2 minutes", "5 minutes", "10+ minutes"].includes(targetLength) && <option value={targetLength}>{targetLength}</option>}<option>15 seconds</option><option>30 seconds</option><option>60 seconds</option><option>90 seconds</option><option>2 minutes</option><option>5 minutes</option><option>10+ minutes</option></select></label>
-                <label className="setting-field"><span>Output quality</span><select value={quality} onChange={(event) => setQuality(event.target.value)}><option>720p</option><option>1080p</option><option>4K</option></select></label>
-              </div>
-              <label className="overlay-toggle"><input type="checkbox" checked={showTitleOverlay} onChange={(event) => setShowTitleOverlay(event.target.checked)} /><span>Overlay title text</span></label>
-              <button className="button button-primary create-button" onClick={makePlan}><WandSparkles size={17} /> Build my video plan <ArrowRight size={17} /></button>
-              <p className="prototype-note"><ShieldCheck size={14} /> Local planning demo — no external AI model is connected yet.</p>
-            </div>
-
-            <div className="panel plan-panel">
-              <div className="panel-heading"><div><span className="step-number">03</span><div><h2>Your creative plan</h2><p>A first outline for your next cut.</p></div></div><span className="draft-badge"><span /> DRAFT</span></div>
-              {plan.length ? <div className="storyboard">{plan.map((item, index) => <div className="storyboard-item" key={item}><div className="storyboard-thumb">{index === 0 ? <Aperture size={19} /> : index === 3 ? <AudioLines size={19} /> : <Film size={19} />}</div><p>{item}</p></div>)}</div> : <div className="empty-plan"><div className="empty-art"><div className="empty-frame frame-back" /><div className="empty-frame frame-front"><MonitorPlay size={31} /><span>YOUR NEXT IDEA</span></div><span className="spark spark-one">✦</span><span className="spark spark-two">✳</span></div><h3>Your next idea starts here</h3><p>Your outline will appear here after you describe the video and build a plan.</p></div>}
-              <div className="plan-footer"><div className="plan-status"><span className="status-ring" /> {plan.length ? "Draft ready to review" : "Waiting for your brief"}</div><span className="plan-meta">{clips.length} media files added</span></div>
-              <button className="button button-primary create-button" onClick={renderVideo} disabled={isRendering}>
-                <Film size={17} /> {isRendering ? `Rendering video… ${renderProgress}%` : "Create automatic montage"} <ArrowRight size={17} />
-              </button>
-              <p className="prototype-note"><ShieldCheck size={14} /> Local export applies the selected visual style, subtle camera motion, cut flashes, and vignette to video/image sequences. Beat detection, AI scene understanding, and MP4 export are not connected yet.</p>
-            </div>
-          </section>
+      <section className="dravex-main">
+        <div className="dravex-intro"><h1>Создай видео<br /><span>автоматически</span></h1><p>Добавь материал — мы подберём монтаж под него.</p></div>
+        <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
+        {!mediaFiles.length ? (
+          <button className="dravex-upload" onClick={() => videoInput.current?.click()} type="button">
+            <span className="dravex-upload-icon"><Upload size={25} /></span><strong>Добавить видео или фото</strong><span>Выбери материал из галереи телефона</span><small>Одно видео или несколько фотографий</small>
+          </button>
         ) : (
-          <section className="panel manual-banner">
-            <div className="manual-banner-icon"><Clapperboard size={25} /></div><div><h2>Manual Studio</h2><p>Import your clips, choose the order, preview each item, and prepare a project file. More precise timeline tools and finished-video rendering are still being built.</p></div><button className="button button-primary" onClick={() => uploadRef.current?.click()}><Upload size={16} /> Import media</button>
-          </section>
+          <div className="dravex-preview-card">
+            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={mediaUrls[index]}><img src={mediaUrls[index]} alt={file.name} /><div className="dravex-image-tools"><span>{index + 1}</span><div><button type="button" aria-label={`Переместить фотографию ${index + 1} влево`} title="Переместить влево" disabled={busy || index === 0} onClick={() => moveMedia(index, -1)}><ArrowLeft size={14} /></button><button type="button" aria-label={`Переместить фотографию ${index + 1} вправо`} title="Переместить вправо" disabled={busy || index === mediaFiles.length - 1} onClick={() => moveMedia(index, 1)}><ArrowRight size={14} /></button><button type="button" aria-label={`Удалить фотографию ${index + 1}`} title="Удалить фотографию" disabled={busy} onClick={() => removeMediaAt(index)}><Trash2 size={14} /></button></div></div></div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
+            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
+          </div>
         )}
 
-        <section className="media-section">
-          <div className="section-title-row"><div><div className="section-kicker">YOUR ASSETS</div><h2>Media library <span className="count-pill">{clips.length}</span></h2></div><button className="button button-outline" onClick={() => uploadRef.current?.click()}><Plus size={17} /> Add media</button></div>
-          <input ref={uploadRef} className="visually-hidden" type="file" accept="video/*,audio/*,image/*" multiple onChange={(event) => addFiles(event.target.files)} />
-          <div className="media-layout">
-            <div className="media-bin panel">
-              {clips.length === 0 ? <button className="dropzone" onClick={() => uploadRef.current?.click()}><span className="upload-circle"><Upload size={22} /></span><strong>Drop your media into the story</strong><span>Or tap to browse files on your device</span><span className="file-types">VIDEO · IMAGE · AUDIO</span></button> : <div className="clip-list">{clips.map((clip, index) => <div className={activeClip?.id === clip.id ? "clip-row clip-selected" : "clip-row"} key={clip.id} onClick={() => setActiveId(clip.id)}><div className={`clip-type ${clip.kind}`}>{clip.kind === "audio" ? <Music2 size={18} /> : clip.kind === "image" ? <Aperture size={18} /> : <FileVideo size={18} />}</div><div className="clip-info"><strong title={clip.name}>{clip.name}</strong><span>{clip.kind.toUpperCase()} · {formatBytes(clip.bytes)}{clip.duration ? ` · ${formatTime(clip.duration)}` : ""}</span></div><div className="clip-controls"><button aria-label="Move clip up" title="Move up" onClick={(event) => { event.stopPropagation(); moveClip(clip.id, -1); }} disabled={index === 0}><ArrowUp size={14} /></button><button aria-label="Move clip down" title="Move down" onClick={(event) => { event.stopPropagation(); moveClip(clip.id, 1); }} disabled={index === clips.length - 1}><ArrowDown size={14} /></button><button aria-label="Remove clip" title="Remove" onClick={(event) => { event.stopPropagation(); removeClip(clip.id); }}><Trash2 size={14} /></button></div></div>)}</div>}
-              {clips.length > 0 && <div className="media-bin-footer"><span>{clips.length} items · {formatBytes(totalBytes)}</span><button onClick={() => uploadRef.current?.click()}><Plus size={14} /> Add more</button></div>}
-            </div>
-            <div className="preview-panel panel">
-              <div className="preview-head"><span><MonitorPlay size={16} /> PREVIEW</span><span className="preview-resolution">{aspect} · {quality}</span></div>
-              <div className={`preview-stage ${aspect === "16:9" ? "landscape" : aspect === "1:1" ? "square" : "portrait"}`}>
-                {!activeClip ? <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={28} /></div><strong>Your preview lives here</strong><span>Import media to get started.</span></div> : activeClip.kind === "video" ? <video key={activeClip.id} src={activeClip.url} controls playsInline onTimeUpdate={(event) => setPlayheadTime(event.currentTarget.currentTime)} onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setPlayheadTime(event.currentTarget.currentTime); setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, duration, trimEnd: clip.trimEnd ?? duration, trimStart: clip.trimStart ?? 0 } : clip)); }} /> : activeClip.kind === "image" ? <img src={activeClip.url} alt={activeClip.name} /> : <div className="audio-preview"><span className="audio-visual"><AudioLines size={42} /></span><strong>{activeClip.name}</strong><audio src={activeClip.url} controls /></div>}
-              </div>
-              {activeClip?.kind === "audio" && <div className="audio-mix-controls">
-                <label htmlFor="music-volume"><strong>{language === "ru" ? "ГРОМКОСТЬ ФОНОВОГО АУДИО" : "BACKGROUND AUDIO VOLUME"}</strong><span>{musicVolume}%</span></label>
-                <input id="music-volume" type="range" min="0" max="100" step="5" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
-                <p>{language === "ru" ? "Уровень применяется к импортированным аудиофайлам при экспорте." : "This level is applied to imported audio files during export."}</p>
-              </div>}
-              {activeClip?.kind === "video" && <div className="trim-controls">
-                <div className="trim-controls-heading"><strong>{language === "ru" ? "ОБРЕЗКА КЛИПА" : "CLIP TRIM"}</strong><span>{language === "ru" ? "Секунды" : "Seconds"}</span></div>
-                <label><span>{language === "ru" ? "Начало" : "Start"}</span><input type="number" min="0" max={Math.max(0, (activeClip.duration ?? 0) - 0.1)} step="0.1" value={activeClip.trimStart ?? 0} onChange={(event) => {
-                  const value = Math.max(0, Math.min(Number(event.target.value) || 0, Math.max(0, (activeClip.duration ?? 0) - 0.1)));
-                  setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, trimStart: value, trimEnd: Math.max(clip.trimEnd ?? clip.duration ?? value + 0.1, value + 0.1) } : clip));
-                }} /></label>
-                <label><span>{language === "ru" ? "Конец" : "End"}</span><input type="number" min={(activeClip.trimStart ?? 0) + 0.1} max={activeClip.duration ?? undefined} step="0.1" value={activeClip.trimEnd ?? activeClip.duration ?? ""} onChange={(event) => {
-                  const value = Number(event.target.value);
-                  setClips((current) => current.map((clip) => clip.id === activeClip.id ? { ...clip, trimEnd: Number.isFinite(value) && value > (clip.trimStart ?? 0) ? Math.min(value, clip.duration ?? value) : clip.trimEnd } : clip));
-                }} />
-                </label>
-                <span className="trim-duration">{formatTime(Math.max(0, (activeClip.trimEnd ?? activeClip.duration ?? 0) - (activeClip.trimStart ?? 0)))} {language === "ru" ? "выбрано" : "selected"}</span>
-                <button className="button button-quiet split-clip-button" onClick={splitClipAtPlayhead} disabled={!activeClip.duration || playheadTime <= (activeClip.trimStart ?? 0) + 0.1 || playheadTime >= (activeClip.trimEnd ?? activeClip.duration) - 0.1}><Aperture size={14} />{language === "ru" ? "Разделить по позиции" : "Split at playhead"}</button>
-              </div>}
-              <div className="preview-footer"><span>{activeClip ? activeClip.name : "No media selected"}</span><span>{videoCount} video{videoCount === 1 ? "" : "s"} · {formatTime(estimatedDuration)} known duration</span></div>
-            </div>
+        <div className="dravex-section-title"><div><h2>Как смонтировать?</h2><p>Не уверен — оставь автоматический выбор.</p></div><Sparkles size={20} /></div>
+        <div className="dravex-styles">
+          {styleOptions.map((option) => {
+            const Icon = option.icon;
+            return <button key={option.id} type="button" className={`dravex-style ${style === option.id ? "is-selected" : ""}`} onClick={() => setStyle(option.id)} aria-pressed={style === option.id}><span className="dravex-style-icon"><Icon size={18} /></span><span className="dravex-style-copy"><strong>{option.title}</strong><small>{option.note}</small></span>{style === option.id && <CheckCircle2 className="dravex-style-check" size={18} />}</button>;
+          })}
+        </div>
+
+        <details className="dravex-more">
+          <summary><Settings2 size={16} />Дополнительные настройки</summary>
+          <div className="dravex-more-content">
+            <label className="dravex-duration"><span>Максимальная длина</span><select value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
+            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => setQuality(event.target.value as "720p" | "1080p")}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
+            <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button></div>
+            <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => setBeatSync(event.target.value === "on")}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
-        </section>
+          <div className="dravex-project-actions">
+            <button type="button" onClick={saveProject} disabled={!mediaFiles.length || projectBusy}><Save size={15} />{projectBusy ? "Сохраняем…" : "Сохранить проект"}</button>
+            <button type="button" onClick={restoreProject} disabled={projectBusy}><FolderOpen size={15} />Восстановить</button>
+          </div>
+          {projectMessage && <p className="dravex-project-message" role="status">{projectMessage}</p>}
+        </details>
 
-        <section className="timeline-section panel">
-          <div className="timeline-heading"><div><span className="section-kicker">EDITING WORKSPACE</span><h2>Timeline <span className="soon-badge">FOUNDATION</span></h2></div><div className="timeline-actions"><span className="timeline-length"><Gauge size={15} /> {formatTime(estimatedDuration)}</span><button className="button button-quiet" onClick={saveProject}><Download size={16} /> Export project</button></div></div>
-          {clips.length ? <div className="timeline-tracks"><div className="track-label"><Film size={15} /> MEDIA</div><div className="track-items">{clips.map((clip, index) => <div key={clip.id} className={activeClip?.id === clip.id ? "track-clip-card selected" : "track-clip-card"}>
-                <button className="track-clip-select" onClick={() => setActiveId(clip.id)} aria-label={`Select ${clip.name}`}>
-                  <span>{String(index + 1).padStart(2, "0")}</span><strong>{clip.name}</strong><small>{clip.kind.toUpperCase()}</small>
-                  {clip.kind === "video" && clip.duration ? <small>{formatTime(Math.max(0, Math.min(clip.duration, clip.trimEnd ?? clip.duration) - Math.max(0, clip.trimStart ?? 0)))}</small> : null}
-                </button>
-                <div className="track-clip-actions">
-                  <button onClick={() => moveClip(clip.id, -1)} disabled={index === 0} aria-label={language === "ru" ? "Переместить клип выше" : "Move clip earlier"} title={language === "ru" ? "Выше" : "Move earlier"}><ArrowUp size={13} /></button>
-                  <button onClick={() => moveClip(clip.id, 1)} disabled={index === clips.length - 1} aria-label={language === "ru" ? "Переместить клип ниже" : "Move clip later"} title={language === "ru" ? "Ниже" : "Move later"}><ArrowDown size={13} /></button>
-                </div>
-              </div>)}</div></div> : <div className="timeline-empty"><span className="timeline-empty-icon"><Layers3 size={18} /></span><div><strong>Your timeline is ready</strong><p>Add media to start building your sequence.</p></div><button className="button button-quiet" onClick={() => uploadRef.current?.click()}>Add first clip <ArrowRight size={15} /></button></div>}
-          <div className="timeline-note"><span className="note-mark">i</span> This build supports clip trimming and local WebM sequence export with original video audio where supported. Imported audio mixing is available; transitions, MP4 export, and connected AI generation are still in development.</div>
-        </section>
+        <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Создать видео"}</button>
+        <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер. Проекты сохраняются локально на этом устройстве.</p>
 
-        <footer className="app-footer"><span>DRAVEX <span className="footer-dot">●</span> BUILDING THE FUTURE OF VIDEO</span><span><ShieldCheck size={14} /> Your choice. Your workflow.</span></footer>
-      </main>
-      <nav className="mobile-nav" aria-label="Main navigation">
-        <button className={mode === "ai" ? "mobile-nav-item active" : "mobile-nav-item"} onClick={() => setMode("ai")} aria-label="AI Creator">
-          <WandSparkles size={19} /><span>{language === "ru" ? "ИИ" : "AI"}</span>
-        </button>
-        <button className={mode === "manual" ? "mobile-nav-item active" : "mobile-nav-item"} onClick={() => setMode("manual")} aria-label="Manual Studio">
-          <Layers3 size={19} /><span>{language === "ru" ? "Студия" : "Studio"}</span>
-        </button>
-        <button className="mobile-nav-item" onClick={() => uploadRef.current?.click()} aria-label="Import media">
-          <Upload size={19} /><span>{language === "ru" ? "Импорт" : "Import"}</span>
-        </button>
-        <button className="mobile-nav-item" onClick={saveProject} aria-label="Save project">
-          <Download size={19} /><span>{language === "ru" ? "Сохранить" : "Save"}</span>
-        </button>
-      </nav>
-      {notice && <div className="toast" role="status"><Check size={16} /> {notice}<button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={15} /></button></div>}
-    </div>
-  ), language);
+        {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
+        {error && <div className="dravex-error" role="alert">{error}</div>}
+        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div></section>}
+      </section>
+
+      <footer className="dravex-footer"><Clapperboard size={15} />DRAVEX <span>·</span> Просто создавай</footer>
+    </main>
+  );
+}
+
+function getScanPercent(scan: HighlightProgress) {
+  return scan.total ? Math.round((scan.current / scan.total) * 100) : 0;
 }

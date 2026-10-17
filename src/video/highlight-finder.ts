@@ -48,16 +48,33 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
 }
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
+  const target = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
+  // Some browsers do not fire "seeked" when asked to seek to the current frame.
+  if (video.readyState >= 2 && Math.abs(video.currentTime - target) < 0.02) return Promise.resolve();
+
   return new Promise((resolve, reject) => {
-    const finish = () => { cleanup(); resolve(); };
-    const fail = () => { cleanup(); reject(new Error("The browser could not inspect a frame. Try another video format.")); };
+    let timeoutId = 0;
     const cleanup = () => {
+      window.clearTimeout(timeoutId);
       video.removeEventListener("seeked", finish);
       video.removeEventListener("error", fail);
     };
+    const finish = () => { cleanup(); resolve(); };
+    const fail = () => {
+      cleanup();
+      reject(new Error("Не удалось прочитать кадр видео. Попробуй MP4 или WebM."));
+    };
     video.addEventListener("seeked", finish, { once: true });
     video.addEventListener("error", fail, { once: true });
-    video.currentTime = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Видео слишком долго обрабатывается. Попробуй более короткий файл."));
+    }, 12000);
+    try {
+      video.currentTime = target;
+    } catch {
+      fail();
+    }
   });
 }
 
@@ -99,8 +116,8 @@ export async function analyzeVideoForHighlights(
   try {
     await waitForMetadata(video);
     const duration = video.duration;
-    if (!Number.isFinite(duration) || duration < 8) {
-      throw new Error("This video is too short for highlight analysis (minimum 8 seconds).");
+    if (!Number.isFinite(duration) || duration < 0.25) {
+      throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
@@ -108,8 +125,9 @@ export async function analyzeVideoForHighlights(
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
-    // Cap work on very long files to keep the Android browser more responsive.
-    const interval = Math.max(1.5, duration / 900, duration > 1800 ? 4 : 0);
+    // Cap frame sampling so long videos remain practical on Android phones.
+    // At most about 300 samples are inspected, with a minimum 1.5-second interval.
+    const interval = Math.max(1.5, duration / 300, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
     let previous: Uint8ClampedArray | null = null;
@@ -170,8 +188,8 @@ export async function analyzeVideoForHighlights(
       if (selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;
       selectedPeaks.push(peak);
     }
-    const candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
-      const half = Math.max(1.2, Math.min(2.4, interval * 0.8));
+    let candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
+      const half = Math.max(0.25, Math.min(2.4, interval * 0.8));
       return {
         time: peak.time,
         start: Math.max(0, peak.time - half),
@@ -181,7 +199,24 @@ export async function analyzeVideoForHighlights(
         contrast: peak.contrast
       };
     }).sort((a, b) => a.time - b.time);
-    if (!candidates.length) throw new Error("No usable visual moments were found in this file.");
+
+    // Very short clips may not contain a local peak away from the edges.
+    // Keep them usable by ranking the sampled frames instead of rejecting the file.
+    if (!candidates.length) {
+      candidates = [...samples]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, Math.min(4, samples.length))
+        .map((sample) => ({
+          time: sample.time,
+          start: Math.max(0, sample.time - Math.min(0.8, duration / 3)),
+          end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
+          score: sample.score,
+          motion: sample.motion,
+          contrast: sample.contrast
+        }))
+        .sort((a, b) => a.time - b.time);
+    }
+    if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
     return { duration, samples, candidates };
   } finally {
     video.pause();
