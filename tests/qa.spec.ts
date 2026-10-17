@@ -80,7 +80,10 @@ test("media type falls back to filename extension when a picker omits MIME metad
   expect(getMediaKind({ name: "photo.jpg", type: "" })).toBe("image");
   expect(getMediaKind({ name: "photo.svg", type: "" })).toBe("image");
   expect(getMediaKind({ name: "notes.pdf", type: "" })).toBe("unknown");
-  expect(getMediaKind({ name: "clip.mp4", type: "image/jpeg" })).toBe("image");
+  expect(getMediaKind({ name: "clip.mp4", type: "image/jpeg" })).toBe("video");
+  expect(getMediaKind({ name: "photo.jpg", type: "video/mp4" })).toBe("image");
+  expect(getMediaKind({ name: "clip-without-extension", type: "video/mp4" })).toBe("video");
+  expect(getMediaKind({ name: "photo-without-extension", type: "image/jpeg" })).toBe("image");
 });
 
 test("quick video cut points stay valid across the full duration range", () => {
