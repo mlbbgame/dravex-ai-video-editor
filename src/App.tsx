@@ -313,7 +313,7 @@ export default function App() {
     try {
       const file = await generateMusicTrack(preset);
       applyMusicFile(file);
-      setPreviewStatus(`Создан оригинальный трек «${preset.title}» · ${preset.bpm} BPM. Он готов для автмонтажа и локального предпрослушивания.`);
+      setPreviewStatus(`Создан оригинальный трек «${preset.title}» · ${preset.bpm} BPM. Он готов для автомонтажа и локального предпрослушивания.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось создать музыкальный трек.");
     } finally {
@@ -589,12 +589,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!mediaFiles.length || busy || previewBusy) return;
+    if (activeTab !== "editor" || !mediaFiles.length || busy || previewBusy) return;
     const selected = selectedVariant;
     if (renderedVariants.some((item) => item.id === selected.id)) return;
     const timer = window.setTimeout(() => { void createSelectedPreview(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
+  }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
 
   return (
     <main className="dravex-app">
