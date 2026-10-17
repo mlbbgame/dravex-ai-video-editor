@@ -5,6 +5,7 @@ export type SavedDravexProject = {
   duration: number;
   quality: "720p" | "1080p";
   beatSync: boolean;
+  effectStrength?: "soft" | "balanced" | "strong";
   savedAt: string;
 };
 
