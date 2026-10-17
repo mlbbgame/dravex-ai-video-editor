@@ -38,7 +38,7 @@ jobs:
         working-directory: app-source
         run: npm install --no-audit --no-fund
 
-      # Publish DRAVEX quality pass: style-matched action pacing and transitions, less repetitive highlight selection, one-button auto montage, subject-safe framing, clean previews, safer beat cuts, and music-aware samples
+      # Publish DRAVEX quality pass: adjustable 5-60 second duration slider, style-matched pacing and transitions, less repetitive highlights, one-button montage, subject-safe framing, clean previews, and safer beat cuts
       # at the main URL, while preserving /preview/ as an identical compatibility URL.
       - name: Build primary DRAVEX site
         working-directory: app-source
