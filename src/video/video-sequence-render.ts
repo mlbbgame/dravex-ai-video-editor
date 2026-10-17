@@ -345,7 +345,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       // Fast punch zoom; preserve the full-photo treatment on still images.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
       context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
-      if (isPhoto) {
+      if (useContain) {
         context.translate(width / 2, height / 2);
         context.scale(punch, punch);
         context.translate(-width / 2, -height / 2);
@@ -384,7 +384,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.translate(width / 2, height / 2);
       context.rotate(angle);
       context.globalAlpha = Math.min(1, transitionProgress * 2 + 0.05);
-      if (isPhoto) {
+      if (useContain) {
         context.scale(punch, punch);
         context.translate(-width / 2, -height / 2);
         drawIncoming();
