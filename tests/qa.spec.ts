@@ -14,6 +14,33 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
   await expect(page.getByText("Работает в браузере")).toBeVisible();
 });
 
+
+test("choosing a montage style highlights exactly one matching variant", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const variants = page.locator(".dravex-variant");
+  const selected = page.locator(".dravex-variant[aria-pressed='true']");
+  await expect(variants).toHaveCount(8);
+  await expect(selected).toHaveCount(1);
+
+  await variants.filter({ hasText: "Velocity" }).click();
+  await expect(selected).toHaveCount(1);
+  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "false");
+
+  await variants.filter({ hasText: "Beat Pulse" }).click();
+  await expect(selected).toHaveCount(1);
+  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "false");
+
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    page: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
+});
+
 test("Music Studio lists ready-to-use tracks and working search filters", async ({ page }) => {
   await page.goto("/");
   const tabs = page.getByRole("navigation", { name: "Разделы DRAVEX" });
