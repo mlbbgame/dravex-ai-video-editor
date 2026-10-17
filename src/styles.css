@@ -184,6 +184,9 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-variant-hint { margin: 0; color: #777f87; font-size: 10px; line-height: 1.5; }
 @media (max-width: 380px) { .dravex-variant { flex-basis: 136px; } .dravex-variant-rail { gap: 9px; } }
 
+.dravex-variant-preview.has-rendered > video { object-fit: contain; filter: none; transform: none; background: #050505; }
+.dravex-variant-preview.has-rendered .dravex-variant-overlay { display: none; }
+
 /* Keep animated previews accessible when the device requests reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   .dravex-variant-preview > img { animation: none !important; transform: none !important; }
