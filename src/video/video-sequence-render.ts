@@ -300,7 +300,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
     const zoomBase = isPhoto ? 1.035 : 1.04;
     const zoom = zoomBase + (zoomDirection > 0 ? eased : 1 - eased) * motion;
-    const scale = (isPhoto ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
+    // Avoid destroying the subject when a landscape clip is exported as a vertical Short.
+    // Use a blurred fill behind a contained foreground whenever source/output framing differs noticeably.
+    const sourceAspect = sourceWidth / sourceHeight;
+    const outputAspect = width / height;
+    const useContain = isPhoto || Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
+    const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
     const panAmount = suppressEffects ? 0 : (style === "velocity" ? 0.065 : style === "anime" ? 0.045 : style === "glitch" ? 0.05 : style === "story" ? 0.018 : 0.045) * strengthScale;
@@ -315,7 +320,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const drawX = (width - drawWidth) / 2 + offsetX;
     const drawY = (height - drawHeight) / 2 + offsetY;
     const drawIncoming = () => {
-      if (isPhoto) {
+      if (useContain) {
+        // A soft, darkened fill avoids black bars while keeping the entire photo/clip visible.
         context.save();
         context.filter = "blur(24px) brightness(0.58) saturate(0.88)";
         const backgroundScale = Math.max(width / sourceWidth, height / sourceHeight) * 1.18;
@@ -437,10 +443,29 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillRect(0, 0, width, height);
     }
     if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
-      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.16) * 0.2 * strengthScale})`;
+      const glitchStrength = (1 - cutProgress / 0.16) * strengthScale;
+      // Split short horizontal slices for a more readable digital-impact effect than a full-frame tint alone.
+      context.save();
+      context.globalAlpha = Math.min(0.34, 0.22 * glitchStrength);
+      context.globalCompositeOperation = "screen";
+      const bands = [
+        { y: 0.22, h: 0.055, x: -0.018 },
+        { y: 0.48, h: 0.035, x: 0.024 },
+        { y: 0.71, h: 0.045, x: -0.012 }
+      ];
+      for (const band of bands) {
+        context.save();
+        context.beginPath();
+        context.rect(0, height * band.y, width, height * band.h);
+        context.clip();
+        context.drawImage(source, drawX + width * band.x * glitchStrength, drawY, drawWidth, drawHeight);
+        context.fillStyle = band.x > 0 ? "rgba(255,35,100,0.34)" : "rgba(40,220,255,0.34)";
+        context.fillRect(0, height * band.y, width, height * band.h);
+        context.restore();
+      }
+      context.restore();
+      context.fillStyle = `rgba(40,220,255,${glitchStrength * 0.12})`;
       context.fillRect(0, 0, width, height);
-      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.16) * 0.14 * strengthScale})`;
-      context.fillRect(Math.round(width * 0.012), 0, width, height);
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
