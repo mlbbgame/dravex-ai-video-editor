@@ -494,6 +494,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
   const hasSourceVideo = !suppressAudio && loaded.some((item) => item.kind === "video");
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
+  if (hasSourceVideo && !audioContext) {
+    throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
+  }
   const audioDestination = audioContext?.createMediaStreamDestination();
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
   const sourceVideoGainNodes = new Map<HTMLVideoElement, GainNode>();
