@@ -454,6 +454,11 @@ export default function App() {
     }
   };
 
+  const activeVariant = montageVariants.find((variant) =>
+    style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength
+  );
+  const activeRenderedVariant = renderedVariants.find((variant) => variant.id === activeVariant?.id);
+
   return (
     <main className="dravex-app">
       <header className="dravex-header">
@@ -492,7 +497,7 @@ export default function App() {
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass} ${rendered ? "has-rendered" : ""}`}>
                 {rendered
-                  ? <video src={rendered.url} muted playsInline loop={selected} autoPlay={selected} preload={selected ? "auto" : "metadata"} />
+                  ? <video src={rendered.url} muted playsInline preload="metadata" />
                   : mediaFiles.length > 0 && isImageMode
                     ? <img src={mediaUrls[0]} alt="" loading="lazy" />
                     : mediaFiles.length > 0 && selected
@@ -506,7 +511,11 @@ export default function App() {
             </button>;
           })}
         </div>
-        <p className="dravex-variant-hint">Сначала создай до 4 настоящих видео-вариантов. Они рендерятся по очереди для экономии памяти Android; затем листай карточки, смотри результат и выбирай лучший.</p>
+        {activeRenderedVariant && <section className="dravex-real-preview dravex-variant-player" aria-live="polite">
+          <div><strong>Сейчас выбран: {activeRenderedVariant.title}</strong><span>Это реальный результат монтажа из твоего материала. Можно посмотреть, поставить на паузу или перемотать.</span></div>
+          <video key={activeRenderedVariant.id} src={activeRenderedVariant.url} controls autoPlay muted loop playsInline preload="auto" />
+        </section>}
+        <p className="dravex-variant-hint">Сначала создай до 4 настоящих видео-вариантов. Они рендерятся по очереди для экономии памяти Android; затем листай карточки — выбранный вариант сразу откроется здесь крупнее.</p>
         <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy || renderedVariants.length === montageVariants.length} onClick={createStylePreviews}>
           {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
           {previewBusy ? `Рендер вариантов… ${previewProgress}%` : renderedVariants.length === 0 ? "Создать реальные варианты" : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Создать ещё варианты (${renderedVariants.length}/${montageVariants.length})`}
