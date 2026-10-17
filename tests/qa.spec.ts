@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { shouldContainSource } from "../src/video/video-sequence-render";
+import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
   await page.goto("/");
@@ -16,7 +16,7 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
 
   await expect(page.getByRole("heading", { name: /Твоя музыка/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Музыкальная библиотека" })).toBeVisible();
-  await expect(page.locator(".dravex-track-card")).toHaveCount(20);
+  await expect(page.locator(".dravex-track-card")).toHaveCount(21);
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Все" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Gaming" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Phonk / Drift" })).toBeVisible();
@@ -28,7 +28,7 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
   await page.locator(".dravex-music-categories").getByRole("button", { name: "Все" }).click();
 
   const cards = page.locator(".dravex-track-card");
-  for (let index = 0; index < 20; index += 1) {
+  for (let index = 0; index < 21; index += 1) {
     const card = cards.nth(index);
     await expect(card.locator("audio")).toHaveAttribute("src", /^https:\/\//);
     await expect(card.getByRole("button", { name: "Использовать" })).toBeVisible();
@@ -66,4 +66,17 @@ test("source framing fills matching aspect ratios and preserves mismatched sourc
   expect(shouldContainSource(1, 9 / 16)).toBe(true);
   expect(shouldContainSource(4 / 3, 9 / 16)).toBe(true);
   expect(shouldContainSource(0, 9 / 16)).toBe(true);
+});
+
+ 
+test("camera motion profiles provide visible but controlled movement", () => {
+  const cinematic = getCameraMotionProfile("cinematic", "balanced");
+  const story = getCameraMotionProfile("story", "balanced");
+  const strong = getCameraMotionProfile("cinematic", "strong");
+  const soft = getCameraMotionProfile("cinematic", "soft");
+  expect(cinematic.zoom).toBeGreaterThan(0.1);
+  expect(cinematic.pan).toBeGreaterThan(0.04);
+  expect(story.zoom).toBeLessThan(cinematic.zoom);
+  expect(strong.zoom).toBeGreaterThan(cinematic.zoom);
+  expect(soft.zoom).toBeLessThan(cinematic.zoom);
 });
