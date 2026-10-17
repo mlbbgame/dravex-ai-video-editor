@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, ExternalLink, Headphones, ArrowLeft } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
