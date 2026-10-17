@@ -21,6 +21,7 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Gaming" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Phonk / Drift" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Anime / Jumpstyle" })).toBeVisible();
+  await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Background Music" })).toBeVisible();
 
   await page.locator(".dravex-music-categories").getByRole("button", { name: "Phonk / Drift" }).click();
   await expect(page.locator(".dravex-track-card").first()).toBeVisible();
