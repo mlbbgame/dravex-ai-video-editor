@@ -204,3 +204,53 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-real-preview video { display: block; width: 100%; max-height: 460px; border-radius: 8px; background: #050505; object-fit: contain; }
 .dravex-variant-player { border-color: #566b3e; box-shadow: 0 0 0 1px #b8f45b12; }
 .dravex-variant-player video { max-height: min(58vh, 560px); }
+
+
+/* DRAVEX visual polish: cinematic dark canvas, clear surfaces, mobile-first touch targets. */
+:root { --bg: #090b0d; --panel: #13171a; --line: #2b3337; --accent: #c4ff68; }
+body {
+  background: radial-gradient(ellipse at 12% 0%, #24351a30 0, transparent 34rem), radial-gradient(ellipse at 92% 20%, #16333a24 0, transparent 30rem), #090b0d;
+}
+.dravex-app { background: radial-gradient(ellipse at 50% -12%, #29391c 0, #121619 29rem, #090b0d 70rem); }
+.dravex-header { border-bottom-color: #ffffff12; }
+.dravex-brand-mark { box-shadow: 0 0 24px #c4ff6820; }
+.dravex-preview-card {
+  border-color: #343a3d;
+  background: linear-gradient(155deg, #171b1e, #101214 72%);
+  box-shadow: 0 12px 36px #00000018;
+}
+.dravex-upload {
+  min-height: 160px;
+  border-color: #728754;
+  background: linear-gradient(135deg, #c4ff680d, #c4ff6803 60%, #ffffff02);
+}
+.dravex-upload:focus-visible, .dravex-variant:focus-visible, .dravex-preview-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.dravex-variant-rail { padding: 4px 2px 14px; scroll-padding-inline: 2px; overscroll-behavior-x: contain; }
+.dravex-variant {
+  flex-basis: clamp(138px, 42vw, 166px);
+  border-color: #30383b;
+  background: linear-gradient(160deg, #191d20, #111315);
+}
+.dravex-variant.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px #c4ff6830, 0 8px 24px #c4ff680a; }
+.dravex-variant-copy { min-height: 66px; }
+.dravex-preview-action {
+  min-height: 49px;
+  border-color: #c4ff6870;
+  color: #d1ff8a;
+  background: linear-gradient(110deg, #c4ff6817, #c4ff6808);
+}
+.dravex-real-preview { border-color: #4b5e38; background: linear-gradient(155deg, #141a11, #0e1110); }
+.dravex-real-preview video { max-height: min(62vh, 600px); }
+.dravex-result { border-color: #c4ff6860; background: linear-gradient(150deg, #c4ff680c, #c4ff6803); }
+@media (max-width: 420px) {
+  .dravex-app { padding-left: 11px; padding-right: 11px; }
+  .dravex-main { width: 100%; }
+  .dravex-variant-rail { gap: 9px; }
+  .dravex-variant { flex-basis: min(44vw, 158px); }
+  .dravex-variant-copy { padding: 9px 9px 11px; }
+  .dravex-section-title h2 { font-size: 15px; }
+  .dravex-preview-action { min-height: 50px; }
+}
