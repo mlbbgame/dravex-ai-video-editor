@@ -264,39 +264,50 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!sourceWidth || !sourceHeight) return;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < 0.2;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
-    const transitionType = cutIndex % 5;
+    // Eight native-canvas transition families; no extra library or network asset is required.
+    const transitionType = cutIndex % 8;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
-    // Keep the outgoing shot underneath the incoming shot so wipes, zooms and fades are real transitions.
+    // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
-    const motion = suppressEffects ? 0 : style === "velocity" ? 0.075 : style === "anime" ? 0.045 : style === "glitch" ? 0.035 : style === "story" ? 0.018 : 0.028;
-    const zoom = 1.015 + Math.sin(progress * Math.PI) * motion;
+
+    // Ken Burns camera movement for still photos: alternating push/pull and four gentle pan paths.
+    const motion = suppressEffects ? 0 : style === "velocity" ? 0.06 : style === "anime" ? 0.038 : style === "glitch" ? 0.042 : style === "story" ? 0.022 : 0.04;
+    const travel = cutIndex % 2 === 0 ? progress : 1 - progress;
+    const zoom = 1.025 + travel * motion;
     const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
+    const panAmount = suppressEffects ? 0 : style === "story" ? 0.009 : 0.018;
+    const panPhase = progress * Math.PI / 2;
+    const panX = Math.sin(panPhase) * width * panAmount * ([1, -1, 0, 0][cutIndex % 4]);
+    const panY = Math.sin(panPhase) * height * panAmount * ([0, 0, 1, -1][cutIndex % 4]);
     const shake = !suppressEffects && !suppressShake && cutProgress < 0.16 && style !== "story" ? (1 - cutProgress / 0.16) * (style === "velocity" ? 0.012 : 0.004) : 0;
-    const offsetX = Math.sin(progress * 71) * width * shake;
-    const offsetY = Math.cos(progress * 83) * height * shake;
+    const offsetX = panX + Math.sin(progress * 71) * width * shake;
+    const offsetY = panY + Math.cos(progress * 83) * height * shake;
+    const drawX = (width - drawWidth) / 2 + offsetX;
+    const drawY = (height - drawHeight) / 2 + offsetY;
+    const drawIncoming = () => context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+
     context.save();
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
-      // Fast zoom-in reveal.
+      // Fast punch zoom.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.2 : 0.1);
       const dw = drawWidth * punch;
       const dh = drawHeight * punch;
       context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
       context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
     } else if (transitionWindow && (transitionType === 1 || transitionType === 2)) {
-      // Alternating directional wipe reveals the new shot.
-      const reveal = Math.max(0.04, Math.min(1, transitionProgress));
-      const revealWidth = width * reveal;
+      // Directional wipes alternate left-to-right and right-to-left.
+      const revealWidth = width * Math.max(0.025, transitionProgress);
       context.beginPath();
       context.rect(transitionType === 1 ? 0 : width - revealWidth, 0, revealWidth, height);
       context.clip();
-      context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+      drawIncoming();
     } else if (transitionWindow && transitionType === 3) {
       // Diagonal slash reveal.
-      const edge = width + height * transitionProgress * 1.5;
+      const edge = (width + height) * transitionProgress;
       context.beginPath();
       context.moveTo(0, 0);
       context.lineTo(Math.min(width, edge), 0);
@@ -304,14 +315,51 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.lineTo(0, height);
       context.closePath();
       context.clip();
-      context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+      drawIncoming();
+    } else if (transitionWindow && transitionType === 4) {
+      // Short rotational reveal with a restrained zoom.
+      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.11 : 0.065);
+      const punch = 1 + (1 - transitionProgress) * 0.13;
+      context.translate(width / 2, height / 2);
+      context.rotate(angle);
+      context.globalAlpha = Math.min(1, transitionProgress * 2 + 0.05);
+      context.drawImage(source, -drawWidth * punch / 2 + offsetX, -drawHeight * punch / 2 + offsetY, drawWidth * punch, drawHeight * punch);
+    } else if (transitionWindow && transitionType === 5) {
+      // Eight staggered horizontal shutters.
+      const strips = 8;
+      const stripHeight = height / strips;
+      for (let strip = 0; strip < strips; strip++) {
+        const localProgress = Math.max(0, Math.min(1, (transitionProgress - strip * 0.035) * 1.45));
+        const revealHeight = stripHeight * localProgress;
+        const fromBottom = strip % 2 === 1;
+        context.save();
+        context.beginPath();
+        context.rect(0, strip * stripHeight + (fromBottom ? stripHeight - revealHeight : 0), width, revealHeight);
+        context.clip();
+        drawIncoming();
+        context.restore();
+      }
+    } else if (transitionWindow && transitionType === 6) {
+      // Radial iris opens from the center of the frame.
+      const radius = Math.hypot(width, height) * transitionProgress * 0.72;
+      context.beginPath();
+      context.arc(width / 2, height / 2, Math.max(1, radius), 0, Math.PI * 2);
+      context.clip();
+      drawIncoming();
+    } else if (transitionWindow && transitionType === 7) {
+      // Split reveal expands from the center to both edges.
+      const halfReveal = width * 0.5 * transitionProgress;
+      context.beginPath();
+      context.rect(width / 2 - halfReveal, 0, halfReveal * 2, height);
+      context.clip();
+      drawIncoming();
     } else {
-      // Clean cut or short fade; keep the footage readable.
+      // Normal shot; keep the image fully readable after its transition window.
       context.globalAlpha = transitionWindow ? Math.min(1, transitionProgress * 2.2 + 0.05) : 1;
       if (transitionWindow && style === "velocity") {
         context.filter = "blur(" + ((1 - transitionProgress) * Math.min(16, width * 0.012)) + "px) " + context.filter;
       }
-      context.drawImage(source, (width - drawWidth) / 2 + offsetX, (height - drawHeight) / 2 + offsetY, drawWidth, drawHeight);
+      drawIncoming();
     }
     context.restore();
     if (!suppressEffects) {
@@ -332,6 +380,22 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillRect(0, 0, width, height);
       context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.07) * 0.08})`;
       context.fillRect(Math.round(width * 0.012), 0, width, height);
+    }
+
+    // Directional light streaks add a quick action accent without obscuring the photo.
+    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.12) {
+      const streakAlpha = (1 - cutProgress / 0.12) * 0.16;
+      context.save();
+      context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
+      context.lineWidth = Math.max(2, width * 0.0025);
+      for (let streak = 0; streak < 5; streak++) {
+        const y = height * (0.16 + streak * 0.15) + cutProgress * height * 0.5;
+        context.beginPath();
+        context.moveTo(width * 0.56, y);
+        context.lineTo(width * 1.05, y - height * 0.16);
+        context.stroke();
+      }
+      context.restore();
     }
     if (!suppressEffects) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
