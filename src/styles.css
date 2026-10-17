@@ -65,6 +65,10 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-more summary::after { content: "+"; margin-left: auto; color: var(--accent); font-size: 17px; }
 .dravex-more[open] summary::after { content: "−"; }
 .dravex-more-content { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 12px 13px; }
+.dravex-project-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px 12px; }
+.dravex-project-actions button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px; border: 1px solid #33373c; border-radius: 9px; color: var(--accent); background: #0d0f11; font-size: 10px; font-weight: 700; }
+.dravex-project-actions button:disabled { opacity: .55; }
+.dravex-project-message { margin: 0; padding: 0 12px 12px; color: #aeb3ba; font-size: 10px; line-height: 1.5; }
 .dravex-duration, .dravex-music { min-width: 0; display: flex; flex-direction: column; gap: 7px; color: #aeb3ba; font-size: 10px; }
 .dravex-duration select, .dravex-music button { width: 100%; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid #33373c; border-radius: 9px; color: #f0f2ed; background: #0d0f11; font-size: 10px; }
 .dravex-music button { display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; }
