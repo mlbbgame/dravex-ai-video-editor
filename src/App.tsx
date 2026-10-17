@@ -168,6 +168,7 @@ export default function App() {
       }
       mediaUrls.forEach((url) => URL.revokeObjectURL(url));
       if (musicUrl) URL.revokeObjectURL(musicUrl);
+      clearRenderedVariants();
       setMediaFiles(project.files);
       setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
       setMusicFile(project.musicFile ?? null);
@@ -202,6 +203,7 @@ export default function App() {
       return;
     }
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+    clearRenderedVariants();
     setMediaFiles(files);
     setMediaUrls(files.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
@@ -221,6 +223,7 @@ export default function App() {
     const nextFiles = [...mediaFiles];
     const [moved] = nextFiles.splice(index, 1);
     nextFiles.splice(target, 0, moved);
+    clearRenderedVariants();
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
@@ -234,6 +237,7 @@ export default function App() {
   const removePhoto = (index: number) => {
     if (!isImageMode) return;
     const nextFiles = mediaFiles.filter((_, fileIndex) => fileIndex !== index);
+    clearRenderedVariants();
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
