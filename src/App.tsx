@@ -490,7 +490,7 @@ export default function App() {
             const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
             const rendered = renderedVariants.find((item) => item.id === variant.id);
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
-              <span className={`dravex-variant-preview preview-${variant.previewClass}`}>
+              <span className={`dravex-variant-preview preview-${variant.previewClass} ${rendered ? "has-rendered" : ""}`}>
                 {rendered
                   ? <video src={rendered.url} muted playsInline loop={selected} autoPlay={selected} preload={selected ? "auto" : "metadata"} />
                   : mediaFiles.length > 0 && isImageMode
