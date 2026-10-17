@@ -38,6 +38,11 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
   await expect(page.locator(".dravex-track-card")).toHaveCount(1);
   await expect(page.locator(".dravex-track-card").first()).toContainText("Crash Up");
 
+  // Search must include category/style tags, not just titles and descriptions.
+  await page.getByRole("textbox", { name: "Поиск музыки" }).fill("Gaming");
+  await expect(page.locator(".dravex-track-card").first()).toBeVisible();
+  expect(await page.locator(".dravex-track-card").count()).toBeGreaterThan(0);
+
   await page.getByRole("textbox", { name: "Поиск музыки" }).fill("no-such-track-xyz");
   await expect(page.getByText(/Ничего не найдено/i)).toBeVisible();
 });
