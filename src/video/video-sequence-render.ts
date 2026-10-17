@@ -23,6 +23,18 @@ export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" 
 
 export type SequenceSegment = VideoSegment | ImageSegment;
 
+/**
+ * Keep the whole source visible when its aspect ratio differs from the output.
+ * When ratios match, fill the frame instead of needlessly shrinking photos over
+ * a blurred duplicate background.
+ */
+export function shouldContainSource(sourceAspect: number, outputAspect: number): boolean {
+  if (!Number.isFinite(sourceAspect) || !Number.isFinite(outputAspect) || sourceAspect <= 0 || outputAspect <= 0) {
+    return true;
+  }
+  return Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
+}
+
 type SequenceOptions = {
   segments: SequenceSegment[];
   audioTracks?: AudioSegment[];
@@ -316,7 +328,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // Use a blurred fill behind a contained foreground whenever source/output framing differs noticeably.
     const sourceAspect = sourceWidth / sourceHeight;
     const outputAspect = width / height;
-    const useContain = isPhoto || Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
+    const useContain = shouldContainSource(sourceAspect, outputAspect);
     const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
