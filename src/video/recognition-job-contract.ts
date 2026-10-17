@@ -75,7 +75,7 @@ export function validateRecognitionJobSnapshot(input: unknown): JobValidation {
   }
   const value = input as Record<string, unknown>;
   const statuses = Object.keys(transitions);
-  const stages: RecognitionJobStage[] = [
+  const stages: string[] = [
     "upload", "probe", "sampling", "recognition", "planning", "preview", "complete",
   ];
 
