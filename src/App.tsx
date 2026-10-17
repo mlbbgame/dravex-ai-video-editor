@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen } from "lucide-react";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
+import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
+import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 
-type EditStyle = "auto" | "velocity" | "cinematic" | "story";
+type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
 const styleOptions: Array<{ id: EditStyle; title: string; note: string; icon: typeof Sparkles }> = [
   { id: "auto", title: "Автоматически", note: "Подберём по видео", icon: Sparkles },
   { id: "velocity", title: "Динамичный", note: "Быстрые склейки", icon: WandSparkles },
   { id: "cinematic", title: "Кино", note: "Плавный ритм", icon: Film },
-  { id: "story", title: "Спокойный", note: "Мягкая подача", icon: Play }
+  { id: "story", title: "Спокойный", note: "Мягкая подача", icon: Play },
+  { id: "anime", title: "Аниме", note: "Яркий контраст", icon: Sparkles },
+  { id: "glitch", title: "Глитч", note: "Цифровые вспышки", icon: ScanLine }
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
@@ -61,6 +65,10 @@ export default function App() {
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
   const [style, setStyle] = useState<EditStyle>("auto");
+  const [quality, setQuality] = useState<"720p" | "1080p">("720p");
+  const [beatSync, setBeatSync] = useState(true);
+  const [projectMessage, setProjectMessage] = useState("");
+  const [projectBusy, setProjectBusy] = useState(false);
   const [scan, setScan] = useState<HighlightProgress>({ current: 0, total: 0, time: 0 });
   const [renderProgress, setRenderProgress] = useState(0);
   const [message, setMessage] = useState("");
@@ -77,8 +85,69 @@ export default function App() {
   const busy = stage === "analyzing" || stage === "rendering";
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
+
+  useEffect(() => {
+    let active = true;
+    loadLocalProject().then((project) => {
+      if (!active || !project || !project.files?.length) return;
+      setMediaFiles(project.files);
+      setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+      setMusicFile(project.musicFile ?? null);
+      setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
+      setStyle((project.style as EditStyle) || "auto");
+      setDuration(project.duration || 30);
+      setQuality(project.quality || "720p");
+      setBeatSync(project.beatSync !== false);
+      setStage("ready");
+      setProjectMessage("Найден сохранённый проект на этом устройстве.");
+    }).catch(() => { /* A private browser or disabled IndexedDB must not prevent editing. */ });
+    return () => { active = false; };
+  }, []);
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
+
+  const saveProject = async () => {
+    if (!mediaFiles.length || projectBusy) return;
+    setProjectBusy(true);
+    setProjectMessage("");
+    try {
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, quality, beatSync });
+      setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
+    } catch (caught) {
+      setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
+  const restoreProject = async () => {
+    if (projectBusy) return;
+    setProjectBusy(true);
+    try {
+      const project = await loadLocalProject();
+      if (!project || !project.files?.length) {
+        setProjectMessage("Сохранённый проект не найден. Сначала сохрани текущий проект.");
+        return;
+      }
+      mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (musicUrl) URL.revokeObjectURL(musicUrl);
+      setMediaFiles(project.files);
+      setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+      setMusicFile(project.musicFile ?? null);
+      setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
+      setStyle((project.style as EditStyle) || "auto");
+      setDuration(project.duration || 30);
+      setQuality(project.quality || "720p");
+      setBeatSync(project.beatSync !== false);
+      setStage("ready");
+      setOutputUrl("");
+      setProjectMessage("Проект восстановлен.");
+    } catch (caught) {
+      setProjectMessage(caught instanceof Error ? caught.message : "Не удалось восстановить проект.");
+    } finally {
+      setProjectBusy(false);
+    }
+  };
 
   const onMediaSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -126,6 +195,7 @@ export default function App() {
       setMessage(isImageMode ? "Подготавливаем фотографии…" : "Смотрим на смену кадров и подбираем темп…");
       let segments: Array<VideoSegment | ImageSegment>;
       let renderDuration = duration;
+      let sourceVideoDuration = 0;
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
       if (isImageMode) {
         actualStyle = style === "auto" ? "cinematic" : actualStyle;
@@ -133,6 +203,7 @@ export default function App() {
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
         const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+        sourceVideoDuration = analysis.duration;
         renderDuration = Math.min(duration, analysis.duration);
         if (style === "auto") {
           const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
@@ -140,8 +211,33 @@ export default function App() {
         }
         segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
       }
-      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : "Кинематографичный") : styleOptions.find((item) => item.id === style)?.title ?? "Автоматический");
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
+      if (musicUrl && musicFile && beatSync) {
+        setMessage("Анализируем музыкальный ритм…");
+        try {
+          const beatAnalysis = await detectMusicBeats(musicUrl);
+          const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
+          if (usableBeats.length >= 2) {
+            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "story" ? 3.2 : 2.2;
+            const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
+            segments = segments.map((segment, index) => {
+              const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
+              if (segment.kind === "image") return { ...segment, duration: nextDuration };
+              const videoSegment = segment as VideoSegment;
+              const safeDuration = Math.min(nextDuration, Math.max(0.2, sourceVideoDuration));
+              const center = (videoSegment.trimStart + videoSegment.trimEnd) / 2;
+              const start = Math.max(0, Math.min(Math.max(0, sourceVideoDuration - safeDuration), center - safeDuration / 2));
+              return { ...videoSegment, trimStart: start, trimEnd: start + safeDuration };
+            });
+            setMessage(`Ритм найден: подстроили монтаж под ${usableBeats.length} музыкальных акцентов.`);
+          } else {
+            setMessage("В треке мало выраженных ударов — используем обычный ритм монтажа.");
+          }
+        } catch {
+          setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
+        }
+      }
+      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : styleOptions.find((item) => item.id === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
       setStage("rendering");
       setMessage("Собираем видео и применяем выбранный стиль…");
@@ -151,7 +247,7 @@ export default function App() {
         audioTracks,
         title: "",
         aspectRatio: "9:16",
-        quality: "720p",
+        quality,
         style: actualStyle as SequenceRenderStyle,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress
@@ -201,12 +297,19 @@ export default function App() {
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
           <div className="dravex-more-content">
             <label className="dravex-duration"><span>Длина видео</span><select value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
+            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => setQuality(event.target.value as "720p" | "1080p")}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button></div>
+            <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => setBeatSync(event.target.value === "on")}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
+          <div className="dravex-project-actions">
+            <button type="button" onClick={saveProject} disabled={!mediaFiles.length || projectBusy}><Save size={15} />{projectBusy ? "Сохраняем…" : "Сохранить проект"}</button>
+            <button type="button" onClick={restoreProject} disabled={projectBusy}><FolderOpen size={15} />Восстановить</button>
+          </div>
+          {projectMessage && <p className="dravex-project-message" role="status">{projectMessage}</p>}
         </details>
 
         <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Создать видео"}</button>
-        <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер.</p>
+        <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер. Проекты сохраняются локально на этом устройстве.</p>
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
