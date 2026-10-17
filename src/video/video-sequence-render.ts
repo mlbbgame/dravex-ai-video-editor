@@ -104,9 +104,31 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     video.preload = "auto";
     video.muted = false;
     video.playsInline = true;
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", loaded);
+      video.removeEventListener("error", failed);
+    };
+    const loaded = () => {
+      cleanup();
+      resolve(video);
+    };
+    const failed = () => {
+      cleanup();
+      reject(new Error(`Could not read video: ${segment.name}. Try MP4 (H.264) or WebM.`));
+    };
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      reject(new Error(`Видео «${segment.name}» не открылось за 20 секунд. Попробуй MP4 (H.264) или более короткий файл.`));
+    }, 20_000);
+    video.addEventListener("loadedmetadata", loaded, { once: true });
+    video.addEventListener("error", failed, { once: true });
     video.src = segment.url;
-    video.onloadedmetadata = () => resolve(video);
-    video.onerror = () => reject(new Error(`Could not read video: ${segment.name}`));
+    video.load();
   });
 }
 
