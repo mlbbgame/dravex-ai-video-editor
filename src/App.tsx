@@ -64,6 +64,7 @@ export default function App() {
   const [musicUrl, setMusicUrl] = useState("");
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
+  const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
   const [style, setStyle] = useState<EditStyle>("auto");
   const [quality, setQuality] = useState<"720p" | "1080p">("720p");
   const [beatSync, setBeatSync] = useState(true);
@@ -99,6 +100,8 @@ export default function App() {
       setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
       setStyle((project.style as EditStyle) || "auto");
       setDuration(project.duration || 30);
+      setAspectRatio(project.aspectRatio ?? "9:16");
+      setAspectRatio(project.aspectRatio ?? "9:16");
       setQuality(project.quality || "720p");
       setBeatSync(project.beatSync !== false);
       setEffectStrength(project.effectStrength ?? "balanced");
@@ -117,7 +120,7 @@ export default function App() {
     setProjectBusy(true);
     setProjectMessage("");
     try {
-      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, quality, beatSync, effectStrength, musicVolume, transitionMode });
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode });
       setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
     } catch (caught) {
       setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
@@ -317,7 +320,7 @@ export default function App() {
         segments,
         audioTracks,
         title: "",
-        aspectRatio: "9:16",
+        aspectRatio,
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
@@ -378,6 +381,7 @@ export default function App() {
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
           <div className="dravex-more-content">
             <label className="dravex-duration"><span>Максимальная длина</span><select value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
+            <label className="dravex-duration"><span>Формат кадра</span><select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as "9:16" | "16:9" | "1:1" | "4:5"); invalidateOutput(); }}><option value="9:16">9:16 · TikTok / Shorts</option><option value="16:9">16:9 · YouTube</option><option value="1:1">1:1 · квадрат</option><option value="4:5">4:5 · лента</option></select></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><div className="dravex-music-actions"><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
