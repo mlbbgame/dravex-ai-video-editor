@@ -48,7 +48,11 @@ export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> 
       fluxSum += flux[i];
     }
     const averageFlux = fluxSum / Math.max(1, frameCount - 1);
-    const threshold = Math.max(averageFlux * 1.35, 0.0025);
+    let energySum = 0;
+    for (let i = 0; i < energy.length; i += 1) energySum += energy[i];
+    const averageEnergy = energySum / Math.max(1, energy.length);
+    // Relative threshold adapts to quiet and heavily compressed tracks; keep a tiny floor for silence/noise.
+    const threshold = Math.max(averageFlux * 1.2, averageEnergy * 0.035, 0.00012);
     const peakFrames: number[] = [];
     let lastPeakTime = -1;
     for (let i = 2; i < frameCount - 2; i += 1) {
@@ -66,11 +70,18 @@ export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> 
     }
 
     const beats = peakFrames.map((frame) => Number((frame * hopSeconds).toFixed(3)));
-    return {
-      duration: buffer.duration,
-      beats,
-      confidence: beats.length >= 12 ? "strong" : beats.length >= 5 ? "moderate" : "weak"
-    };
+    const intervals = beats.slice(1).map((beat, index) => beat - beats[index]).filter((interval) => interval >= 0.22 && interval <= 2.5);
+    const meanInterval = intervals.reduce((sum, interval) => sum + interval, 0) / Math.max(1, intervals.length);
+    const intervalDeviation = intervals.length
+      ? intervals.reduce((sum, interval) => sum + Math.abs(interval - meanInterval), 0) / intervals.length
+      : Number.POSITIVE_INFINITY;
+    const regularity = intervals.length >= 4 && meanInterval > 0 ? Math.max(0, 1 - intervalDeviation / meanInterval) : 0;
+    const confidence = beats.length >= 12 && regularity >= 0.28
+      ? "strong"
+      : beats.length >= 5 && regularity >= 0.12
+        ? "moderate"
+        : "weak";
+    return { duration: buffer.duration, beats, confidence };
   } finally {
     await context.close().catch(() => undefined);
   }
