@@ -15,6 +15,48 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
 });
 
 
+test("saved local projects are not restored automatically on page startup", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const request = indexedDB.open("dravex-projects", 1);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("projects")) {
+          request.result.createObjectStore("projects");
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const savedFile = new File(["fake-image-data"], "remembered-photo.jpg", { type: "image/jpeg" });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("projects", "readwrite");
+      transaction.objectStore("projects").put({
+        files: [savedFile],
+        musicFile: null,
+        style: "auto",
+        duration: 30,
+        aspectRatio: "9:16",
+        quality: "720p",
+        beatSync: true,
+        effectStrength: "balanced",
+        musicVolume: 0.72,
+        transitionMode: "auto",
+        savedAt: new Date().toISOString()
+      }, "last-project");
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
+  await expect(page.locator(".dravex-image-grid")).toHaveCount(0);
+  await expect(page.getByText("Найден сохранённый проект на этом устройстве.")).toHaveCount(0);
+});
+
 test("choosing a montage style highlights exactly one matching variant", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
