@@ -101,7 +101,7 @@ test("quick video cut points stay valid across the full duration range", () => {
 });
 
 test("fallback video planner covers short, medium, and long sources without invalid trims", () => {
-  for (const sourceDuration of [0.25, 0.5, 2, 5, 9, 15, 16, 30, 60, 300, 1800]) {
+  for (const sourceDuration of [0.25, 0.5, 2, 5, 9, 15, 16, 30, 60, 300, 1800, 7200, 18000]) {
     for (const targetDuration of [5, 15, 30, 60]) {
       for (const shotLength of [1.05, 1.35, 2.2, 3.2]) {
         const cuts = buildFallbackVideoCuts(sourceDuration, targetDuration, shotLength);
