@@ -21,6 +21,12 @@ type MontageVariant = {
   icon: typeof Sparkles;
 };
 
+type RenderedVariant = {
+  id: string;
+  url: string;
+  title: string;
+};
+
 const montageVariants: MontageVariant[] = [
   { id: "auto", title: "Умный авто", note: "Подберём по материалу", style: "auto", transition: "auto", strength: "balanced", previewClass: "auto", icon: Sparkles },
   { id: "velocity", title: "Velocity", note: "Резко и динамично", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
@@ -98,7 +104,9 @@ export default function App() {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewProgress, setPreviewProgress] = useState(0);
   const [previewStatus, setPreviewStatus] = useState("");
+  const [renderedVariants, setRenderedVariants] = useState<RenderedVariant[]>([]);
   const [cutCount, setCutCount] = useState(0);
+  const renderedVariantUrls = useRef<string[]>([]);
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
@@ -133,6 +141,7 @@ export default function App() {
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  useEffect(() => () => { renderedVariantUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   const saveProject = async () => {
     if (!mediaFiles.length || projectBusy) return;
@@ -235,13 +244,32 @@ export default function App() {
     setMessage("");
   };
 
+  const clearRenderedVariants = () => {
+    renderedVariantUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    renderedVariantUrls.current = [];
+    setRenderedVariants([]);
+  };
+
   const invalidateOutput = () => {
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
+    clearRenderedVariants();
     setError("");
     setMessage("");
     setStage(mediaFiles.length ? "ready" : "empty");
+  };
+
+  const chooseMontageVariant = (variant: MontageVariant) => {
+    const hasRealPreview = renderedVariants.some((item) => item.id === variant.id);
+    setStyle(variant.style);
+    setTransitionMode(variant.transition);
+    setEffectStrength(variant.strength);
+    setOutputUrl("");
+    setError("");
+    setMessage("");
+    setStage(mediaFiles.length ? "ready" : "empty");
+    if (!hasRealPreview) clearRenderedVariants();
   };
 
   const clearMusic = () => {
@@ -265,44 +293,55 @@ export default function App() {
     invalidateOutput();
   };
 
-  const createStylePreview = async () => {
+  const createStylePreviews = async () => {
     if (!mediaFiles.length || busy || previewBusy) return;
+    const pendingVariants = montageVariants.filter((variant) => !renderedVariants.some((rendered) => rendered.id === variant.id)).slice(0, 4);
+    if (!pendingVariants.length) {
+      setPreviewStatus("Все варианты уже созданы. Листай карточки и выбери понравившийся.");
+      return;
+    }
     setPreviewBusy(true);
     setPreviewProgress(0);
-    setPreviewStatus("Готовим короткий предпросмотр выбранного стиля…");
-    setPreviewUrl("");
+    setPreviewStatus(`Готовим ${pendingVariants.length} реальных вариантов по очереди — это может занять немного времени на телефоне…`);
     setError("");
     try {
-      const previewDuration = 4.8;
-      const previewStyle: Exclude<EditStyle, "auto"> = style === "auto"
-        ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
-        : style;
-      const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
-        ? mediaFiles.slice(0, 6).map((file, index) => ({
-            kind: "image" as const,
-            name: file.name,
-            url: mediaUrls[index],
-            duration: previewDuration / Math.min(mediaFiles.length, 6)
-          }))
-        : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
-      const blob = await renderVideoSequence({
-        segments: previewSegments,
-        audioTracks: [],
-        title: "DRAVEX style preview",
-        aspectRatio,
-        quality: "preview",
-        style: previewStyle,
-        effectStrength,
-        transitionMode,
-        suppressAudio: true,
-        targetDurationSeconds: previewDuration,
-        onProgress: setPreviewProgress
-      });
-      setPreviewUrl(URL.createObjectURL(blob));
-      setPreviewStatus("Готово: это реальный короткий рендер с выбранными движением и переходами. Звук добавится в полном монтаже.");
+      for (let index = 0; index < pendingVariants.length; index += 1) {
+        const variant = pendingVariants[index];
+        setPreviewStatus(`Создаём вариант ${index + 1} из ${pendingVariants.length}: ${variant.title}…`);
+        const previewDuration = 3.8;
+        const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
+          ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
+          : variant.style;
+        const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
+          ? mediaFiles.slice(0, 6).map((file, segmentIndex) => ({
+              kind: "image" as const,
+              name: file.name,
+              url: mediaUrls[segmentIndex],
+              duration: previewDuration / Math.min(mediaFiles.length, 6)
+            }))
+          : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+        const blob = await renderVideoSequence({
+          segments: previewSegments,
+          audioTracks: [],
+          title: `DRAVEX ${variant.title} preview`,
+          aspectRatio,
+          quality: "preview",
+          style: previewStyle,
+          effectStrength: variant.strength,
+          transitionMode: variant.transition,
+          suppressAudio: true,
+          targetDurationSeconds: previewDuration,
+          onProgress: (progress) => setPreviewProgress(Math.round(((index + progress / 100) / pendingVariants.length) * 100))
+        });
+        const url = URL.createObjectURL(blob);
+        renderedVariantUrls.current.push(url);
+        setRenderedVariants((current) => [...current.filter((item) => item.id !== variant.id), { id: variant.id, url, title: variant.title }]);
+      }
+      setPreviewProgress(100);
+      setPreviewStatus("Готово! Это реальные короткие видео с разными движением и переходами. Листай карточки, нажимай на вариант и смотри его результат.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось создать предпросмотр. Попробуй ещё раз.");
-      setPreviewStatus("");
+      setError(caught instanceof Error ? caught.message : "Не удалось создать варианты. Попробуй более короткий материал.");
+      setPreviewStatus("Сохранились варианты, которые успели отрендериться. Можно посмотреть их или повторить запуск.");
     } finally {
       setPreviewBusy(false);
     }
@@ -445,28 +484,31 @@ export default function App() {
           {montageVariants.map((variant) => {
             const Icon = variant.icon;
             const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
-            return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => { setStyle(variant.style); setTransitionMode(variant.transition); setEffectStrength(variant.strength); invalidateOutput(); }} aria-pressed={selected}>
+            const rendered = renderedVariants.find((item) => item.id === variant.id);
+            return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass}`}>
-                {mediaFiles.length > 0 && isImageMode
-                  ? <img src={mediaUrls[0]} alt="" loading="lazy" />
-                  : mediaFiles.length > 0 && selected
-                    ? <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />
-                    : <span className="dravex-variant-placeholder"><Icon size={30} /><small>{mediaFiles.length ? "Выбери для просмотра" : "Твой материал"}</small></span>}
+                {rendered
+                  ? <video src={rendered.url} muted playsInline loop={selected} autoPlay={selected} preload={selected ? "auto" : "metadata"} />
+                  : mediaFiles.length > 0 && isImageMode
+                    ? <img src={mediaUrls[0]} alt="" loading="lazy" />
+                    : mediaFiles.length > 0 && selected
+                      ? <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />
+                      : <span className="dravex-variant-placeholder"><Icon size={30} /><small>{mediaFiles.length ? "Создай реальный вариант" : "Твой материал"}</small></span>}
                 <span className="dravex-variant-overlay" />
-                <span className="dravex-variant-tag">{selected && mediaFiles.length > 0 ? (isImageMode ? "MOTION PREVIEW" : "LIVE PREVIEW") : "STYLE PREVIEW"}</span>
+                <span className="dravex-variant-tag">{rendered ? "REAL VIDEO" : "STYLE IDEA"}</span>
                 {selected && <span className="dravex-variant-check"><CheckCircle2 size={17} /></span>}
               </span>
               <span className="dravex-variant-copy"><strong>{variant.title}</strong><small>{variant.note}</small></span>
             </button>;
           })}
         </div>
-        <p className="dravex-variant-hint">Выбери стиль, затем создай короткий реальный рендер, чтобы проверить движение и переходы до полного экспорта.</p>
-        <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy} onClick={createStylePreview}>
+        <p className="dravex-variant-hint">Сначала создай до 4 настоящих видео-вариантов. Они рендерятся по очереди для экономии памяти Android; затем листай карточки, смотри результат и выбирай лучший.</p>
+        <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy || renderedVariants.length === montageVariants.length} onClick={createStylePreviews}>
           {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
-          {previewBusy ? `Рендер предпросмотра… ${previewProgress}%` : "Создать короткий предпросмотр"}
+          {previewBusy ? `Рендер вариантов… ${previewProgress}%` : renderedVariants.length === 0 ? "Создать реальные варианты" : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Создать ещё варианты (${renderedVariants.length}/${montageVariants.length})`}
         </button>
         {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
-        {previewUrl && <section className="dravex-real-preview"><div><strong>Предпросмотр выбранного стиля</strong><span>Низкое разрешение для быстрой проверки на телефоне</span></div><video src={previewUrl} controls playsInline preload="metadata" /></section>}
+        {renderedVariants.length > 0 && <p className="dravex-preview-status" role="status">{renderedVariants.length} из {montageVariants.length} вариантов — нажми на карточку, чтобы выбрать её для полного монтажа.</p>}
 
         <details className="dravex-more">
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
