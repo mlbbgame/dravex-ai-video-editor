@@ -70,3 +70,5 @@ jobs:
 # Refresh preview with the action/velocity transition upgrade for Android smoke testing.
 # Rebuild preview with real shot transitions, source-audio preservation, and improved pacing.
 # Rebuild preview with expanded photo motion and transition effects for Android testing.
+
+# Rebuild preview with music beat sync, export quality options, and local project saving.
