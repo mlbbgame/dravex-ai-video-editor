@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, ExternalLink, Headphones, ArrowLeft } from "lucide-react";
-import { generateMusicTrack, musicPresets, type MusicPreset } from "./video/music-library";
+import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -311,9 +311,9 @@ export default function App() {
     setGeneratingMusicId(preset.id);
     setError("");
     try {
-      const file = await generateMusicTrack(preset);
+      const file = await loadMusicTrack(preset);
       applyMusicFile(file);
-      setPreviewStatus(`Создан оригинальный трек «${preset.title}» · ${preset.bpm} BPM. Он готов для автомонтажа и локального предпрослушивания.`);
+      setPreviewStatus(`«${preset.title}» добавлен в монтаж. Теперь можно сразу нажать «Автомонтаж».`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось создать музыкальный трек.");
     } finally {
@@ -616,29 +616,23 @@ export default function App() {
               <span className="dravex-music-hero-icon"><Music2 size={25} /></span>
               <div><span className="dravex-eyebrow">DRAVEX AUDIO LAB</span><h1>Твоя музыка.<br /><span>Твой монтаж.</span></h1><p>Выбирай оригинальный бит или добавляй свой трек — всё обрабатывается на телефоне.</p></div>
             </div>
-            <div className="dravex-music-safety"><CheckCircle2 size={16} /><span>Встроенные биты создаются самим DRAVEX. Мы не встраиваем в сайт чужие коммерческие песни.</span></div>
+            <div className="dravex-music-safety"><CheckCircle2 size={16} /><span>Готовые музыкальные треки можно прослушать и добавить прямо в монтаж — скачивать вручную не нужно. В каталоге представлены записи с лицензией CC0.</span></div>
             <label className="dravex-music-sync"><input type="checkbox" checked={beatSync} onChange={(event) => { setBeatSync(event.target.checked); invalidateOutput(); }} /><span><strong>Синхронизировать монтаж с битом</strong><small>DRAVEX попробует подстроить смену кадров под ритм выбранной музыки.</small></span></label>
             {musicFile && musicUrl ? <section className="dravex-current-track">
               <div className="dravex-current-track-top"><span className="dravex-track-icon"><Headphones size={19} /></span><div><strong>Выбранный трек</strong><small>{musicFile.name}</small></div><button type="button" aria-label="Убрать выбранную музыку" onClick={clearMusic}><X size={17} /></button></div>
               <audio controls preload="metadata" src={musicUrl}>Твой браузер не поддерживает аудиоплеер.</audio>
-              <div className="dravex-current-track-actions"><a className="dravex-download-track" href={musicUrl} download={musicFile.name}><Download size={15} />Скачать аудио</a><button className="dravex-return-editor" type="button" onClick={() => setActiveTab("editor")}><ArrowLeft size={16} />Вернуться к монтажу</button></div>
+              <div className="dravex-current-track-actions"><button className="dravex-return-editor" type="button" onClick={() => setActiveTab("editor")}><ArrowLeft size={16} />Использовать в монтаже</button></div>
             </section> : <section className="dravex-music-empty"><Headphones size={22} /><div><strong>Музыка пока не выбрана</strong><span>Создай один из оригинальных треков ниже или загрузи свой аудиофайл.</span></div><button type="button" onClick={() => musicInput.current?.click()}><Upload size={15} />Загрузить аудио</button></section>}
-            <div className="dravex-music-heading"><div><h2>Оригинальные биты DRAVEX</h2><p>Создаются локально по нажатию · 30 секунд · без сторонних семплов из музыкальных библиотек</p></div><span>6 треков</span></div>
+            <div className="dravex-music-heading"><div><h2>Музыкальная библиотека</h2><p>Готовые треки для эдитов, игровых моментов, экшена и cinematic-видео</p></div><span>{musicPresets.length} треков</span></div>
             <label className="dravex-music-search"><Search size={17} /><input value={musicQuery} onChange={(event) => setMusicQuery(event.target.value)} placeholder="Поиск по стилю или настроению…" aria-label="Поиск музыки" /></label>
-            <div className="dravex-music-categories">{["Все", "Action", "Phonk", "Anime", "Cinematic", "Slow", "Chill"].map((category) => <button key={category} type="button" className={musicCategory === category ? "is-active" : ""} onClick={() => setMusicCategory(category)}>{category}</button>)}</div>
-            <div className="dravex-track-list">{musicPresets.filter((preset) => (musicCategory === "Все" || preset.mood === musicCategory) && `${preset.title} ${preset.mood} ${preset.description}`.toLowerCase().includes(musicQuery.toLowerCase())).map((preset) => <article className="dravex-track-card" key={preset.id}>
+            <div className="dravex-music-categories">{musicCategories.map((category) => <button key={category} type="button" className={musicCategory === category ? "is-active" : ""} onClick={() => setMusicCategory(category)}>{category}</button>)}</div>
+            <div className="dravex-track-list">{musicPresets.filter((preset) => (musicCategory === "Все" || preset.mood === musicCategory || (musicCategory === "Action" && preset.style === "action") || (musicCategory === "Epic" && preset.description.toLowerCase().includes("эпич")) || (musicCategory === "Cinematic" && preset.style === "cinematic")) && `${preset.title} ${preset.mood} ${preset.description} ${preset.artist}`.toLowerCase().includes(musicQuery.toLowerCase())).map((preset) => <article className="dravex-track-card" key={preset.id}>
               <span className={`dravex-track-art art-${preset.style}`}><Music2 size={21} /><span className="dravex-eq"><i /><i /><i /><i /><i /></span></span>
-              <div className="dravex-track-details"><strong>{preset.title}</strong><span>{preset.description}</span><small>{preset.mood} <b>·</b> {preset.bpm} BPM <b>·</b> 0:30</small></div>
-              <button type="button" disabled={Boolean(generatingMusicId)} onClick={() => void createMusicPreset(preset)}>{generatingMusicId === preset.id ? <LoaderCircle size={16} className="dravex-spin" /> : <Play size={16} />}{generatingMusicId === preset.id ? "Создаём" : "Выбрать"}</button>
+              <div className="dravex-track-details"><strong>{preset.title}</strong><span>{preset.description}</span><small>{preset.mood} <b>·</b> {preset.artist} <b>·</b> CC0</small><audio className="dravex-track-preview" controls preload="none" crossOrigin="anonymous" src={preset.audioUrl} aria-label={`Прослушать ${preset.title}`} /><a className="dravex-track-source" href={preset.sourceUrl} target="_blank" rel="noreferrer">Автор и лицензия</a></div>
+              <button type="button" disabled={Boolean(generatingMusicId)} onClick={() => void createMusicPreset(preset)}>{generatingMusicId === preset.id ? <LoaderCircle size={16} className="dravex-spin" /> : <Music2 size={16} />}{generatingMusicId === preset.id ? "Загружаем…" : "Использовать"}</button>
             </article>)}</div>
             {musicPresets.filter((preset) => (musicCategory === "Все" || preset.mood === musicCategory) && `${preset.title} ${preset.mood} ${preset.description}`.toLowerCase().includes(musicQuery.toLowerCase())).length === 0 && <p className="dravex-music-no-results">Ничего не найдено. Попробуй другой запрос или категорию.</p>}
-            <div className="dravex-music-heading dravex-source-heading"><div><h2>Внешние музыкальные библиотеки</h2><p>Скачай трек на официальном сайте, затем загрузи его сюда. Проверяй лицензию каждого трека перед публикацией.</p></div></div>
-            <div className="dravex-source-list">
-              <a className="dravex-source-card" href="https://www.youtube.com/audiolibrary" target="_blank" rel="noreferrer"><span className="dravex-source-icon source-youtube">YT</span><span><strong>YouTube Audio Library</strong><small>Музыка для YouTube · проверяй требования к указанию автора</small></span><ExternalLink size={16} /></a>
-              <a className="dravex-source-card" href="https://ads.tiktok.com/help/article/commercial-music-library?lang=en" target="_blank" rel="noreferrer"><span className="dravex-source-icon source-tiktok">♪</span><span><strong>TikTok Commercial Music Library</strong><small>Коммерческие треки для TikTok · доступность зависит от региона и условий</small></span><ExternalLink size={16} /></a>
-              <a className="dravex-source-card" href="https://pixabay.com/music/" target="_blank" rel="noreferrer"><span className="dravex-source-icon source-pixabay">P</span><span><strong>Pixabay Music</strong><small>Бесплатные треки · изучай условия лицензии конкретной композиции</small></span><ExternalLink size={16} /></a>
-            </div>
-            <div className="dravex-music-note"><strong>Важно для публикации</strong><p>Лицензия TikTok не означает, что трек разрешён на YouTube Shorts. Для роликов на обеих площадках выбирай музыку с лицензией, которая явно покрывает обе платформы, или используй оригинальный бит DRAVEX.</p></div>
+            <div className="dravex-music-note"><strong>Использование музыки</strong><p>Треки в этой подборке отмечены авторами как CC0. Нажми «Использовать» — DRAVEX загрузит аудио в фоне и добавит его в проект. Ссылка «Автор и лицензия» ведёт к оригинальной публикации. Популярные песни из каталога TikTok/CapCut нельзя автоматически встроить без разрешения правообладателей.</p></div>
             {error && <div className="dravex-error" role="alert">{error}</div>}
             {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
           </div>
