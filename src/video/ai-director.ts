@@ -1,4 +1,3 @@
-import { pipeline } from "@huggingface/transformers";
 import type { HighlightMoment, HighlightSample } from "./highlight-finder";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
@@ -37,13 +36,13 @@ const MIN_OBJECT_CONFIDENCE = 0.35;
 
 function getDetector(onProgress?: (progress: number) => void): Promise<ObjectDetector> {
   if (!detectorPromise) {
-    detectorPromise = pipeline("object-detection", MODEL_ID, {
+    detectorPromise = import("@huggingface/transformers").then(({ pipeline }) => pipeline("object-detection", MODEL_ID, {
       device: "wasm",
       dtype: "q8",
-      progress_callback: (event: { progress?: number }) => {
-        if (typeof event.progress === "number") onProgress?.(Math.max(0, Math.min(100, event.progress)));
+      progress_callback: (event: any) => {
+        if (typeof event?.progress === "number") onProgress?.(Math.max(0, Math.min(100, event.progress)));
       }
-    }).then((detector) => detector as unknown as ObjectDetector).catch((error: unknown) => {
+    })).then((detector) => detector as unknown as ObjectDetector).catch((error: unknown) => {
       detectorPromise = null;
       throw error;
     });
@@ -99,6 +98,25 @@ export function inferMotionCues(
   if ([...current].some((label) => !previous.has(label)) && previous.size > 0) cues.push("Объект входит в сцену");
   if ([...previous].some((label) => !current.has(label)) && current.size > 0) cues.push("Смена объектов в сцене");
   return cues;
+}
+
+export function inferTrackedObjectCues(previousObjects: DetectedObject[], currentObjects: DetectedObject[]): string[] {
+  const cues: string[] = [];
+  for (const current of currentObjects) {
+    const previous = previousObjects.find((item) => item.label === current.label);
+    if (!previous) continue;
+    const previousCenterX = (previous.box.xmin + previous.box.xmax) / 2;
+    const previousCenterY = (previous.box.ymin + previous.box.ymax) / 2;
+    const currentCenterX = (current.box.xmin + current.box.xmax) / 2;
+    const currentCenterY = (current.box.ymin + current.box.ymax) / 2;
+    const centerShift = Math.hypot(currentCenterX - previousCenterX, currentCenterY - previousCenterY) / Math.hypot(320, 180);
+    const previousArea = Math.max(1, (previous.box.xmax - previous.box.xmin) * (previous.box.ymax - previous.box.ymin));
+    const currentArea = Math.max(1, (current.box.xmax - current.box.xmin) * (current.box.ymax - current.box.ymin));
+    if (centerShift >= 0.06) cues.push("Объект перемещается по кадру");
+    if (currentArea / previousArea >= 1.3) cues.push("Объект приближается");
+    else if (currentArea / previousArea <= 0.7) cues.push("Объект удаляется");
+  }
+  return [...new Set(cues)];
 }
 
 export function scoreDirectorMoment(
@@ -243,7 +261,10 @@ export async function analyzeWithAIDirector(
       ? labels.filter((label) => !previousLabels.includes(label)).length / Math.max(1, new Set([...labels, ...previousLabels]).size)
       : 0;
     const sample = samples.reduce((best, item) => Math.abs(item.time - candidate.time) < Math.abs(best.time - candidate.time) ? item : best, samples[0]);
-    const actionCues = inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion));
+    const actionCues = [
+      ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
+      ...inferTrackedObjectCues(previousObjects, objects)
+    ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
     const directorScore = scoreDirectorMoment(candidate, objects, style, referenceMotion, novelty);
     return {
       ...candidate,
