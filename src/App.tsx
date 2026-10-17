@@ -596,6 +596,12 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
 
+  const normalizedMusicQuery = musicQuery.trim().toLowerCase();
+  const filteredMusicPresets = musicPresets.filter((preset) =>
+    (musicCategory === "Все" || preset.tags.includes(musicCategory) || preset.mood === musicCategory) &&
+    `${preset.title} ${preset.mood} ${preset.description} ${preset.artist} ${preset.tags.join(" ")}`.toLowerCase().includes(normalizedMusicQuery)
+  );
+
   return (
     <main className="dravex-app">
       <header className="dravex-header">
@@ -626,12 +632,12 @@ export default function App() {
             <div className="dravex-music-heading"><div><h2>Музыкальная библиотека</h2><p>Готовые треки для эдитов, игровых моментов, экшена и cinematic-видео</p></div><span>{musicPresets.length} треков</span></div>
             <label className="dravex-music-search"><Search size={17} /><input value={musicQuery} onChange={(event) => setMusicQuery(event.target.value)} placeholder="Поиск по стилю или настроению…" aria-label="Поиск музыки" /></label>
             <div className="dravex-music-category-label">Популярные стили для эдитов</div><div className="dravex-music-categories">{musicCategories.map((category) => <button key={category} type="button" className={musicCategory === category ? "is-active" : ""} onClick={() => setMusicCategory(category)}>{category}</button>)}</div>
-            <div className="dravex-track-list">{musicPresets.filter((preset) => (musicCategory === "Все" || preset.tags.includes(musicCategory) || preset.mood === musicCategory) && `${preset.title} ${preset.mood} ${preset.description} ${preset.artist}`.toLowerCase().includes(musicQuery.toLowerCase())).map((preset) => <article className="dravex-track-card" key={preset.id}>
+            <div className="dravex-track-list">{filteredMusicPresets.map((preset) => <article className="dravex-track-card" key={preset.id}>
               <span className={`dravex-track-art art-${preset.style}`}><Music2 size={21} /><span className="dravex-eq"><i /><i /><i /><i /><i /></span></span>
               <div className="dravex-track-details"><strong>{preset.title}</strong><span>{preset.description}</span><small>{preset.tags.slice(0, 2).join(" · ")} <b>·</b> {preset.artist} <b>·</b> CC0</small><audio className="dravex-track-preview" controls preload="none" crossOrigin="anonymous" src={preset.audioUrl} aria-label={`Прослушать ${preset.title}`} /><a className="dravex-track-source" href={preset.sourceUrl} target="_blank" rel="noreferrer">Автор и лицензия</a></div>
               <button type="button" disabled={Boolean(generatingMusicId)} onClick={() => void createMusicPreset(preset)}>{generatingMusicId === preset.id ? <LoaderCircle size={16} className="dravex-spin" /> : <Music2 size={16} />}{generatingMusicId === preset.id ? "Загружаем…" : "Использовать"}</button>
             </article>)}</div>
-            {musicPresets.filter((preset) => (musicCategory === "Все" || preset.tags.includes(musicCategory) || preset.mood === musicCategory) && `${preset.title} ${preset.mood} ${preset.description} ${preset.tags.join(" ")}`.toLowerCase().includes(musicQuery.toLowerCase())).length === 0 && <p className="dravex-music-no-results">Ничего не найдено. Попробуй другой запрос или категорию.</p>}
+            {filteredMusicPresets.length === 0 && <p className="dravex-music-no-results">Ничего не найдено. Попробуй другой запрос или категорию.</p>}
             <div className="dravex-music-note"><strong>О лицензиях и популярных песнях</strong><p>Встроенные треки отмечены авторами как CC0, а «Популярные стили» — это подборка звучания для phonk/drift, anime, slowed и Shorts, не оригинальные коммерческие хиты. Для настоящих песен TikTok/CapCut нужны права или официальная лицензированная интеграция. Нажми «Использовать» — DRAVEX загрузит выбранный трек в фоне; скачивать вручную не нужно.</p></div>
             {error && <div className="dravex-error" role="alert">{error}</div>}
             {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
