@@ -67,6 +67,7 @@ type SequenceOptions = {
   suppressAudio?: boolean;
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
+  audioContext?: AudioContext;
 };
 
 type LoadedVideo = {
@@ -86,6 +87,18 @@ type LoadedImage = {
 };
 
 type LoadedSegment = LoadedVideo | LoadedImage;
+
+/** Unlock Web Audio synchronously inside a user gesture before video analysis awaits. */
+export function prepareAudioContextForUserGesture(): AudioContext | null {
+  if (typeof AudioContext === "undefined") return null;
+  try {
+    const audioContext = new AudioContext();
+    if (audioContext.state === "suspended") void audioContext.resume().catch(() => {});
+    return audioContext;
+  } catch {
+    return null;
+  }
+}
 
 const dimensionsFor = (aspectRatio: string, quality = "720p") => {
   const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
@@ -180,7 +193,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -242,7 +255,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
   const hasSourceVideo = !suppressAudio && loaded.some((item) => item.kind === "video");
-  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? new AudioContext() : null;
+  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
   if (audioContext && audioDestination) {
