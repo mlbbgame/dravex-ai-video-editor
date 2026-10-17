@@ -21,6 +21,15 @@ test("velocity and anime profiles include both slow and fast phases", () => {
   }
 });
 
+test("speed curves preserve approximately 1x average duration", () => {
+  for (const style of ["velocity", "anime", "cinematic", "glitch", "story"] as const) {
+    const rates = Array.from({ length: 1001 }, (_, step) => getSpeedRampRate(style, step / 1000));
+    const average = rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
+    expect(average).toBeGreaterThan(0.97);
+    expect(average).toBeLessThan(1.03);
+  }
+});
+
 test("alternating cuts reverse the ramp direction without invalid rates", () => {
   expect(getSpeedRampRate("velocity", 0, 0)).toBeCloseTo(getSpeedRampRate("velocity", 1, 1), 5);
   expect(getSpeedRampRate("velocity", 1, 0)).toBeCloseTo(getSpeedRampRate("velocity", 0, 1), 5);
