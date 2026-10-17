@@ -98,8 +98,15 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-footer { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 25px 0 0; color: #858b92; font-size: 10px; letter-spacing: 1px; }
 .dravex-footer svg, .dravex-footer span { color: var(--accent); }
 .dravex-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 300px; overflow: auto; padding: 10px; }
-.dravex-image-thumb { overflow: hidden; border: 1px solid #ffffff12; border-radius: 9px; background: #090a0b; }
+.dravex-image-thumb { position: relative; min-width: 0; overflow: hidden; border: 1px solid #ffffff12; border-radius: 9px; background: #090a0b; }
 .dravex-image-thumb img { display: block; width: 100%; height: 115px; object-fit: cover; }
+.dravex-image-tools { position: absolute; inset: auto 0 0; display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 5px; background: linear-gradient(transparent, #050607ed 35%); }
+.dravex-image-tools > span { min-width: 22px; display: inline-grid; place-items: center; height: 22px; border-radius: 6px; color: #f6f7f3; background: #ffffff20; font-size: 10px; font-weight: 800; }
+.dravex-image-tools > div { display: flex; gap: 3px; }
+.dravex-image-tools button { width: 27px; height: 27px; display: grid; place-items: center; padding: 0; border: 1px solid #ffffff22; border-radius: 7px; color: #f3f5ef; background: #111316e8; }
+.dravex-image-tools button:disabled { opacity: .35; cursor: default; }
+.dravex-image-tools button:last-child { color: #ffb2b2; }
+.dravex-image-tools button:not(:disabled):active { background: #343a2c; }
 @media (max-width: 420px) {
   .dravex-app { padding: 0 12px 22px; }
   .dravex-header { height: 60px; }
