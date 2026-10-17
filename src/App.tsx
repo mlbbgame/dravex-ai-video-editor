@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowLeft, ArrowRight, Trash2 } from "lucide-react";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -79,19 +79,22 @@ export default function App() {
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
+  const mediaUrlsRef = useRef<string[]>([]);
   const videoFile = mediaFiles[0] ?? null;
   const videoUrl = mediaUrls[0] ?? "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => file.type.startsWith("image/"));
   const busy = stage === "analyzing" || stage === "rendering";
 
-  useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
+  useEffect(() => () => { mediaUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   useEffect(() => {
     let active = true;
     loadLocalProject().then((project) => {
       if (!active || !project || !project.files?.length) return;
+      const restoredUrls = project.files.map((file) => URL.createObjectURL(file));
+      mediaUrlsRef.current = restoredUrls;
       setMediaFiles(project.files);
-      setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+      setMediaUrls(restoredUrls);
       setMusicFile(project.musicFile ?? null);
       setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
       setStyle((project.style as EditStyle) || "auto");
@@ -131,8 +134,10 @@ export default function App() {
       }
       mediaUrls.forEach((url) => URL.revokeObjectURL(url));
       if (musicUrl) URL.revokeObjectURL(musicUrl);
+      const restoredUrls = project.files.map((file) => URL.createObjectURL(file));
+      mediaUrlsRef.current = restoredUrls;
       setMediaFiles(project.files);
-      setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+      setMediaUrls(restoredUrls);
       setMusicFile(project.musicFile ?? null);
       setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
       setStyle((project.style as EditStyle) || "auto");
@@ -161,14 +166,48 @@ export default function App() {
       return;
     }
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+    const nextUrls = files.map((file) => URL.createObjectURL(file));
+    mediaUrlsRef.current = nextUrls;
     setMediaFiles(files);
-    setMediaUrls(files.map((file) => URL.createObjectURL(file)));
+    setMediaUrls(nextUrls);
     setOutputUrl("");
     setError("");
     setMessage("");
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
     event.target.value = "";
+  };
+
+  const moveMedia = (index: number, direction: -1 | 1) => {
+    if (busy) return;
+    const target = index + direction;
+    if (target < 0 || target >= mediaFiles.length) return;
+    const nextFiles = [...mediaFiles];
+    const nextUrls = [...mediaUrls];
+    [nextFiles[index], nextFiles[target]] = [nextFiles[target], nextFiles[index]];
+    [nextUrls[index], nextUrls[target]] = [nextUrls[target], nextUrls[index]];
+    mediaUrlsRef.current = nextUrls;
+    setMediaFiles(nextFiles);
+    setMediaUrls(nextUrls);
+    setOutputUrl("");
+    setError("");
+    setStage("ready");
+  };
+
+  const removeMediaAt = (index: number) => {
+    if (busy) return;
+    const removedUrl = mediaUrls[index];
+    if (removedUrl) URL.revokeObjectURL(removedUrl);
+    const nextFiles = mediaFiles.filter((_, itemIndex) => itemIndex !== index);
+    const nextUrls = mediaUrls.filter((_, itemIndex) => itemIndex !== index);
+    mediaUrlsRef.current = nextUrls;
+    setMediaFiles(nextFiles);
+    setMediaUrls(nextUrls);
+    setOutputUrl("");
+    setError("");
+    setMessage("");
+    setStage(nextFiles.length ? "ready" : "empty");
+    setScan({ current: 0, total: 0, time: 0 });
   };
 
   const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -301,7 +340,7 @@ export default function App() {
           </button>
         ) : (
           <div className="dravex-preview-card">
-            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={mediaUrls[index]}><img src={mediaUrls[index]} alt={file.name} /></div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
+            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={mediaUrls[index]}><img src={mediaUrls[index]} alt={file.name} /><div className="dravex-image-tools"><span>{index + 1}</span><div><button type="button" aria-label={`Переместить фотографию ${index + 1} влево`} title="Переместить влево" disabled={busy || index === 0} onClick={() => moveMedia(index, -1)}><ArrowLeft size={14} /></button><button type="button" aria-label={`Переместить фотографию ${index + 1} вправо`} title="Переместить вправо" disabled={busy || index === mediaFiles.length - 1} onClick={() => moveMedia(index, 1)}><ArrowRight size={14} /></button><button type="button" aria-label={`Удалить фотографию ${index + 1}`} title="Удалить фотографию" disabled={busy} onClick={() => removeMediaAt(index)}><Trash2 size={14} /></button></div></div></div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
             <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
           </div>
         )}
