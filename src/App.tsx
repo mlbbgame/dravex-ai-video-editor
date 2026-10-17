@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { analyzeWithAIDirector } from "./video/ai-director";
@@ -9,6 +9,7 @@ import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
+import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -33,14 +34,9 @@ type RenderedVariant = {
 };
 
 const montageVariants: MontageVariant[] = [
-  { id: "auto", title: "Умный авто", note: "Подберём по материалу", style: "auto", transition: "auto", strength: "balanced", previewClass: "auto", icon: Sparkles },
-  { id: "velocity", title: "Velocity", note: "Резко и динамично", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
-  { id: "cinema", title: "Cinematic", note: "Мягкое движение", style: "cinematic", transition: "cinematic", strength: "soft", previewClass: "cinema", icon: Film },
-  { id: "anime", title: "Anime Impact", note: "Ярко и контрастно", style: "anime", transition: "action", strength: "strong", previewClass: "anime", icon: Sparkles },
-  { id: "glitch", title: "Glitch Rush", note: "Цифровые вспышки", style: "glitch", transition: "action", strength: "strong", previewClass: "glitch", icon: ScanLine },
-  { id: "story", title: "Soft Story", note: "Спокойная история", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Play },
-  { id: "pulse", title: "Beat Pulse", note: "Ритмичные склейки", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
-  { id: "neon", title: "Neon Action", note: "Неон и резкий темп", style: "glitch", transition: "auto", strength: "balanced", previewClass: "neon", icon: ScanLine },
+  { id: "velocity", title: "Агрессивный", note: "Быстрые склейки и сильный импакт", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
+  { id: "cinema", title: "Кинематографичный", note: "Плавный темп и мягкие переходы", style: "cinematic", transition: "cinematic", strength: "soft", previewClass: "cinema", icon: Film },
+  { id: "pulse", title: "Динамичный под музыку", note: "Ритмичный монтаж с выбранным треком", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
@@ -82,6 +78,36 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
     }
   }
   return segments;
+}
+
+async function alignPreviewSegmentsToMusic(
+  segments: Array<VideoSegment | ImageSegment>,
+  variantId: string,
+  previewDuration: number,
+  sourceDuration: number,
+  musicUrl: string,
+  beatSyncEnabled: boolean
+): Promise<Array<VideoSegment | ImageSegment>> {
+  if (variantId !== "pulse" || !beatSyncEnabled || !musicUrl || segments.length < 2
+    || sourceDuration < previewDuration) return segments;
+  try {
+    const analysis = await detectMusicBeats(musicUrl);
+    const beats = analysis.beats.filter((beat) => beat > 0.05 && beat < previewDuration - 0.05);
+    if (beats.length < 3 || analysis.confidence === "weak") return segments;
+    const boundaries = snapCutBoundariesToBeats(beats, previewDuration, segments.length, 0.95);
+    return segments.map((segment, index) => {
+      const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
+      if (segment.kind === "image") return { ...segment, duration: nextDuration };
+      const videoSegment = segment as VideoSegment;
+      const safeDuration = Math.min(nextDuration, sourceDuration);
+      const center = (videoSegment.trimStart + videoSegment.trimEnd) / 2;
+      const trimStart = Math.max(0, Math.min(sourceDuration - safeDuration, center - safeDuration / 2));
+      return { ...videoSegment, trimStart, trimEnd: trimStart + safeDuration };
+    });
+  } catch {
+    // Beat analysis is an enhancement, not a reason to block a preview.
+    return segments;
+  }
 }
 
 export default function App() {
@@ -361,32 +387,48 @@ export default function App() {
   const createStylePreviews = async () => {
     if (!mediaFiles.length || busy || previewBusy) return;
     const generation = previewGeneration.current;
-    const pendingVariants = montageVariants.filter((variant) => !renderedVariants.some((rendered) => rendered.id === variant.id)).slice(0, 4);
+    const pendingVariants = montageVariants.filter((variant) => !renderedVariants.some((rendered) => rendered.id === variant.id));
     if (!pendingVariants.length) {
-      setPreviewStatus("Все варианты уже созданы. Листай карточки и выбери понравившийся.");
+      setPreviewStatus("Все три варианта готовы. Выбери лучший и запусти полный монтаж.");
       return;
     }
     setPreviewBusy(true);
     setPreviewProgress(0);
-    setPreviewStatus(`Готовим ${pendingVariants.length} реальных вариантов по очереди — это может занять немного времени на телефоне…`);
+    setPreviewStatus(`Готовим ${pendingVariants.length} варианта по очереди, чтобы не перегружать память телефона…`);
     setError("");
     try {
+      const requestedPreviewDuration = 3.8;
+      const sourceDuration = isImageMode ? requestedPreviewDuration : await getVideoDuration(videoUrl);
       for (let index = 0; index < pendingVariants.length; index += 1) {
         if (generation !== previewGeneration.current) return;
         const variant = pendingVariants[index];
         setPreviewStatus(`Создаём вариант ${index + 1} из ${pendingVariants.length}: ${variant.title}…`);
-        const previewDuration = 3.8;
         const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
           ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
           : variant.style;
-        const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
-          ? mediaFiles.slice(0, 6).map((file, segmentIndex) => ({
-              kind: "image" as const,
-              name: file.name,
-              url: mediaUrls[segmentIndex],
-              duration: previewDuration / Math.min(mediaFiles.length, 6)
-            }))
-          : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+        let previewDuration = requestedPreviewDuration;
+        let previewSegments: Array<VideoSegment | ImageSegment>;
+        if (isImageMode) {
+          const indices = selectVariantPreviewIndices(mediaFiles.length, variant.id);
+          previewSegments = indices.map((sourceIndex) => ({
+            kind: "image" as const,
+            name: mediaFiles[sourceIndex].name,
+            url: mediaUrls[sourceIndex],
+            duration: requestedPreviewDuration / Math.max(1, indices.length)
+          }));
+        } else {
+          const plan = planVariantPreviewCuts(sourceDuration, requestedPreviewDuration, variant.id);
+          previewDuration = plan.duration;
+          previewSegments = plan.cuts.map((cut) => ({
+            name: videoFile!.name,
+            url: videoUrl,
+            trimStart: cut.trimStart,
+            trimEnd: cut.trimEnd
+          }));
+        }
+        previewSegments = await alignPreviewSegmentsToMusic(
+          previewSegments, variant.id, previewDuration, sourceDuration, musicUrl, beatSync && Boolean(musicFile)
+        );
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
@@ -414,7 +456,7 @@ export default function App() {
       }
       if (generation === previewGeneration.current) {
         setPreviewProgress(100);
-        setPreviewStatus("Готово! Это реальные короткие видео с разными движением, переходами и выбранной музыкой. Листай карточки, нажимай на вариант и смотри его результат.");
+        setPreviewStatus("Готово! Сравни три коротких реальных видео: агрессивное, кинематографичное и динамичное под музыку. Выбери карточку для просмотра.");
       }
     } catch (caught) {
       if (generation === previewGeneration.current) {
@@ -603,6 +645,7 @@ export default function App() {
   const createSelectedPreview = async () => {
     if (!mediaFiles.length || busy || previewBusy) return;
     const variant = selectedVariant;
+    if (!montageVariants.some((item) => item.id === variant.id)) return;
     if (renderedVariants.some((item) => item.id === variant.id)) return;
 
     setPreviewBusy(true);
@@ -611,25 +654,35 @@ export default function App() {
     setPreviewStatus(`Автопросмотр: готовим стиль «${variant.title}» из твоего материала…`);
     setError("");
     try {
-      const previewDuration = 3.8;
+      const requestedPreviewDuration = 3.8;
       const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
         ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
         : variant.style;
+      let previewDuration = requestedPreviewDuration;
+      let sourceDuration = requestedPreviewDuration;
       let previewSegments: Array<VideoSegment | ImageSegment>;
       if (isImageMode) {
-        const count = Math.min(mediaFiles.length, 6);
-        const indices = Array.from({ length: count }, (_, index) =>
-          count === 1 ? 0 : Math.round(index * (mediaFiles.length - 1) / (count - 1))
-        );
+        const indices = selectVariantPreviewIndices(mediaFiles.length, variant.id);
         previewSegments = indices.map((sourceIndex) => ({
           kind: "image" as const,
           name: mediaFiles[sourceIndex].name,
           url: mediaUrls[sourceIndex],
-          duration: previewDuration / count
+          duration: requestedPreviewDuration / Math.max(1, indices.length)
         }));
       } else {
-        previewSegments = [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+        sourceDuration = await getVideoDuration(videoUrl);
+        const plan = planVariantPreviewCuts(sourceDuration, requestedPreviewDuration, variant.id);
+        previewDuration = plan.duration;
+        previewSegments = plan.cuts.map((cut) => ({
+          name: videoFile!.name,
+          url: videoUrl,
+          trimStart: cut.trimStart,
+          trimEnd: cut.trimEnd
+        }));
       }
+      previewSegments = await alignPreviewSegmentsToMusic(
+        previewSegments, variant.id, previewDuration, sourceDuration, musicUrl, beatSync && Boolean(musicFile)
+      );
       const audioTracks: AudioSegment[] = musicUrl && musicFile
         ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
         : [];
@@ -777,10 +830,10 @@ export default function App() {
           </section>
           <aside className="dravex-control-column" aria-label="Управление монтажом">
             <div className="dravex-control-heading"><span className="dravex-control-icon"><Settings2 size={17} /></span><div><h2>Монтаж</h2><p>Настрой результат под себя</p></div></div>
-            <p className="dravex-variant-hint">После загрузки DRAVEX готовит короткий автопросмотр выбранного стиля. Другие варианты можно просмотреть ниже; они создаются по очереди, чтобы беречь память телефона.</p>
+            <p className="dravex-variant-hint">Нажми на одну из трёх карточек, чтобы увидеть реальный фрагмент. Кнопка ниже создаст остальные варианты для сравнения.</p>
         <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy || renderedVariants.length === montageVariants.length} onClick={createStylePreviews}>
           {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
-          {previewBusy ? `Подготовка автопросмотра… ${previewProgress}%` : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Создать дополнительные варианты (${renderedVariants.length}/${montageVariants.length})`}
+          {previewBusy ? `Подготовка автопросмотра… ${previewProgress}%` : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Сравнить варианты (${renderedVariants.length}/${montageVariants.length})`}
         </button>
         {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
         {renderedVariants.length > 0 && <p className="dravex-preview-status" role="status">{renderedVariants.length} из {montageVariants.length} вариантов готовы. Нажми на карточку, чтобы посмотреть её крупно и выбрать для полного монтажа.</p>}

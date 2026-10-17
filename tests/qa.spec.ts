@@ -63,18 +63,19 @@ test("choosing a montage style highlights exactly one matching variant", async (
 
   const variants = page.locator(".dravex-variant");
   const selected = page.locator(".dravex-variant[aria-pressed='true']");
-  await expect(variants).toHaveCount(8);
-  await expect(selected).toHaveCount(1);
+  await expect(variants).toHaveCount(3);
+  // Auto mode stays neutral until the user chooses one of the three edit directions.
+  await expect(selected).toHaveCount(0);
 
-  await variants.filter({ hasText: "Velocity" }).click();
+  await variants.filter({ hasText: "Агрессивный" }).click();
   await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "true");
-  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "false");
+  await expect(variants.filter({ hasText: "Агрессивный" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variants.filter({ hasText: "Динамичный под музыку" })).toHaveAttribute("aria-pressed", "false");
 
-  await variants.filter({ hasText: "Beat Pulse" }).click();
+  await variants.filter({ hasText: "Динамичный под музыку" }).click();
   await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "true");
-  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "false");
+  await expect(variants.filter({ hasText: "Динамичный под музыку" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variants.filter({ hasText: "Агрессивный" })).toHaveAttribute("aria-pressed", "false");
 
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
