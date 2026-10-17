@@ -500,7 +500,6 @@ export default function App() {
     setPreviewProgress(0);
     setPreviewStatus(`Автопросмотр: готовим стиль «${variant.title}» из твоего материала…`);
     setError("");
-    const requestId = ++selectedPreviewRequest.current;
     try {
       const previewDuration = 3.8;
       const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
