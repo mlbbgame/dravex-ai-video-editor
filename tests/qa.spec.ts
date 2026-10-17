@@ -18,6 +18,13 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
   await expect(page.locator(".dravex-track-card")).toHaveCount(20);
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Все" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Gaming" })).toBeVisible();
+  await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Phonk / Drift" })).toBeVisible();
+  await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Anime / Jumpstyle" })).toBeVisible();
+
+  await page.locator(".dravex-music-categories").getByRole("button", { name: "Phonk / Drift" }).click();
+  await expect(page.locator(".dravex-track-card").first()).toBeVisible();
+  expect(await page.locator(".dravex-track-card").count()).toBeGreaterThan(0);
+  await page.locator(".dravex-music-categories").getByRole("button", { name: "Все" }).click();
 
   const cards = page.locator(".dravex-track-card");
   for (let index = 0; index < 20; index += 1) {
