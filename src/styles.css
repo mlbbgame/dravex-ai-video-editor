@@ -202,3 +202,5 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-real-preview strong { color: #f2f5ed; font-size: 12px; }
 .dravex-real-preview span { color: #9da59a; font-size: 10px; line-height: 1.45; }
 .dravex-real-preview video { display: block; width: 100%; max-height: 460px; border-radius: 8px; background: #050505; object-fit: contain; }
+.dravex-variant-player { border-color: #566b3e; box-shadow: 0 0 0 1px #b8f45b12; }
+.dravex-variant-player video { max-height: min(58vh, 560px); }
