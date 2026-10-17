@@ -10,6 +10,10 @@
 - **Android-first:** the browser uploads original media directly to private object storage through a short-lived signed URL. The browser must not proxy multi-hundred-megabyte files through a model endpoint or hold provider credentials.
 - **No fabricated AI:** the UI must say “analysis unavailable” rather than show example detections when a provider is disconnected or fails validation.
 
+## Asynchronous job lifecycle
+
+`src/video/recognition-job-contract.ts` defines the allowed job states (`created` → upload → probe → sampling → recognition → planning → preview → ready), terminal states, transition checks, and snapshot validation. This is shared domain logic only: the backend must still enforce authentication, ownership, cancellation, retries, quotas, and storage access. Job errors exposed to the user should be safe and must not contain provider secrets or internal stack traces.
+
 ## Provider boundary
 
 `src/video/recognition-provider-contract.ts` defines the server-side provider interface and pipeline gate:
