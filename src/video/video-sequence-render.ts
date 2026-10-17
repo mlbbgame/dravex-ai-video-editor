@@ -138,7 +138,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
-      return { kind: "image", name: segment.name, image, duration: Math.max(1, Math.min(segment.duration ?? 3, 10)) };
+      return { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
     }
     const videoSegment = segment as VideoSegment;
     let pendingVideo = videoCache.get(videoSegment.url);
@@ -262,9 +262,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < 0.2;
-    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
-    // Eight native-canvas transition families; no extra library or network asset is required.
+    const transitionDuration = style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
+    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
+    // Native-canvas transition families; no extra library or network asset is required.
     const transitionType = cutIndex % 8;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
@@ -272,32 +273,57 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
     // Ken Burns camera movement for still photos: alternating push/pull and four gentle pan paths.
-    const motion = suppressEffects ? 0 : style === "velocity" ? 0.06 : style === "anime" ? 0.038 : style === "glitch" ? 0.042 : style === "story" ? 0.022 : 0.04;
+    const motion = suppressEffects ? 0 : style === "velocity" ? 0.105 : style === "anime" ? 0.075 : style === "glitch" ? 0.085 : style === "story" ? 0.035 : 0.07;
     const travel = cutIndex % 2 === 0 ? progress : 1 - progress;
-    const zoom = 1.025 + travel * motion;
-    const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
+    const isPhoto = source instanceof HTMLImageElement;
+    const zoom = (isPhoto ? 1.015 : 1.025) + travel * motion;
+    const scale = (isPhoto ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : style === "story" ? 0.009 : 0.018;
+    const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.048 : style === "anime" ? 0.034 : style === "glitch" ? 0.04 : style === "story" ? 0.012 : 0.032;
     const panPhase = progress * Math.PI / 2;
     const panX = Math.sin(panPhase) * width * panAmount * ([1, -1, 0, 0][cutIndex % 4]);
     const panY = Math.sin(panPhase) * height * panAmount * ([0, 0, 1, -1][cutIndex % 4]);
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.16 && style !== "story" ? (1 - cutProgress / 0.16) * (style === "velocity" ? 0.012 : 0.004) : 0;
+    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
     const drawY = (height - drawHeight) / 2 + offsetY;
-    const drawIncoming = () => context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+    const drawIncoming = () => {
+      if (isPhoto) {
+        context.save();
+        context.filter = "blur(24px) brightness(0.58) saturate(0.88)";
+        const backgroundScale = Math.max(width / sourceWidth, height / sourceHeight) * 1.18;
+        const backgroundWidth = sourceWidth * backgroundScale;
+        const backgroundHeight = sourceHeight * backgroundScale;
+        context.drawImage(source, (width - backgroundWidth) / 2, (height - backgroundHeight) / 2, backgroundWidth, backgroundHeight);
+        context.restore();
+        context.save();
+        context.shadowColor = "rgba(0,0,0,0.32)";
+        context.shadowBlur = Math.max(8, width * 0.012);
+        context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+        context.restore();
+      } else {
+        context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+      }
+    };
 
     context.save();
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
-      // Fast punch zoom.
-      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.2 : 0.1);
-      const dw = drawWidth * punch;
-      const dh = drawHeight * punch;
+      // Fast punch zoom; preserve the full-photo treatment on still images.
+      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14);
       context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
-      context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
+      if (isPhoto) {
+        context.translate(width / 2, height / 2);
+        context.scale(punch, punch);
+        context.translate(-width / 2, -height / 2);
+        drawIncoming();
+      } else {
+        const dw = drawWidth * punch;
+        const dh = drawHeight * punch;
+        context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
+      }
     } else if (transitionWindow && (transitionType === 1 || transitionType === 2)) {
       // Directional wipes alternate left-to-right and right-to-left.
       const revealWidth = width * Math.max(0.025, transitionProgress);
@@ -318,12 +344,18 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       drawIncoming();
     } else if (transitionWindow && transitionType === 4) {
       // Short rotational reveal with a restrained zoom.
-      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.11 : 0.065);
+      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.15 : 0.085);
       const punch = 1 + (1 - transitionProgress) * 0.13;
       context.translate(width / 2, height / 2);
       context.rotate(angle);
       context.globalAlpha = Math.min(1, transitionProgress * 2 + 0.05);
-      context.drawImage(source, -drawWidth * punch / 2 + offsetX, -drawHeight * punch / 2 + offsetY, drawWidth * punch, drawHeight * punch);
+      if (isPhoto) {
+        context.scale(punch, punch);
+        context.translate(-width / 2, -height / 2);
+        drawIncoming();
+      } else {
+        context.drawImage(source, -drawWidth * punch / 2 + offsetX, -drawHeight * punch / 2 + offsetY, drawWidth * punch, drawHeight * punch);
+      }
     } else if (transitionWindow && transitionType === 5) {
       // Eight staggered horizontal shutters.
       const strips = 8;
@@ -365,31 +397,31 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
       shade.addColorStop(0, "rgba(5,7,12,0)");
-      shade.addColorStop(1, "rgba(5,7,12,0.38)");
+      shade.addColorStop(1, "rgba(5,7,12,0.18)");
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.09 && style !== "story") {
-      const flash = (1 - cutProgress / 0.09) * (style === "velocity" ? 0.24 : style === "glitch" ? 0.18 : 0.1);
+    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
+      const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12);
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.07) {
-      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.07) * 0.12})`;
+    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
+      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.16) * 0.2})`;
       context.fillRect(0, 0, width, height);
-      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.07) * 0.08})`;
+      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.16) * 0.14})`;
       context.fillRect(Math.round(width * 0.012), 0, width, height);
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
-    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.12) {
-      const streakAlpha = (1 - cutProgress / 0.12) * 0.16;
+    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
+      const streakAlpha = (1 - cutProgress / 0.28) * 0.27;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
-      context.lineWidth = Math.max(2, width * 0.0025);
-      for (let streak = 0; streak < 5; streak++) {
-        const y = height * (0.16 + streak * 0.15) + cutProgress * height * 0.5;
+      context.lineWidth = Math.max(2, width * 0.003);
+      for (let streak = 0; streak < 7; streak++) {
+        const y = height * (0.12 + streak * 0.13) + cutProgress * height * 0.34;
         context.beginPath();
         context.moveTo(width * 0.56, y);
         context.lineTo(width * 1.05, y - height * 0.16);
@@ -400,7 +432,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
-      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.22)");
+      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
     }
@@ -451,8 +483,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       if (item.kind === "image") {
         const segmentStartedAt = performance.now();
         while (performance.now() - segmentStartedAt < item.duration * 1000) {
-          const segmentProgress = Math.min(1, (performance.now() - segmentStartedAt) / (item.duration * 1000));
-          draw(item.image, segmentProgress, segmentProgress < 0.2 ? segmentProgress : 1, cutIndex);
+          const elapsedSeconds = (performance.now() - segmentStartedAt) / 1000;
+          const segmentProgress = Math.min(1, elapsedSeconds / item.duration);
+          draw(item.image, segmentProgress, elapsedSeconds, cutIndex);
           onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
@@ -467,8 +500,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
-        const clipProgress = Math.min(1, (performance.now() - clipStartedAt) / (duration * 1000));
-        draw(video, clipProgress, clipProgress < 0.2 ? clipProgress : 1, cutIndex);
+        const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
+        const clipProgress = Math.min(1, elapsedSeconds / duration);
+        draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
@@ -478,7 +512,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     const last = loaded[loaded.length - 1];
     // Keep the final canvas frame alive long enough for mobile MediaRecorder implementations.
-    draw(last.kind === "video" ? last.video : last.image);
+    draw(last.kind === "video" ? last.video : last.image, 1, 1, loaded.length - 1);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     await new Promise((resolve) => window.setTimeout(resolve, 500));
 
