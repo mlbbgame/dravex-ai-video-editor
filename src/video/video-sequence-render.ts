@@ -264,7 +264,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!sourceWidth || !sourceHeight) return;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < 0.2;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
-    // Eight native-canvas transition families; no extra library or network asset is required.
+    // Native-canvas transition families; no extra library or network asset is required.
     const transitionType = cutIndex % 8;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
