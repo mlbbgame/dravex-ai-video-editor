@@ -6,6 +6,7 @@ import {
   type TimelineSource,
 } from "./timeline-contract";
 import { getColorGradeFilter, getSpeedRampRate } from "./motion-engine";
+import { chooseSupportedWebmMimeType, getExportProfile } from "./export-profile";
 
 export type VideoSegment = {
   kind?: "video";
@@ -275,17 +276,6 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
   }
 }
 
-const dimensionsFor = (aspectRatio: string, quality = "720p") => {
-  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
-  let base: { width: number; height: number };
-  if (quality === "preview") base = aspectRatio === "16:9" ? { width: 480, height: 270 } : aspectRatio === "1:1" ? { width: 360, height: 360 } : aspectRatio === "4:5" ? { width: 360, height: 450 } : { width: 360, height: 640 };
-  else if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
-  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
-  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
-  else base = { width: 720, height: 1280 };
-  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
-};
-
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -372,8 +362,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
-  const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/webm;codecs=vp9"].find((type) => MediaRecorder.isTypeSupported(type));
-  if (!mimeType) throw new Error("This browser does not support WebM video export.");
+  const mimeType = chooseSupportedWebmMimeType((type) => MediaRecorder.isTypeSupported(type));
+  if (!mimeType) throw new Error("Этот браузер не поддерживает экспорт WebM. Открой DRAVEX в актуальном Chrome.");
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
@@ -490,22 +480,26 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw new Error(`Некорректный монтажный план: ${timelineValidation.errors.join(" ")}`);
   }
 
-  const { width, height } = dimensionsFor(aspectRatio, quality);
+  const { width, height, frameRate, videoBitsPerSecond } = getExportProfile(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not initialize the video renderer.");
 
-  const videoStream = canvas.captureStream(24);
+  const videoStream = canvas.captureStream(frameRate);
   // Do not create an AudioContext for a no-music export. On some Android
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
   const hasSourceVideo = !suppressAudio && loaded.some((item) => item.kind === "video");
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
+  if (hasSourceVideo && !audioContext) {
+    throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
+  }
   const audioDestination = audioContext?.createMediaStreamDestination();
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
+  const sourceVideoGainNodes = new Map<HTMLVideoElement, GainNode>();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
     for (const item of loaded) {
@@ -513,9 +507,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       connectedVideoElements.add(item.video);
       const source = audioContext.createMediaElementSource(item.video);
       const sourceGain = audioContext.createGain();
-      sourceGain.gain.value = loadedAudio.length > 0 ? 0.28 : 1;
+      // Fade each clip's original audio at cut boundaries to reduce clicks and pops.
+      sourceGain.gain.value = 0;
       source.connect(sourceGain);
       sourceGain.connect(audioDestination);
+      sourceVideoGainNodes.set(item.video, sourceGain);
     }
     for (const item of loadedAudio) {
       const source = audioContext.createMediaElementSource(item.audio);
@@ -541,8 +537,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
     throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
-  const bitrate = quality === "preview" ? 1_200_000 : quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
   const chunks: BlobPart[] = [];
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
@@ -898,6 +893,18 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       video.pause();
       video.playbackRate = 1;
       await seek(video, start);
+      const sourceGain = sourceVideoGainNodes.get(video);
+      if (sourceGain && audioContext) {
+        const audioNow = audioContext.currentTime;
+        const fadeSeconds = Math.min(0.045, duration / 3);
+        const targetGain = loadedAudio.length > 0 ? 0.28 : 1;
+        sourceGain.gain.cancelScheduledValues(audioNow);
+        sourceGain.gain.setValueAtTime(0, audioNow);
+        sourceGain.gain.linearRampToValueAtTime(targetGain, audioNow + fadeSeconds);
+        const fadeOutStart = audioNow + Math.max(fadeSeconds, duration - fadeSeconds);
+        sourceGain.gain.setValueAtTime(targetGain, fadeOutStart);
+        sourceGain.gain.linearRampToValueAtTime(0, fadeOutStart + fadeSeconds);
+      }
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
@@ -909,6 +916,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
+      // The gain automation was scheduled against the clip duration so the fade-out
+      // finishes at the cut without extending the rendered timeline.
       video.pause();
       savePreviousFrame();
       completed += duration;

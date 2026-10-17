@@ -414,8 +414,9 @@ for (const sourceDuration of [60, 300]) {
   expect(Number(probe.format?.duration)).toBeGreaterThan(3.5);
   expect(Number(probe.format?.duration)).toBeLessThanOrEqual(5.5);
   expect(videoStream?.codec_name).toMatch(/^(vp8|vp9|av1)$/);
-  expect(videoStream?.width).toBeGreaterThan(0);
-  expect(videoStream?.height).toBeGreaterThan(0);
+  // The default editor export is 720p vertical; verify the encoded file, not just the preview.
+  expect(videoStream?.width).toBe(720);
+  expect(videoStream?.height).toBe(1280);
   expect(audioStream?.codec_name).toBe("opus");
   });
 }
