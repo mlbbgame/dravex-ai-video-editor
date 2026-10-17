@@ -196,6 +196,8 @@ export default function App() {
     setMediaFiles(files);
     setMediaUrls(files.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
+    setPreviewUrl("");
+    setPreviewStatus("");
     setError("");
     setMessage("");
     setStage("ready");
@@ -213,6 +215,8 @@ export default function App() {
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
+    setPreviewUrl("");
+    setPreviewStatus("");
     setStage("ready");
     setError("");
     setMessage("");
@@ -224,6 +228,8 @@ export default function App() {
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
     setOutputUrl("");
+    setPreviewUrl("");
+    setPreviewStatus("");
     setStage(nextFiles.length ? "ready" : "empty");
     setError("");
     setMessage("");
