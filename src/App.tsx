@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, ExternalLink, Headphones, ArrowLeft } from "lucide-react";
+import { generateMusicTrack, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -84,6 +85,10 @@ export default function App() {
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const [musicUrl, setMusicUrl] = useState("");
+  const [activeTab, setActiveTab] = useState<"editor" | "music">("editor");
+  const [musicQuery, setMusicQuery] = useState("");
+  const [musicCategory, setMusicCategory] = useState("Все");
+  const [generatingMusicId, setGeneratingMusicId] = useState("");
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
@@ -290,18 +295,42 @@ export default function App() {
     invalidateOutput();
   };
 
+  const applyMusicFile = (file: File) => {
+    if (!file.type.startsWith("audio/")) {
+      setError("Выбери аудиофайл, который поддерживает браузер.");
+      return;
+    }
+    setMusicFile(file);
+    setMusicUrl(URL.createObjectURL(file));
+    setError("");
+    invalidateOutput();
+  };
+
+  const createMusicPreset = async (preset: MusicPreset) => {
+    if (generatingMusicId) return;
+    setGeneratingMusicId(preset.id);
+    setError("");
+    try {
+      const file = await generateMusicTrack(preset);
+      applyMusicFile(file);
+      setPreviewStatus(`Создан оригинальный трек «${preset.title}» · ${preset.bpm} BPM. Он готов для автмонтажа и локального предпрослушивания.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось создать музыкальный трек.");
+    } finally {
+      setGeneratingMusicId("");
+    }
+  };
+
   const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("audio/")) {
       setError("Выбери аудиофайл, который поддерживает браузер.");
+      event.target.value = "";
       return;
     }
-    if (musicUrl) URL.revokeObjectURL(musicUrl);
-    setMusicFile(file);
-    setMusicUrl(URL.createObjectURL(file));
+    applyMusicFile(file);
     event.target.value = "";
-    invalidateOutput();
   };
 
   const createStylePreviews = async () => {
@@ -574,7 +603,46 @@ export default function App() {
         <span className="dravex-local"><span />Работает в браузере</span>
       </header>
 
+      <nav className="dravex-tabs" aria-label="Разделы DRAVEX">
+        <button type="button" className={activeTab === "editor" ? "is-active" : ""} aria-pressed={activeTab === "editor"} onClick={() => setActiveTab("editor")}><Clapperboard size={17} />Монтаж</button>
+        <button type="button" className={activeTab === "music" ? "is-active" : ""} aria-pressed={activeTab === "music"} onClick={() => setActiveTab("music")}><Music2 size={17} />Музыка{musicFile && <span className="dravex-tab-dot" aria-label="Музыка выбрана" />}</button>
+      </nav>
+
       <section className="dravex-main">
+        <input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} />
+        {activeTab === "music" ? (
+          <div className="dravex-music-studio">
+            <div className="dravex-music-hero">
+              <span className="dravex-music-hero-icon"><Music2 size={25} /></span>
+              <div><span className="dravex-eyebrow">DRAVEX AUDIO LAB</span><h1>Твоя музыка.<br /><span>Твой монтаж.</span></h1><p>Выбирай оригинальный бит или добавляй свой трек — всё обрабатывается на телефоне.</p></div>
+            </div>
+            <div className="dravex-music-safety"><CheckCircle2 size={16} /><span>Встроенные биты создаются самим DRAVEX. Мы не встраиваем в сайт чужие коммерческие песни.</span></div>
+            {musicFile && musicUrl ? <section className="dravex-current-track">
+              <div className="dravex-current-track-top"><span className="dravex-track-icon"><Headphones size={19} /></span><div><strong>Выбранный трек</strong><small>{musicFile.name}</small></div><button type="button" aria-label="Убрать выбранную музыку" onClick={clearMusic}><X size={17} /></button></div>
+              <audio controls preload="metadata" src={musicUrl}>Твой браузер не поддерживает аудиоплеер.</audio>
+              <p>Трек будет добавлен к следующему монтажу. Синхронизация с битом включается в дополнительных настройках.</p>
+              <button className="dravex-return-editor" type="button" onClick={() => setActiveTab("editor")}><ArrowLeft size={16} />Вернуться к монтажу</button>
+            </section> : <section className="dravex-music-empty"><Headphones size={22} /><div><strong>Музыка пока не выбрана</strong><span>Создай один из оригинальных треков ниже или загрузи свой аудиофайл.</span></div><button type="button" onClick={() => musicInput.current?.click()}><Upload size={15} />Загрузить аудио</button></section>}
+            <div className="dravex-music-heading"><div><h2>Оригинальные биты DRAVEX</h2><p>Создаются локально по нажатию · 30 секунд · без сторонних семплов из музыкальных библиотек</p></div><span>6 треков</span></div>
+            <label className="dravex-music-search"><Search size={17} /><input value={musicQuery} onChange={(event) => setMusicQuery(event.target.value)} placeholder="Поиск по стилю или настроению…" aria-label="Поиск музыки" /></label>
+            <div className="dravex-music-categories">{["Все", "Action", "Phonk", "Anime", "Cinematic", "Slow", "Chill"].map((category) => <button key={category} type="button" className={musicCategory === category ? "is-active" : ""} onClick={() => setMusicCategory(category)}>{category}</button>)}</div>
+            <div className="dravex-track-list">{musicPresets.filter((preset) => (musicCategory === "Все" || preset.mood === musicCategory) && `${preset.title} ${preset.mood} ${preset.description}`.toLowerCase().includes(musicQuery.toLowerCase())).map((preset) => <article className="dravex-track-card" key={preset.id}>
+              <span className={`dravex-track-art art-${preset.style}`}><Music2 size={21} /><span className="dravex-eq"><i /><i /><i /><i /><i /></span></span>
+              <div className="dravex-track-details"><strong>{preset.title}</strong><span>{preset.description}</span><small>{preset.mood} <b>·</b> {preset.bpm} BPM <b>·</b> 0:30</small></div>
+              <button type="button" disabled={Boolean(generatingMusicId)} onClick={() => void createMusicPreset(preset)}>{generatingMusicId === preset.id ? <LoaderCircle size={16} className="dravex-spin" /> : <Play size={16} />}{generatingMusicId === preset.id ? "Создаём" : "Выбрать"}</button>
+            </article>)}</div>
+            {musicPresets.filter((preset) => (musicCategory === "Все" || preset.mood === musicCategory) && `${preset.title} ${preset.mood} ${preset.description}`.toLowerCase().includes(musicQuery.toLowerCase())).length === 0 && <p className="dravex-music-no-results">Ничего не найдено. Попробуй другой запрос или категорию.</p>}
+            <div className="dravex-music-heading dravex-source-heading"><div><h2>Внешние музыкальные библиотеки</h2><p>Скачай трек на официальном сайте, затем загрузи его сюда. Проверяй лицензию каждого трека перед публикацией.</p></div></div>
+            <div className="dravex-source-list">
+              <a className="dravex-source-card" href="https://www.youtube.com/audiolibrary" target="_blank" rel="noreferrer"><span className="dravex-source-icon source-youtube">YT</span><span><strong>YouTube Audio Library</strong><small>Музыка для YouTube · проверяй требования к указанию автора</small></span><ExternalLink size={16} /></a>
+              <a className="dravex-source-card" href="https://ads.tiktok.com/business/creativecenter/music/pc/en" target="_blank" rel="noreferrer"><span className="dravex-source-icon source-tiktok">♪</span><span><strong>TikTok Commercial Music Library</strong><small>Коммерческие треки для TikTok · доступность зависит от региона и условий</small></span><ExternalLink size={16} /></a>
+              <a className="dravex-source-card" href="https://pixabay.com/music/" target="_blank" rel="noreferrer"><span className="dravex-source-icon source-pixabay">P</span><span><strong>Pixabay Music</strong><small>Бесплатные треки · изучай условия лицензии конкретной композиции</small></span><ExternalLink size={16} /></a>
+            </div>
+            <div className="dravex-music-note"><strong>Важно для публикации</strong><p>Лицензия TikTok не означает, что трек разрешён на YouTube Shorts. Для роликов на обеих площадках выбирай музыку с лицензией, которая явно покрывает обе платформы, или используй оригинальный бит DRAVEX.</p></div>
+            {error && <div className="dravex-error" role="alert">{error}</div>}
+            {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
+          </div>
+        ) : (<>
         <div className="dravex-intro"><h1>Создай видео<br /><span>автоматически</span></h1><p>Добавь материал — мы подберём монтаж под него.</p></div>
         <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
         {!mediaFiles.length ? (
@@ -637,7 +705,7 @@ export default function App() {
             <label className="dravex-duration dravex-duration-slider"><span>Длительность ролика <strong>{duration} сек.</strong></span><input aria-label="Длительность ролика в секундах" type="range" min={5} max={60} step={1} value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }} /><span className="dravex-range-limits"><span>5 сек.</span><span>60 сек.</span></span></label>
             <label className="dravex-duration"><span>Формат кадра</span><select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as "9:16" | "16:9" | "1:1" | "4:5"); invalidateOutput(); }}><option value="9:16">9:16 · TikTok / Shorts</option><option value="16:9">16:9 · YouTube</option><option value="1:1">1:1 · квадрат</option><option value="4:5">4:5 · лента</option></select></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
-            <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><div className="dravex-music-actions"><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
+            <div className="dravex-music"><span>Музыка (необязательно)</span><div className="dravex-music-actions"><button type="button" onClick={() => setActiveTab("music")}><Music2 size={16} />{musicFile ? musicFile.name : "Открыть музыкальную библиотеку"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
             <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
@@ -656,6 +724,7 @@ export default function App() {
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
         {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div></section>}
+        </>)}
       </section>
 
       <footer className="dravex-footer"><Clapperboard size={15} />DRAVEX <span>·</span> Просто создавай</footer>
