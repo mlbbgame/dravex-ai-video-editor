@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { stat } from "node:fs/promises";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
+import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { getMediaKind } from "../src/video/media-kind";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
@@ -78,6 +79,16 @@ test("media type falls back to filename extension when a picker omits MIME metad
   expect(getMediaKind({ name: "photo.svg", type: "" })).toBe("image");
   expect(getMediaKind({ name: "notes.pdf", type: "" })).toBe("unknown");
   expect(getMediaKind({ name: "clip.mp4", type: "image/jpeg" })).toBe("image");
+});
+
+test("short source videos get safe, evenly spaced cut points without frame scanning", () => {
+  const cuts = buildQuickVideoCandidates(9);
+  expect(cuts).toHaveLength(6);
+  expect(cuts[0].start).toBe(0);
+  expect(cuts.at(-1)?.end).toBe(9);
+  expect(cuts.every((cut) => cut.start >= 0 && cut.end <= 9 && cut.end > cut.start)).toBe(true);
+  expect(buildQuickVideoCandidates(Number.NaN)).toHaveLength(0);
+  expect(buildQuickVideoCandidates(0.1)).toHaveLength(0);
 });
 
 test("camera motion profiles provide visible but controlled movement", () => {
