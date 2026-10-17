@@ -94,6 +94,10 @@ export default function App() {
   const [error, setError] = useState("");
   const [outputUrl, setOutputUrl] = useState("");
   const [outputName, setOutputName] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
+  const [previewStatus, setPreviewStatus] = useState("");
   const [cutCount, setCutCount] = useState(0);
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
@@ -128,6 +132,7 @@ export default function App() {
   }, []);
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const saveProject = async () => {
     if (!mediaFiles.length || projectBusy) return;
@@ -226,6 +231,8 @@ export default function App() {
 
   const invalidateOutput = () => {
     setOutputUrl("");
+    setPreviewUrl("");
+    setPreviewStatus("");
     setError("");
     setMessage("");
     setStage(mediaFiles.length ? "ready" : "empty");
@@ -250,6 +257,46 @@ export default function App() {
     setMusicUrl(URL.createObjectURL(file));
     event.target.value = "";
     invalidateOutput();
+  };
+
+  const createStylePreview = async () => {
+    if (!mediaFiles.length || busy || previewBusy) return;
+    setPreviewBusy(true);
+    setPreviewProgress(0);
+    setPreviewStatus("Готовим короткий предпросмотр выбранного стиля…");
+    setPreviewUrl("");
+    setError("");
+    try {
+      const previewDuration = 4.8;
+      const previewStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
+      const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
+        ? mediaFiles.slice(0, 6).map((file, index) => ({
+            kind: "image" as const,
+            name: file.name,
+            url: mediaUrls[index],
+            duration: previewDuration / Math.min(mediaFiles.length, 6)
+          }))
+        : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+      const blob = await renderVideoSequence({
+        segments: previewSegments,
+        audioTracks: [],
+        title: "DRAVEX style preview",
+        aspectRatio,
+        quality: "preview",
+        style: previewStyle,
+        effectStrength,
+        transitionMode,
+        targetDurationSeconds: previewDuration,
+        onProgress: setPreviewProgress
+      });
+      setPreviewUrl(URL.createObjectURL(blob));
+      setPreviewStatus("Готово: это реальный короткий рендер с выбранными движением и переходами. Звук добавится в полном монтаже.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось создать предпросмотр. Попробуй ещё раз.");
+      setPreviewStatus("");
+    } finally {
+      setPreviewBusy(false);
+    }
   };
 
   const createMontage = async () => {
@@ -404,7 +451,13 @@ export default function App() {
             </button>;
           })}
         </div>
-        <p className="dravex-variant-hint">Карточки показывают пример цветокоррекции и движения. Полные переходы и монтаж применяются при создании видео.</p>
+        <p className="dravex-variant-hint">Выбери стиль, затем создай короткий реальный рендер, чтобы проверить движение и переходы до полного экспорта.</p>
+        <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy} onClick={createStylePreview}>
+          {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
+          {previewBusy ? `Рендер предпросмотра… ${previewProgress}%` : "Создать короткий предпросмотр"}
+        </button>
+        {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
+        {previewUrl && <section className="dravex-real-preview"><div><strong>Предпросмотр выбранного стиля</strong><span>Низкое разрешение для быстрой проверки на телефоне</span></div><video src={previewUrl} controls playsInline preload="metadata" /></section>}
 
         <details className="dravex-more">
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
@@ -425,7 +478,7 @@ export default function App() {
           {projectMessage && <p className="dravex-project-message" role="status">{projectMessage}</p>}
         </details>
 
-        <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Создать видео"}</button>
+        <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy || previewBusy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Создать видео"}</button>
         <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер. Проекты сохраняются локально на этом устройстве.</p>
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
