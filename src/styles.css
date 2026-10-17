@@ -357,3 +357,20 @@ body {
 .dravex-download-track { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid #34383e; border-radius: 9px; color: #e1e6db; background: #ffffff06; text-decoration: none; font-size: 10px; font-weight: 750; }
 .dravex-current-track-actions .dravex-return-editor { min-height: 40px; }
 @media (max-width: 420px) { .dravex-current-track-actions { flex-direction: column; } .dravex-current-track-actions > * { width: 100%; } }
+
+/* Real ready-to-use CC0 tracks: compact inline player and source credit */
+.dravex-track-card { align-items: flex-start; }
+.dravex-track-card > .dravex-track-art { margin-top: 2px; }
+.dravex-track-details { gap: 5px; }
+.dravex-track-details small { line-height: 1.4; }
+.dravex-track-preview { display: block; width: 100%; max-width: 250px; height: 32px; margin-top: 3px; }
+.dravex-track-source { width: fit-content; color: #9eaf89; font-size: 9px; text-decoration: underline; text-underline-offset: 2px; }
+.dravex-track-card > button { margin-top: 5px; }
+.dravex-track-card > button:disabled { cursor: wait; }
+.dravex-music-note p { line-height: 1.6; }
+@media (max-width: 420px) {
+  .dravex-track-card { align-items: flex-start; flex-wrap: wrap; }
+  .dravex-track-details { flex-basis: calc(100% - 58px); }
+  .dravex-track-preview { max-width: 100%; }
+  .dravex-track-card > button { margin-left: 50px; min-width: 130px; }
+}
