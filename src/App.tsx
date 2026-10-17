@@ -338,7 +338,7 @@ export default function App() {
         const blob = await renderVideoSequence({
           segments: previewSegments,
           audioTracks,
-          title: `DRAVEX ${variant.title} preview`,
+          title: "",
           aspectRatio,
           quality: "preview",
           style: previewStyle,
@@ -526,7 +526,7 @@ export default function App() {
       const blob = await renderVideoSequence({
         segments: previewSegments,
         audioTracks,
-        title: `DRAVEX ${variant.title} preview`,
+        title: "",
         aspectRatio,
         quality: "preview",
         style: previewStyle,
