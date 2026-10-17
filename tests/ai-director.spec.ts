@@ -47,3 +47,15 @@ test("detected objects contribute to shot value without bypassing visual score",
   expect(withObjects).toBeGreaterThan(noObjects);
   expect(Number.isFinite(withObjects)).toBe(true);
 });
+
+test("object matching does not confuse two same-class objects when detector order changes", () => {
+  const previous = [
+    { label: "person", score: 0.9, box: { xmin: 20, ymin: 20, xmax: 80, ymax: 140 } },
+    { label: "person", score: 0.9, box: { xmin: 230, ymin: 20, xmax: 290, ymax: 140 } },
+  ];
+  const current = [
+    { label: "person", score: 0.9, box: { xmin: 235, ymin: 20, xmax: 295, ymax: 140 } },
+    { label: "person", score: 0.9, box: { xmin: 25, ymin: 20, xmax: 85, ymax: 140 } },
+  ];
+  expect(inferTrackedObjectCues(previous, current)).not.toContain("Объект перемещается по кадру");
+});
