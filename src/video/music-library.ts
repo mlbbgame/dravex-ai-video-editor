@@ -46,9 +46,35 @@ export const musicCategories = ["Все", "Phonk / Drift", "Anime / Jumpstyle", 
 
 /** Fetch a licensed track in the background so it becomes a normal local audio file for preview and export. */
 export async function loadMusicTrack(preset: MusicPreset): Promise<File> {
-  const response = await fetch(preset.audioUrl, { mode: "cors", credentials: "omit" });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
+  let response: Response;
+  try {
+    response = await fetch(preset.audioUrl, {
+      mode: "cors",
+      credentials: "omit",
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Загрузка «${preset.title}» заняла слишком много времени. Проверь интернет или выбери другой трек.`);
+    }
+    throw new Error(`Не удалось подключиться к музыкальному источнику для «${preset.title}». Проверь интернет и попробуй снова.`);
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+
   if (!response.ok) throw new Error(`Не удалось загрузить «${preset.title}». Попробуй другой трек.`);
   const blob = await response.blob();
   if (!blob.size) throw new Error(`Трек «${preset.title}» оказался пустым. Попробуй другой.`);
-  return new File([blob], `${preset.title}.mp3`, { type: "audio/mpeg" });
+
+  // Some media hosts return application/octet-stream even for playable audio.
+  // Keep a valid audio MIME type so browsers and local project storage recognize it.
+  const responseType = (blob.type || response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const audioType = responseType.startsWith("audio/") ? responseType : "audio/mpeg";
+  const extension = audioType.includes("wav") ? "wav"
+    : audioType.includes("ogg") ? "ogg"
+      : audioType.includes("mp4") || audioType.includes("aac") ? "m4a"
+        : "mp3";
+  return new File([blob], `${preset.title}.${extension}`, { type: audioType });
 }
