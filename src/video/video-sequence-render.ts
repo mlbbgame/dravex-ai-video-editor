@@ -344,12 +344,18 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       drawIncoming();
     } else if (transitionWindow && transitionType === 4) {
       // Short rotational reveal with a restrained zoom.
-      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.11 : 0.065);
+      const angle = (1 - transitionProgress) * (style === "velocity" ? 0.15 : 0.085);
       const punch = 1 + (1 - transitionProgress) * 0.13;
       context.translate(width / 2, height / 2);
       context.rotate(angle);
       context.globalAlpha = Math.min(1, transitionProgress * 2 + 0.05);
-      context.drawImage(source, -drawWidth * punch / 2 + offsetX, -drawHeight * punch / 2 + offsetY, drawWidth * punch, drawHeight * punch);
+      if (isPhoto) {
+        context.scale(punch, punch);
+        context.translate(-width / 2, -height / 2);
+        drawIncoming();
+      } else {
+        context.drawImage(source, -drawWidth * punch / 2 + offsetX, -drawHeight * punch / 2 + offsetY, drawWidth * punch, drawHeight * punch);
+      }
     } else if (transitionWindow && transitionType === 5) {
       // Eight staggered horizontal shutters.
       const strips = 8;
