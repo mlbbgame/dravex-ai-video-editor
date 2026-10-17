@@ -7,6 +7,7 @@ export type SavedDravexProject = {
   beatSync: boolean;
   effectStrength?: "soft" | "balanced" | "strong";
   musicVolume?: number;
+  transitionMode?: "auto" | "cinematic" | "action";
   savedAt: string;
 };
 
