@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { shouldContainSource } from "../src/video/video-sequence-render";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
   await page.goto("/");
@@ -57,4 +58,12 @@ test("mobile layout does not create horizontal page overflow", async ({ page }) 
     page: document.documentElement.scrollWidth,
   }));
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
+});
+
+test("source framing fills matching aspect ratios and preserves mismatched sources", () => {
+  expect(shouldContainSource(9 / 16, 9 / 16)).toBe(false);
+  expect(shouldContainSource(16 / 9, 16 / 9)).toBe(false);
+  expect(shouldContainSource(1, 9 / 16)).toBe(true);
+  expect(shouldContainSource(4 / 3, 9 / 16)).toBe(true);
+  expect(shouldContainSource(0, 9 / 16)).toBe(true);
 });
