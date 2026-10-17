@@ -196,10 +196,13 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.locator("details.dravex-more > summary").click();
 
   const durationSlider = page.getByRole("slider", { name: "Длительность ролика в секундах" });
+  await expect(durationSlider).toBeVisible();
   await durationSlider.focus();
   await durationSlider.press("Home");
+  await expect(durationSlider).toHaveValue("5");
 
   // Tiny, self-contained 2-second VP8/WebM clip; no external media or network access.
   const sourceVideo = Buffer.from("GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAALEEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEjTbuMU6uEHFO7a1OsggKc7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjEuNy4xMDNXQYxMYXZmNjEuNy4xMDNEiYhAn0AAAAAAABZUrmvIrgEAAAAAAAA/14EBc8WIVK4ALmPToFCcgQAitZyDdW5kiIEAhoVWX1ZQOIOBASPjg4QdzWUA4JCwgUC6gUCagQJVsIRVuYEBElTDZ/tzc59jwIBnyJlFo4dFTkNPREVSRIeMTGF2ZjYxLjcuMTAzc3PWY8CLY8WIVK4ALmPToFBnyKFFo4dFTkNPREVSRIeUTGF2YzYxLjE5LjEwMSBsaWJ2cHhnyKFFo4hEVVJBVElPTkSHkzAwOjAwOjAyLjAwMDAwMDAwMAAfQ7Z1QPPngQCjxIEAAIDQAwCdASpAAEAAAEcIhYWImYSIAgICdaoD+AP6AgcaT8gtSEwBVjAA/v1u8//kb+PnRv/I4//8Sp7jieP//EaAo7CBAfQAMQIAARAQABgAGdf0DAAQoYArVAD+/W7z/+Rv4+dG/8jj//xKnuOJ4//8RoCjxIED6IDQAwCdASpAAEAAAEcIhYWImYSIAgICdaoD+AP6AgcaT8gtSEwBVjAA/v1u8//kb+PnRv/I4//8Sp7jieP//EaAo7CBBdwAMQIAARAQABgAGdf0DAAQoYArVAD+/W7z/+Rv4+dG/8jj//xKnuOJ4//8RoAcU7tro7uPs4EAt4r3gQHxggGj8IEDu5CzggPot4r3gQHxggGj8IF7", "base64");
@@ -259,10 +262,13 @@ test("long source-video montage handles 60-second input and exports the requeste
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.locator("details.dravex-more > summary").click();
 
   const durationSlider = page.getByRole("slider", { name: "Длительность ролика в секундах" });
+  await expect(durationSlider).toBeVisible();
   await durationSlider.focus();
   await durationSlider.press("Home");
+  await expect(durationSlider).toHaveValue("5");
 
   // A tiny 60-second VP8/WebM clip exercises the long-video frame-sampling path.
   const fixturePath = `/tmp/dravex-test-long-source-${process.pid}.webm`;
