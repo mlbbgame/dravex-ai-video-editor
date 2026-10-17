@@ -18,10 +18,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out DRAVEX app (promoted from preview)
+      - name: Check out DRAVEX app (the intended preview version)
         uses: actions/checkout@v4
         with:
-          ref: rebuild/one-button-auto-montage
+          ref: feature/dravex-camera-audio-v2
           path: app-source
 
       - name: Configure GitHub Pages
@@ -38,8 +38,8 @@ jobs:
         working-directory: app-source
         run: npm install --no-audit --no-fund
 
-      # The former root app is retired from the public build.
-      # Build the preview app at the primary URL and keep /preview/ as an alias.
+      # Publish the exact feature branch used for the requested /preview/ version
+      # at the main URL, while preserving /preview/ as an identical compatibility URL.
       - name: Build primary DRAVEX site
         working-directory: app-source
         run: npm run build
