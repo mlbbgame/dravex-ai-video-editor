@@ -73,3 +73,4 @@ jobs:
 
 # Rebuild preview with music beat sync, export quality options, and local project saving.
 # Rebuild preview with improved photo framing, auto-director pacing, beat timing, and stronger transitions.
+# Rebuild preview with per-photo reorder/remove controls and safer image URL lifecycle.
