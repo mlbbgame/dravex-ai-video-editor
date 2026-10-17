@@ -284,7 +284,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const panPhase = progress * Math.PI / 2;
     const panX = Math.sin(panPhase) * width * panAmount * ([1, -1, 0, 0][cutIndex % 4]);
     const panY = Math.sin(panPhase) * height * panAmount * ([0, 0, 1, -1][cutIndex % 4]);
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.16 && style !== "story" ? (1 - cutProgress / 0.16) * (style === "velocity" ? 0.012 : 0.004) : 0;
+    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
@@ -397,7 +397,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
       shade.addColorStop(0, "rgba(5,7,12,0)");
-      shade.addColorStop(1, "rgba(5,7,12,0.38)");
+      shade.addColorStop(1, "rgba(5,7,12,0.18)");
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
     }
@@ -432,7 +432,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
-      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.22)");
+      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
     }
