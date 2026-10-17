@@ -1,0 +1,174 @@
+/**
+ * Provider-neutral contracts for the cloud-first DRAVEX AI Director.
+ *
+ * This module defines and validates plans; it does not call an AI model,
+ * upload media, or render video. Keep it independent of any model vendor.
+ */
+
+export type DirectorProfileId = "aggressive-car" | "cinematic-travel";
+export type DirectorVariantId = "hype" | "cinematic" | "emotion" | "signature";
+export type DirectorTransition = "cut" | "short-impact" | "smooth" | "match-motion";
+export type DirectorEffect = "speed-ramp" | "motion-blur" | "flash" | "camera-motion" | "color-grade";
+export type MusicSource = "licensed-library" | "user-upload";
+
+export type DirectorSegment = {
+  sourceStart: number;
+  sourceEnd: number;
+  eventLabels: string[];
+  transitionIn: DirectorTransition;
+  effects: DirectorEffect[];
+  confidence: number;
+};
+
+export type DirectorMusicPlan = {
+  source: MusicSource;
+  trackId: string;
+  sourceStart: number;
+  sourceEnd: number;
+  gain: number;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
+  beatConfidence: number;
+};
+
+export type DirectorEditPlan = {
+  schemaVersion: 1;
+  sourceId: string;
+  profile: DirectorProfileId;
+  variant: DirectorVariantId;
+  targetDuration: number;
+  aspectRatio: "9:16" | "16:9" | "1:1" | "4:5";
+  resolution: "720p" | "1080p";
+  frameRate: 24 | 25 | 30 | 50 | 60;
+  segments: DirectorSegment[];
+  music: DirectorMusicPlan;
+};
+
+export type DirectorProfile = {
+  id: DirectorProfileId;
+  title: string;
+  summary: string;
+  preferredMusic: string[];
+  preferredTransitions: DirectorTransition[];
+  preferredEffects: DirectorEffect[];
+  eventPriorities: string[];
+  pacing: "aggressive" | "measured";
+};
+
+export const directorProfiles: Record<DirectorProfileId, DirectorProfile> = {
+  "aggressive-car": {
+    id: "aggressive-car",
+    title: "Aggressive Car Edit",
+    summary: "Fast, impact-led car edits that emphasize action only when the source supports it.",
+    preferredMusic: ["phonk", "bass", "aggressive-electronic"],
+    preferredTransitions: ["cut", "short-impact", "match-motion"],
+    preferredEffects: ["speed-ramp", "motion-blur", "flash"],
+    eventPriorities: ["acceleration", "drift", "turn", "wheel-detail", "tire-smoke", "camera-angle-change"],
+    pacing: "aggressive",
+  },
+  "cinematic-travel": {
+    id: "cinematic-travel",
+    title: "Cinematic / Travel",
+    summary: "Atmospheric edits that prioritize expressive shots, coherent movement, and measured pacing.",
+    preferredMusic: ["cinematic", "ambient", "melodic-electronic"],
+    preferredTransitions: ["cut", "smooth", "match-motion"],
+    preferredEffects: ["camera-motion", "color-grade"],
+    eventPriorities: ["establishing-shot", "landscape", "travel-motion", "location-change", "expressive-detail"],
+    pacing: "measured",
+  },
+};
+
+export type DirectorPlanValidation = {
+  valid: boolean;
+  errors: string[];
+};
+
+const transitions = new Set<DirectorTransition>(["cut", "short-impact", "smooth", "match-motion"]);
+const effects = new Set<DirectorEffect>(["speed-ramp", "motion-blur", "flash", "camera-motion", "color-grade"]);
+const profiles = new Set<DirectorProfileId>(["aggressive-car", "cinematic-travel"]);
+const variants = new Set<DirectorVariantId>(["hype", "cinematic", "emotion", "signature"]);
+const musicSources = new Set<MusicSource>(["licensed-library", "user-upload"]);
+const aspectRatios = new Set<DirectorEditPlan["aspectRatio"]>(["9:16", "16:9", "1:1", "4:5"]);
+const resolutions = new Set<DirectorEditPlan["resolution"]>(["720p", "1080p"]);
+const frameRates = new Set<DirectorEditPlan["frameRate"]>([24, 25, 30, 50, 60]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Validate untrusted model/API output before it reaches a renderer.
+ * The source duration must come from trusted media probing, not model output.
+ */
+export function validateDirectorPlan(input: unknown, sourceDuration: number): DirectorPlanValidation {
+  const errors: string[] = [];
+  if (!isFiniteNumber(sourceDuration) || sourceDuration <= 0) {
+    return { valid: false, errors: ["Source duration must be a finite positive number."] };
+  }
+  if (!isRecord(input)) return { valid: false, errors: ["Plan must be an object."] };
+
+  if (input.schemaVersion !== 1) errors.push("Unsupported plan schema version.");
+  if (typeof input.sourceId !== "string" || !input.sourceId.trim()) errors.push("Source ID is required.");
+  if (typeof input.profile !== "string" || !profiles.has(input.profile as DirectorProfileId)) errors.push("Unknown director profile.");
+  if (typeof input.variant !== "string" || !variants.has(input.variant as DirectorVariantId)) errors.push("Unknown variant.");
+  if (!isFiniteNumber(input.targetDuration) || input.targetDuration <= 0) {
+    errors.push("Target duration must be a finite positive number.");
+  } else if (input.targetDuration > sourceDuration) {
+    errors.push("Target duration cannot exceed source duration in this initial contract.");
+  }
+  if (typeof input.aspectRatio !== "string" || !aspectRatios.has(input.aspectRatio as DirectorEditPlan["aspectRatio"])) errors.push("Unsupported aspect ratio.");
+  if (typeof input.resolution !== "string" || !resolutions.has(input.resolution as DirectorEditPlan["resolution"])) errors.push("Unsupported resolution.");
+  if (typeof input.frameRate !== "number" || !frameRates.has(input.frameRate as DirectorEditPlan["frameRate"])) errors.push("Unsupported frame rate.");
+
+  if (!Array.isArray(input.segments) || input.segments.length === 0) {
+    errors.push("At least one segment is required.");
+  } else {
+    input.segments.forEach((rawSegment, index) => {
+      const prefix = `Segment ${index + 1}`;
+      if (!isRecord(rawSegment)) {
+        errors.push(`${prefix} must be an object.`);
+        return;
+      }
+      const start = rawSegment.sourceStart;
+      const end = rawSegment.sourceEnd;
+      if (!isFiniteNumber(start) || !isFiniteNumber(end) || start < 0 || end <= start || end > sourceDuration) {
+        errors.push(`${prefix} has invalid source timestamps.`);
+      }
+      if (!Array.isArray(rawSegment.eventLabels) || rawSegment.eventLabels.some((label) => typeof label !== "string")) {
+        errors.push(`${prefix} event labels must be strings.`);
+      }
+      if (typeof rawSegment.transitionIn !== "string" || !transitions.has(rawSegment.transitionIn as DirectorTransition)) {
+        errors.push(`${prefix} uses an unsupported transition.`);
+      }
+      if (!Array.isArray(rawSegment.effects) || rawSegment.effects.some((effect) => typeof effect !== "string" || !effects.has(effect as DirectorEffect))) {
+        errors.push(`${prefix} contains an unsupported effect.`);
+      }
+      if (!isFiniteNumber(rawSegment.confidence) || rawSegment.confidence < 0 || rawSegment.confidence > 1) {
+        errors.push(`${prefix} confidence must be between 0 and 1.`);
+      }
+    });
+  }
+
+  if (!isRecord(input.music)) {
+    errors.push("Music plan is required.");
+  } else {
+    const music = input.music;
+    if (typeof music.source !== "string" || !musicSources.has(music.source as MusicSource)) errors.push("Unsupported music source.");
+    if (typeof music.trackId !== "string" || !music.trackId.trim()) errors.push("Music track ID is required.");
+    if (!isFiniteNumber(music.sourceStart) || !isFiniteNumber(music.sourceEnd) || music.sourceStart < 0 || music.sourceEnd <= music.sourceStart) {
+      errors.push("Music source timestamps are invalid.");
+    }
+    if (!isFiniteNumber(music.gain) || music.gain < 0 || music.gain > 1) errors.push("Music gain must be between 0 and 1.");
+    if (!isFiniteNumber(music.fadeInSeconds) || music.fadeInSeconds < 0) errors.push("Music fade-in must be non-negative.");
+    if (!isFiniteNumber(music.fadeOutSeconds) || music.fadeOutSeconds < 0) errors.push("Music fade-out must be non-negative.");
+    if (!isFiniteNumber(music.beatConfidence) || music.beatConfidence < 0 || music.beatConfidence > 1) {
+      errors.push("Beat confidence must be between 0 and 1.");
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}

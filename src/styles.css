@@ -375,3 +375,34 @@ body {
   .dravex-track-preview { max-width: 100%; }
   .dravex-track-card > button { margin-left: 50px; min-width: 130px; }
 }
+
+
+/* Accessibility: respect the device's reduced-motion preference in animated style previews. */
+@media (prefers-reduced-motion: reduce) {
+  .dravex-variant-preview > img,
+  .dravex-variant-preview > video,
+  .dravex-variant:active,
+  .dravex-create,
+  .dravex-upload,
+  .dravex-style,
+  .dravex-progress-track span {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+/* Make horizontal style browsing easier on touch screens and keyboard users. */
+.dravex-variant-rail {
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 4px;
+}
+.dravex-variant:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 420px) {
+  .dravex-variant {
+    flex-basis: min(148px, 43vw);
+  }
+}

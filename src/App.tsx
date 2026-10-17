@@ -126,31 +126,46 @@ export default function App() {
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
 
-  useEffect(() => {
-    let active = true;
-    loadLocalProject().then((project) => {
-      if (!active || !project || !project.files?.length) return;
-      setMediaFiles(project.files);
-      setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
-      setMusicFile(project.musicFile ?? null);
-      setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
-      setStyle((project.style as EditStyle) || "auto");
-      setDuration(project.duration || 30);
-      setAspectRatio(project.aspectRatio ?? "9:16");
-      setQuality(project.quality || "720p");
-      setBeatSync(project.beatSync !== false);
-      setEffectStrength(project.effectStrength ?? "balanced");
-      setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
-      setTransitionMode(project.transitionMode ?? "auto");
-      setStage("ready");
-      setProjectMessage("Найден сохранённый проект на этом устройстве.");
-    }).catch(() => { /* A private browser or disabled IndexedDB must not prevent editing. */ });
-    return () => { active = false; };
-  }, []);
+  // Saved projects are restored only after an explicit user action, never on page startup.
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => () => { renderedVariantUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+
+  const clearEditor = () => {
+    if (busy || previewBusy || projectBusy) return;
+    mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+    if (musicUrl) URL.revokeObjectURL(musicUrl);
+    if (outputUrl) URL.revokeObjectURL(outputUrl);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    clearRenderedVariants();
+    setMediaFiles([]);
+    setMediaUrls([]);
+    setMusicFile(null);
+    setMusicUrl("");
+    setStyle("auto");
+    setDuration(30);
+    setAspectRatio("9:16");
+    setQuality("720p");
+    setBeatSync(true);
+    setEffectStrength("balanced");
+    setMusicVolume(0.72);
+    setTransitionMode("auto");
+    setStage("empty");
+    setScan({ current: 0, total: 0, time: 0 });
+    setRenderProgress(0);
+    setMessage("");
+    setError("");
+    setOutputUrl("");
+    setOutputName("");
+    setPreviewUrl("");
+    setPreviewBusy(false);
+    setPreviewProgress(0);
+    setPreviewStatus("");
+    setCutCount(0);
+    setUsedStyle("");
+    setProjectMessage("Редактор очищен. Сохранённый проект можно открыть вручную.");
+  };
 
   const saveProject = async () => {
     if (!mediaFiles.length || projectBusy) return;
@@ -706,7 +721,7 @@ export default function App() {
         <div className="dravex-variant-rail" aria-label="Варианты автоматического монтажа">
           {montageVariants.map((variant) => {
             const Icon = variant.icon;
-            const selected = style === variant.style;
+            const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
             const rendered = renderedVariants.find((item) => item.id === variant.id);
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass} ${rendered ? "has-rendered" : ""}`}>
@@ -750,14 +765,15 @@ export default function App() {
             <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => { setBeatSync(event.target.value === "on"); invalidateOutput(); }}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
           <div className="dravex-project-actions">
+            <button type="button" onClick={clearEditor} disabled={!mediaFiles.length || busy || previewBusy || projectBusy}><Trash2 size={15} />Очистить редактор</button>
             <button type="button" onClick={saveProject} disabled={!mediaFiles.length || projectBusy}><Save size={15} />{projectBusy ? "Сохраняем…" : "Сохранить проект"}</button>
-            <button type="button" onClick={restoreProject} disabled={projectBusy}><FolderOpen size={15} />Восстановить</button>
+            <button type="button" onClick={restoreProject} disabled={projectBusy || busy || previewBusy}><FolderOpen size={15} />Восстановить проект</button>
           </div>
           {projectMessage && <p className="dravex-project-message" role="status">{projectMessage}</p>}
         </details>
 
         <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy || previewBusy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Автомонтаж"}</button>
-        <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер. Проекты сохраняются локально на этом устройстве.</p>
+        <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер. Сохранённые проекты открываются только по кнопке «Восстановить проект».</p>
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
