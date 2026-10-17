@@ -282,11 +282,23 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
     const actionTransitions = [0, 3, 4, 5, 7];
+    // Auto mode follows the edit's visual language instead of cycling through every
+    // transition at random: calm edits stay clean, action edits use short impact reveals.
+    const calmTransitions = [8, 0, 8, 0];
+    const animeTransitions = [0, 3, 4, 7];
+    const glitchTransitions = [0, 3, 5, 7];
+    const transitionIndex = Math.max(0, cutIndex - 1);
     const transitionType = transitionMode === "cinematic"
       ? (cutIndex % 2 === 0 ? 8 : 0)
       : transitionMode === "action"
-        ? actionTransitions[(cutIndex - 1) % actionTransitions.length]
-        : cutIndex % 8;
+        ? actionTransitions[transitionIndex % actionTransitions.length]
+        : style === "cinematic" || style === "story"
+          ? calmTransitions[transitionIndex % calmTransitions.length]
+          : style === "glitch"
+            ? glitchTransitions[transitionIndex % glitchTransitions.length]
+            : style === "anime"
+              ? animeTransitions[transitionIndex % animeTransitions.length]
+              : actionTransitions[transitionIndex % actionTransitions.length];
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
     // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
