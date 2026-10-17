@@ -203,10 +203,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     for (const item of loadedAudio) {
       const source = audioContext.createMediaElementSource(item.audio);
       const gain = audioContext.createGain();
-      gain.gain.value = Math.max(0, Math.min(1, item.segment.volume ?? 0.65));
+      // Fade automation is scheduled once the render starts to avoid abrupt music edges.
+      gain.gain.value = 0;
       source.connect(gain);
       gain.connect(audioDestination);
+      item.audio.loop = true;
+      (item as typeof item & { renderGain?: GainNode }).renderGain = gain;
     }
+  }
+  if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
+    throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
   }
   const stream = new MediaStream([
     ...videoStream.getVideoTracks(),
@@ -214,6 +220,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   ]);
   if (!stream.getVideoTracks().some((track) => track.readyState === "live")) {
     throw new Error("Не удалось запустить видеопоток с холста. Перезагрузи страницу и попробуй ещё раз.");
+  }
+  if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
   const bitrate = quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
@@ -272,18 +281,22 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
-    // Ken Burns camera movement for still photos: alternating push/pull and four gentle pan paths.
-    const motion = suppressEffects ? 0 : style === "velocity" ? 0.105 : style === "anime" ? 0.075 : style === "glitch" ? 0.085 : style === "story" ? 0.035 : 0.07;
-    const travel = cutIndex % 2 === 0 ? progress : 1 - progress;
+    // DRAVEX Camera V2: eased push/pull plus varied directional paths for stills.
+    const motion = suppressEffects ? 0 : style === "velocity" ? 0.16 : style === "anime" ? 0.115 : style === "glitch" ? 0.12 : style === "story" ? 0.055 : 0.105;
     const isPhoto = source instanceof HTMLImageElement;
-    const zoom = (isPhoto ? 1.015 : 1.025) + travel * motion;
+    const eased = progress * progress * (3 - 2 * progress);
+    const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
+    const zoomBase = isPhoto ? 1.035 : 1.04;
+    const zoom = zoomBase + (zoomDirection > 0 ? eased : 1 - eased) * motion;
     const scale = (isPhoto ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.048 : style === "anime" ? 0.034 : style === "glitch" ? 0.04 : style === "story" ? 0.012 : 0.032;
-    const panPhase = progress * Math.PI / 2;
-    const panX = Math.sin(panPhase) * width * panAmount * ([1, -1, 0, 0][cutIndex % 4]);
-    const panY = Math.sin(panPhase) * height * panAmount * ([0, 0, 1, -1][cutIndex % 4]);
+    const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.065 : style === "anime" ? 0.045 : style === "glitch" ? 0.05 : style === "story" ? 0.018 : 0.045;
+    const panPhase = eased * Math.PI / 2;
+    const pathX = [1, -1, 0.72, -0.72, 0.45, -0.45][cutIndex % 6];
+    const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
+    const panX = Math.sin(panPhase) * width * panAmount * pathX;
+    const panY = Math.sin(panPhase) * height * panAmount * pathY;
     const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
@@ -470,12 +483,23 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   let completed = 0;
   try {
     if (audioContext && loadedAudio.length) {
-      await Promise.all(loadedAudio.map(async ({ audio }) => {
+      const audioStart = audioContext.currentTime;
+      await Promise.all(loadedAudio.map(async ({ audio, segment }) => {
         audio.currentTime = 0;
+        const gain = (loadedAudio.find((entry) => entry.audio === audio) as (typeof loadedAudio)[number] & { audio: HTMLAudioElement & { renderGain?: GainNode } })?.audio.renderGain;
+        const targetVolume = Math.max(0, Math.min(1, segment.volume ?? 0.65));
+        if (gain) {
+          gain.gain.cancelScheduledValues(audioStart);
+          gain.gain.setValueAtTime(0, audioStart);
+          gain.gain.linearRampToValueAtTime(targetVolume, audioStart + Math.min(0.65, totalDuration / 4));
+          const fadeStart = audioStart + Math.max(0.7, totalDuration - 0.9);
+          gain.gain.setValueAtTime(targetVolume, fadeStart);
+          gain.gain.linearRampToValueAtTime(0, audioStart + totalDuration);
+        }
         try {
           await audio.play();
         } catch {
-          throw new Error("The browser blocked audio playback during export. Tap Create montage again and allow media playback.");
+          throw new Error("Браузер заблокировал музыку при экспорте. Нажми «Создать монтаж» ещё раз; если не поможет, обнови страницу и попробуй Chrome.");
         }
       }));
     }
