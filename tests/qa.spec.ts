@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { stat } from "node:fs/promises";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
+import { getMediaKind } from "../src/video/media-kind";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
   await page.goto("/");
@@ -70,6 +71,15 @@ test("source framing fills matching aspect ratios and preserves mismatched sourc
   expect(shouldContainSource(0, 9 / 16)).toBe(true);
 });
 
+test("media type falls back to filename extension when a picker omits MIME metadata", () => {
+  expect(getMediaKind({ name: "clip.mp4", type: "" })).toBe("video");
+  expect(getMediaKind({ name: "clip.webm", type: "application/octet-stream" })).toBe("video");
+  expect(getMediaKind({ name: "photo.jpg", type: "" })).toBe("image");
+  expect(getMediaKind({ name: "photo.svg", type: "" })).toBe("image");
+  expect(getMediaKind({ name: "notes.pdf", type: "" })).toBe("unknown");
+  expect(getMediaKind({ name: "clip.mp4", type: "image/jpeg" })).toBe("image");
+});
+
 test("camera motion profiles provide visible but controlled movement", () => {
   const cinematic = getCameraMotionProfile("cinematic", "balanced");
   const story = getCameraMotionProfile("story", "balanced");
@@ -94,7 +104,7 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   );
   await page.locator('input[accept="video/*,image/*"]').setInputFiles({
     name: "dravex-test-frame.svg",
-    mimeType: "image/svg+xml",
+    mimeType: "",
     buffer: svg,
   });
 
