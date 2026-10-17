@@ -275,8 +275,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // Ken Burns camera movement for still photos: alternating push/pull and four gentle pan paths.
     const motion = suppressEffects ? 0 : style === "velocity" ? 0.105 : style === "anime" ? 0.075 : style === "glitch" ? 0.085 : style === "story" ? 0.035 : 0.07;
     const travel = cutIndex % 2 === 0 ? progress : 1 - progress;
-    const zoom = 1.025 + travel * motion;
-    const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
+    const isPhoto = source instanceof HTMLImageElement;
+    const zoom = (isPhoto ? 1.015 : 1.025) + travel * motion;
+    const scale = (isPhoto ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
     const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.048 : style === "anime" ? 0.034 : style === "glitch" ? 0.04 : style === "story" ? 0.012 : 0.032;
@@ -288,7 +289,24 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
     const drawY = (height - drawHeight) / 2 + offsetY;
-    const drawIncoming = () => context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+    const drawIncoming = () => {
+      if (isPhoto) {
+        context.save();
+        context.filter = "blur(24px) brightness(0.58) saturate(0.88)";
+        const backgroundScale = Math.max(width / sourceWidth, height / sourceHeight) * 1.18;
+        const backgroundWidth = sourceWidth * backgroundScale;
+        const backgroundHeight = sourceHeight * backgroundScale;
+        context.drawImage(source, (width - backgroundWidth) / 2, (height - backgroundHeight) / 2, backgroundWidth, backgroundHeight);
+        context.restore();
+        context.save();
+        context.shadowColor = "rgba(0,0,0,0.32)";
+        context.shadowBlur = Math.max(8, width * 0.012);
+        context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+        context.restore();
+      } else {
+        context.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+      }
+    };
 
     context.save();
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
