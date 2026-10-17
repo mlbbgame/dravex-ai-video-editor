@@ -16,6 +16,8 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
   await expect(page.getByRole("heading", { name: /Твоя музыка/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Музыкальная библиотека" })).toBeVisible();
   await expect(page.locator(".dravex-track-card")).toHaveCount(20);
+  await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Все" })).toBeVisible();
+  await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Gaming" })).toBeVisible();
 
   const cards = page.locator(".dravex-track-card");
   for (let index = 0; index < 20; index += 1) {
