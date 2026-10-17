@@ -311,12 +311,19 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     context.save();
     context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
-      // Fast punch zoom.
-      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.2 : 0.1);
-      const dw = drawWidth * punch;
-      const dh = drawHeight * punch;
+      // Fast punch zoom; preserve the full-photo treatment on still images.
+      const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14);
       context.globalAlpha = Math.min(1, transitionProgress * 1.8 + 0.08);
-      context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
+      if (isPhoto) {
+        context.translate(width / 2, height / 2);
+        context.scale(punch, punch);
+        context.translate(-width / 2, -height / 2);
+        drawIncoming();
+      } else {
+        const dw = drawWidth * punch;
+        const dh = drawHeight * punch;
+        context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
+      }
     } else if (transitionWindow && (transitionType === 1 || transitionType === 2)) {
       // Directional wipes alternate left-to-right and right-to-left.
       const revealWidth = width * Math.max(0.025, transitionProgress);
