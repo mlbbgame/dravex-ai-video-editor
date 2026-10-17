@@ -72,6 +72,10 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-duration, .dravex-music { min-width: 0; display: flex; flex-direction: column; gap: 7px; color: #aeb3ba; font-size: 10px; }
 .dravex-duration select, .dravex-music button { width: 100%; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid #33373c; border-radius: 9px; color: #f0f2ed; background: #0d0f11; font-size: 10px; }
 .dravex-music button { display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; }
+.dravex-volume { grid-column: 1 / -1; min-width: 0; display: flex; flex-direction: column; gap: 8px; color: #aeb3ba; font-size: 10px; }
+.dravex-volume span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dravex-volume strong { color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
+.dravex-volume input { width: 100%; min-height: 24px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .dravex-create { width: 100%; min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; padding: 14px; border: 0; border-radius: 13px; color: #11150b; background: var(--accent); box-shadow: 0 8px 25px #b8f45b18; font-size: 14px; font-weight: 900; letter-spacing: .4px; transition: background .18s, transform .18s; }
 .dravex-create:hover:not(:disabled) { background: #d0ff91; transform: translateY(-1px); }
 .dravex-spin { animation: dravex-spin 1s linear infinite; }
