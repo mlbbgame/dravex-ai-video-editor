@@ -42,6 +42,7 @@ const validTimeline: EditTimeline = {
       gain: 0.7,
       fadeInSeconds: 0.4,
       fadeOutSeconds: 1,
+      loop: false,
     },
   ],
 };
@@ -117,4 +118,27 @@ test("rejects excessive clip counts before rendering", () => {
   const result = validateEditTimeline(invalid, sources);
   expect(result.valid).toBe(false);
   expect(result.errors).toContain("Timeline cannot contain more than 240 clips.");
+});
+
+
+test("allows looped music to cover a longer rendered timeline", () => {
+  const looped = structuredClone(validTimeline);
+  looped.audioTracks[0] = {
+    ...looped.audioTracks[0],
+    sourceRange: { start: 0, end: 3 },
+    loop: true,
+  };
+  expect(validateEditTimeline(looped, sources)).toEqual({ valid: true, errors: [] });
+});
+
+test("rejects a non-looping audio track whose timeline duration exceeds its source range", () => {
+  const invalid = structuredClone(validTimeline);
+  invalid.audioTracks[0] = {
+    ...invalid.audioTracks[0],
+    sourceRange: { start: 0, end: 3 },
+    loop: false,
+  };
+  const result = validateEditTimeline(invalid, sources);
+  expect(result.valid).toBe(false);
+  expect(result.errors).toContain("Audio track 1 timeline duration must match its source range when looping is disabled.");
 });
