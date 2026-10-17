@@ -1,33 +1,54 @@
 # DRAVEX semantic media recognition — implementation notes
 
-**Status:** contract and sampling utilities are implemented on `feature/ai-director-cloud-foundation`. Semantic inference is not yet connected to a cloud model.
+**Status:** contracts, validation, and timestamp sampling are implemented on `feature/ai-director-cloud-foundation`. No real model inference or cloud upload is connected yet.
 
-## What a recognition provider must return
+## Decisions for the first working version
 
-- Whole-source summary and labels for subjects, scenes, actions, composition, quality, and mood.
-- Confidence values from 0 to 1 for every label and moment.
-- Timestamped moments with source start/end, visible content summary, motion level, and editing value.
-- Audio presence and cautious estimates for speech, music, and beat confidence.
-- Warnings for ambiguity, poor source quality, unsupported content, or incomplete analysis.
+- **Quality first:** analyze the entire source in a coarse pass, then sample more densely around candidate moments; validate every timestamp against server-probed duration.
+- **Video and photos:** one shared recognition contract; still images use a normalized one-second interval and static motion.
+- **Free-first:** keep the provider adapter replaceable. Begin with local/free media probing and open-source CV/audio tools where practical; only add paid multimodal inference if free analysis fails quality acceptance tests. Cost/latency must be measured, not assumed.
+- **Android-first:** the browser uploads original media directly to private object storage through a short-lived signed URL. The browser must not proxy multi-hundred-megabyte files through a model endpoint or hold provider credentials.
+- **No fabricated AI:** the UI must say “analysis unavailable” rather than show example detections when a provider is disconnected or fails validation.
 
-The contract lives in `src/video/media-recognition-contract.ts`. It rejects mismatched source identity, media type, invalid confidence, malformed output, and timestamps outside the source bounds. For a still image, use a normalized one-second analysis interval and static motion.
+## Provider boundary
 
-## Video sampling
+`src/video/recognition-provider-contract.ts` defines the server-side provider interface and pipeline gate:
 
-`src/video/recognition-sampling.ts` defines a two-pass sampling strategy:
+1. The trusted backend probes the original file and supplies media ID, kind, duration, dimensions, MIME type, size, and audio-track presence.
+2. The sampler creates timestamped frame assets across the complete timeline and optional dense frames around candidate moments.
+3. An injected provider returns untrusted data.
+4. The pipeline validates the response against the requested source identity/type/duration and rejects malformed data before the director can consume it.
 
-1. Coarse samples spread across the complete timeline, including the first and last timestamps.
-2. Denser samples around candidate moments, with strict source bounds and a sample cap.
+The interface does not call a provider and must not be imported into browser code to call a model. Signed asset references must be short-lived, private, and created server-side. API keys belong only in server secrets.
 
-This is designed to avoid analyzing only the first few seconds of long videos. The utilities plan timestamps only; frame decoding, cloud upload, and model inference still need to be connected.
+## Target architecture
 
-## Next engineering steps
+```text
+Android browser (React/Vite)
+  -> authenticated project/job API
+  -> private object storage (resumable upload + signed URLs)
+  -> job queue / worker
+      -> ffprobe: authoritative duration, dimensions, streams, codec
+      -> FFmpeg: thumbnails, frame proxies, audio proxy
+      -> coarse sampler + dense sampler
+      -> replaceable recognition provider
+      -> semantic validator
+      -> AI Director planner (3–4 editable plans)
+      -> FFmpeg preview/final renderer
+  <- progress, detected moments, preview links, errors
+```
 
-1. Add a secure backend with authentication, private storage, resumable uploads, job status, cancellation, and deletion.
-2. Probe the real media server-side and extract frame/audio proxies.
-3. Connect a vision/video model through a provider adapter; keep credentials off the frontend.
-4. Display detected subjects, scenes, events, confidence, and uncertainty in DRAVEX.
-5. Feed validated recognition into the director planner to produce 3–4 distinct edit options.
-6. Test Android uploads and short/long videos end-to-end before enabling cloud processing.
+Use a small backend service and private object storage before adding full rendering workers. A static GitHub Pages frontend alone cannot securely hold provider secrets, run reliable long jobs, or accept very large uploads safely.
 
-Do not show fabricated recognition results. Until the provider is connected, label these modules as infrastructure, not working AI recognition.
+## Next implementation phase
+
+1. Add authenticated upload/job endpoints and private resumable storage; enforce ownership, quotas, size limits, cancel/retry, retention, and deletion.
+2. Add a server-side FFprobe adapter and normalize image metadata without trusting file extensions or browser MIME labels.
+3. Implement coarse frame extraction and optional audio proxy generation with FFmpeg; keep a full-timeline coverage test for 9-second, 60-second, multi-minute, and long clips.
+4. Start with a free/local vision + audio baseline and benchmark it against a small manually reviewed set of videos/photos. If semantic quality is inadequate, add a paid multimodal provider behind the same interface.
+5. Render the recognition report in the UI, then feed only validated results into the Director.
+6. End-to-end test Android upload, job progress, retry/cancel/delete, photo recognition, videos with/without audio, malformed files, and large uploads before enabling the feature.
+
+## Current verification
+
+The provider boundary is tested with a fake adapter only. Passing these tests proves input/output validation, **not** that AI recognition works. Build and mobile browser QA passed for commit `1e44dd29a6b7a25bc210418d9ab89ca5e9d6803d`; the new provider-contract changes must pass CI before this milestone is considered verified.
