@@ -47,7 +47,7 @@ export const musicPresets: MusicPreset[] = [
   { id: "happy-beltane", title: "Happy Beltane", mood: "Electronic", description: "Мелодичная атмосферная электроника для фоновых и сюжетных сцен", audioUrl: media("QmbJQ8p3GPNghJBgR96KfsbqFaZCeEh2RoETbG8hqiYi61"), sourceUrl: "https://www.transient.xyz/mint/happy-beltane", artist: "TONCHU", license: "CC0", style: "cinematic", tags: ["Background Music","Cinematic","Electronic","Chill"] },
 ];
 
-export const musicCategories = ["Все", "Phonk / Drift", "Anime / Jumpstyle", "Slowed / Dark", "TikTok / Shorts", "Gaming", "Cinematic", "Electronic", "Chill"] as const;
+export const musicCategories = ["Все", "Phonk / Drift", "Anime / Jumpstyle", "Slowed / Dark", "TikTok / Shorts", "Gaming", "Cinematic", "Electronic", "Background Music", "Ambient", "Chill"] as const;
 
 /** Fetch a licensed track in the background so it becomes a normal local audio file for preview and export. */
 export async function loadMusicTrack(preset: MusicPreset): Promise<File> {
