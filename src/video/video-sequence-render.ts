@@ -483,8 +483,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       if (item.kind === "image") {
         const segmentStartedAt = performance.now();
         while (performance.now() - segmentStartedAt < item.duration * 1000) {
-          const segmentProgress = Math.min(1, (performance.now() - segmentStartedAt) / (item.duration * 1000));
-          draw(item.image, segmentProgress, segmentProgress < 0.2 ? segmentProgress : 1, cutIndex);
+          const elapsedSeconds = (performance.now() - segmentStartedAt) / 1000;
+          const segmentProgress = Math.min(1, elapsedSeconds / item.duration);
+          draw(item.image, segmentProgress, elapsedSeconds, cutIndex);
           onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
@@ -499,8 +500,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
-        const clipProgress = Math.min(1, (performance.now() - clipStartedAt) / (duration * 1000));
-        draw(video, clipProgress, clipProgress < 0.2 ? clipProgress : 1, cutIndex);
+        const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
+        const clipProgress = Math.min(1, elapsedSeconds / duration);
+        draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
