@@ -244,7 +244,7 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   const downloadPromise = page.waitForEvent("download");
   await result.getByRole("link", { name: "Сохранить видео" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^dravex-video-.*\\.webm$/);
+  expect(download.suggestedFilename()).toMatch(/^dravex-video-.*\.webm$/);
   expect(await download.failure()).toBeNull();
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
