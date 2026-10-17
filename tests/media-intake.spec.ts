@@ -39,7 +39,7 @@ test("rejects an excessively large photo batch with a clear explanation", () => 
   expect(result.errors[0]).toContain("не более 80 фотографий");
 });
 
-test("does not treat unknown extensions as valid media by itself", () => {
+test("does not emit size warnings for a small file with an unknown extension", () => {
   const result = assessMediaSelection([media("archive.bin", 1024, "application/octet-stream")]);
   expect(result.valid).toBe(true);
   expect(result.warnings).toEqual([]);
