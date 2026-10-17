@@ -40,6 +40,14 @@ jobs:
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
 
+      - name: Ensure ffmpeg for long-video fixture
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+
       - name: Run DRAVEX browser smoke tests
         run: npm run test:qa
 
