@@ -612,6 +612,7 @@ export default function App() {
   const createSelectedPreview = async () => {
     if (!mediaFiles.length || busy || previewBusy) return;
     const variant = selectedVariant;
+    if (!montageVariants.some((item) => item.id === variant.id)) return;
     if (renderedVariants.some((item) => item.id === variant.id)) return;
 
     setPreviewBusy(true);
@@ -792,7 +793,7 @@ export default function App() {
           </section>
           <aside className="dravex-control-column" aria-label="Управление монтажом">
             <div className="dravex-control-heading"><span className="dravex-control-icon"><Settings2 size={17} /></span><div><h2>Монтаж</h2><p>Настрой результат под себя</p></div></div>
-            <p className="dravex-variant-hint">DRAVEX создаёт три коротких версии одного материала. Сравни темп, переходы и музыку — затем выбери лучший вариант для полного монтажа.</p>
+            <p className="dravex-variant-hint">Нажми на одну из трёх карточек, чтобы увидеть реальный фрагмент. Кнопка ниже создаст остальные варианты для сравнения.</p>
         <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy || renderedVariants.length === montageVariants.length} onClick={createStylePreviews}>
           {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
           {previewBusy ? `Подготовка автопросмотра… ${previewProgress}%` : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Сравнить варианты (${renderedVariants.length}/${montageVariants.length})`}
