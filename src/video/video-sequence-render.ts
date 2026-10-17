@@ -273,13 +273,13 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
     // Ken Burns camera movement for still photos: alternating push/pull and four gentle pan paths.
-    const motion = suppressEffects ? 0 : style === "velocity" ? 0.06 : style === "anime" ? 0.038 : style === "glitch" ? 0.042 : style === "story" ? 0.022 : 0.04;
+    const motion = suppressEffects ? 0 : style === "velocity" ? 0.105 : style === "anime" ? 0.075 : style === "glitch" ? 0.085 : style === "story" ? 0.035 : 0.07;
     const travel = cutIndex % 2 === 0 ? progress : 1 - progress;
     const zoom = 1.025 + travel * motion;
     const scale = Math.max(width / sourceWidth, height / sourceHeight) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : style === "story" ? 0.009 : 0.018;
+    const panAmount = suppressEffects ? 0 : style === "velocity" ? 0.048 : style === "anime" ? 0.034 : style === "glitch" ? 0.04 : style === "story" ? 0.012 : 0.032;
     const panPhase = progress * Math.PI / 2;
     const panX = Math.sin(panPhase) * width * panAmount * ([1, -1, 0, 0][cutIndex % 4]);
     const panY = Math.sin(panPhase) * height * panAmount * ([0, 0, 1, -1][cutIndex % 4]);
