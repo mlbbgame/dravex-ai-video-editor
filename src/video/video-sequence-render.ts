@@ -491,11 +491,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         const targetVolume = Math.max(0, Math.min(1, segment.volume ?? 0.65));
         if (gain) {
           gain.gain.cancelScheduledValues(audioStart);
+          const fadeInSeconds = Math.min(0.65, totalDuration * 0.15);
+          const fadeOutSeconds = Math.min(0.9, totalDuration * 0.2);
+          const endTime = audioStart + totalDuration;
+          const fadeStart = Math.max(audioStart + fadeInSeconds, endTime - fadeOutSeconds);
           gain.gain.setValueAtTime(0, audioStart);
-          gain.gain.linearRampToValueAtTime(targetVolume, audioStart + Math.min(0.65, totalDuration / 4));
-          const fadeStart = audioStart + Math.max(0.7, totalDuration - 0.9);
+          gain.gain.linearRampToValueAtTime(targetVolume, audioStart + fadeInSeconds);
           gain.gain.setValueAtTime(targetVolume, fadeStart);
-          gain.gain.linearRampToValueAtTime(0, audioStart + totalDuration);
+          gain.gain.linearRampToValueAtTime(0, endTime);
         }
         try {
           await audio.play();
