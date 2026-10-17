@@ -241,7 +241,7 @@ export default function App() {
     setPreviewUrl("");
     setPreviewStatus("");
     setError("");
-    setMessage(intake.warnings.join(" "));
+    setPreviewStatus(intake.warnings.join(" "));
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
     event.target.value = "";
