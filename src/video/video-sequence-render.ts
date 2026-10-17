@@ -402,26 +402,26 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.09 && style !== "story") {
-      const flash = (1 - cutProgress / 0.09) * (style === "velocity" ? 0.24 : style === "glitch" ? 0.18 : 0.1);
+    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
+      const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12);
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.07) {
-      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.07) * 0.12})`;
+    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
+      context.fillStyle = `rgba(40,220,255,${(1 - cutProgress / 0.16) * 0.2})`;
       context.fillRect(0, 0, width, height);
-      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.07) * 0.08})`;
+      context.fillStyle = `rgba(255,35,100,${(1 - cutProgress / 0.16) * 0.14})`;
       context.fillRect(Math.round(width * 0.012), 0, width, height);
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
-    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.12) {
-      const streakAlpha = (1 - cutProgress / 0.12) * 0.16;
+    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
+      const streakAlpha = (1 - cutProgress / 0.28) * 0.27;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
-      context.lineWidth = Math.max(2, width * 0.0025);
-      for (let streak = 0; streak < 5; streak++) {
-        const y = height * (0.16 + streak * 0.15) + cutProgress * height * 0.5;
+      context.lineWidth = Math.max(2, width * 0.003);
+      for (let streak = 0; streak < 7; streak++) {
+        const y = height * (0.12 + streak * 0.13) + cutProgress * height * 0.34;
         context.beginPath();
         context.moveTo(width * 0.56, y);
         context.lineTo(width * 1.05, y - height * 0.16);
