@@ -36,6 +36,7 @@ type SequenceOptions = {
   suppressFlashes?: boolean;
   suppressShake?: boolean;
   suppressTransitions?: boolean;
+  suppressAudio?: boolean;
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
 };
@@ -129,7 +130,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -150,6 +151,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       videoCache.set(videoSegment.url, pendingVideo);
     }
     const video = await pendingVideo;
+    if (suppressAudio) video.muted = true;
     const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
     const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
     const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
@@ -189,7 +191,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
-  const hasSourceVideo = loaded.some((item) => item.kind === "video");
+  const hasSourceVideo = !suppressAudio && loaded.some((item) => item.kind === "video");
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
