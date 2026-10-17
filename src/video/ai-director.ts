@@ -252,18 +252,25 @@ export async function analyzeWithAIDirector(
 
   const motionValues = samples.map((sample) => sample.motion);
   const referenceMotion = motionValues.reduce((sum, value) => sum + value, 0) / Math.max(1, motionValues.length);
+  const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
+  const nearestSampleIndex = (index: number) => selectedIndices.reduce((best, candidateIndex) =>
+    Math.abs(candidateIndex - index) < Math.abs(best - index) ? candidateIndex : best, selectedIndices[0]);
   const indexed = candidates.map((candidate, index) => {
-    const objects = detectionsByCandidate.get(index) ?? [];
-    const previousObjects = detectionsByCandidate.get(index - 1) ?? [];
+    const nearestIndex = nearestSampleIndex(index);
+    const objects = detectionsByCandidate.get(nearestIndex) ?? [];
+    const position = sampledPosition.get(nearestIndex) ?? 0;
+    const previousIndex = position > 0 ? selectedIndices[position - 1] : -1;
+    const previousObjects = previousIndex >= 0 ? detectionsByCandidate.get(previousIndex) ?? [] : [];
     const previousLabels = previousObjects.map((item) => item.label);
     const labels = [...new Set(objects.map((item) => item.label))];
-    const novelty = previousLabels.length
+    const isModelSample = sampledPosition.has(index);
+    const novelty = isModelSample && previousLabels.length
       ? labels.filter((label) => !previousLabels.includes(label)).length / Math.max(1, new Set([...labels, ...previousLabels]).size)
       : 0;
     const sample = samples.reduce((best, item) => Math.abs(item.time - candidate.time) < Math.abs(best.time - candidate.time) ? item : best, samples[0]);
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
-      ...inferTrackedObjectCues(previousObjects, objects)
+      ...(isModelSample ? inferTrackedObjectCues(previousObjects, objects) : [])
     ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
     const directorScore = scoreDirectorMoment(candidate, objects, style, referenceMotion, novelty);
     return {
@@ -279,12 +286,15 @@ export async function analyzeWithAIDirector(
 
   onProgress?.({ current: 1, total: 1, phase: "ranking" });
   const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
+  const movementCues = [...new Set(indexed.flatMap((moment) => moment.actionCues))]
+    .filter((cue) => cue !== "Стабильный кадр")
+    .slice(0, 3);
   return {
     candidates: indexed,
     detectedLabels,
     modelLoaded: true,
     note: detectedLabels.length
-      ? `YOLOS обнаружил объекты в кадрах: ${detectedLabels.slice(0, 6).join(", ")}. Движение и смена объектов использованы для ранжирования под стиль «${style}».`
+      ? `YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${style}».`
       : "Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение, контраст и смену сцен."
   };
 }
