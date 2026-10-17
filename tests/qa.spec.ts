@@ -16,7 +16,7 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
 
   await expect(page.getByRole("heading", { name: /Твоя музыка/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Музыкальная библиотека" })).toBeVisible();
-  await expect(page.locator(".dravex-track-card")).toHaveCount(24);
+  await expect(page.locator(".dravex-track-card")).toHaveCount(25);
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Все" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Gaming" })).toBeVisible();
   await expect(page.locator(".dravex-music-categories").getByRole("button", { name: "Phonk / Drift" })).toBeVisible();
@@ -28,7 +28,7 @@ test("Music Studio lists ready-to-use tracks and working search filters", async 
   await page.locator(".dravex-music-categories").getByRole("button", { name: "Все" }).click();
 
   const cards = page.locator(".dravex-track-card");
-  for (let index = 0; index < 24; index += 1) {
+  for (let index = 0; index < 25; index += 1) {
     const card = cards.nth(index);
     await expect(card.locator("audio")).toHaveAttribute("src", /^https:\/\//);
     await expect(card.getByRole("button", { name: "Использовать" })).toBeVisible();
