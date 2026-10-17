@@ -29,6 +29,25 @@ export type HighlightProgress = {
   time: number;
 };
 
+/** Build deterministic cut points for short clips without seeking through every frame. */
+export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
+  if (!Number.isFinite(duration) || duration < 0.25) return [];
+  const count = Math.max(2, Math.min(8, Math.ceil(duration / 1.5)));
+  const segmentDuration = duration / count;
+  return Array.from({ length: count }, (_, index) => {
+    const start = index * segmentDuration;
+    const end = Math.min(duration, (index + 1) * segmentDuration);
+    return {
+      time: (start + end) / 2,
+      start,
+      end,
+      score: 1 - index / (count * 10),
+      motion: 0,
+      contrast: 0
+    };
+  });
+}
+
 function waitForMetadata(video: HTMLVideoElement): Promise<void> {
   if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
     return Promise.resolve();
@@ -155,6 +174,16 @@ export async function analyzeVideoForHighlights(
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
+    // Short clips do not need expensive frame-by-frame seeking. On Android this
+    // avoids flaky seek events while still producing a clean, evenly spaced edit.
+    if (duration <= 15) {
+      const candidates = buildQuickVideoCandidates(duration);
+      const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
+        time, score, motion, contrast
+      }));
+      onProgress?.({ current: candidates.length, total: candidates.length, time: duration });
+      return { duration, samples, candidates };
+    }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
     canvas.height = 45;
@@ -217,8 +246,7 @@ export async function analyzeVideoForHighlights(
     for (const peak of peaks) {
       const bucket = Math.min(bucketCount - 1, Math.floor(peak.time / bucketWidth));
       if (!bucketPeaks.some((item) => Math.min(bucketCount - 1, Math.floor(item.time / bucketWidth)) === bucket)) bucketPeaks.push(peak);
-    }
-    const selectedPeaks = [...bucketPeaks];
+    }    const selectedPeaks = [...bucketPeaks];
     for (const peak of peaks) {
       if (selectedPeaks.length >= 100) break;
       if (selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;
