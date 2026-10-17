@@ -38,7 +38,7 @@ jobs:
         working-directory: app-source
         run: npm install --no-audit --no-fund
 
-      # Publish the exact feature branch used for the requested /preview/ version, including guarded automatic previews and music-aware style samples
+      # Publish the tested feature branch with guarded auto-previews, subject-safe vertical framing, stronger Glitch Impact effects, and music-aware style samples
       # at the main URL, while preserving /preview/ as an identical compatibility URL.
       - name: Build primary DRAVEX site
         working-directory: app-source
