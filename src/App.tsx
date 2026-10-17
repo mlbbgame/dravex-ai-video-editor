@@ -397,14 +397,14 @@ export default function App() {
                     ? <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />
                     : <span className="dravex-variant-placeholder"><Icon size={30} /><small>{mediaFiles.length ? "Выбери для просмотра" : "Твой материал"}</small></span>}
                 <span className="dravex-variant-overlay" />
-                <span className="dravex-variant-tag">{selected ? "LIVE PREVIEW" : "STYLE PREVIEW"}</span>
+                <span className="dravex-variant-tag">{selected && mediaFiles.length > 0 ? (isImageMode ? "MOTION PREVIEW" : "LIVE PREVIEW") : "STYLE PREVIEW"}</span>
                 {selected && <span className="dravex-variant-check"><CheckCircle2 size={17} /></span>}
               </span>
               <span className="dravex-variant-copy"><strong>{variant.title}</strong><small>{variant.note}</small></span>
             </button>;
           })}
         </div>
-        <p className="dravex-variant-hint">Превью показывает пример цветового настроения. Полный монтаж, переходы и движение применяются при создании видео.</p>
+        <p className="dravex-variant-hint">Карточки показывают пример цветокоррекции и движения. Полные переходы и монтаж применяются при создании видео.</p>
 
         <details className="dravex-more">
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
