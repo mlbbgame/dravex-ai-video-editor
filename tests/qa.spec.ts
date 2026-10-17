@@ -85,7 +85,7 @@ test("short source videos get safe, evenly spaced cut points without frame scann
   const cuts = buildQuickVideoCandidates(9);
   expect(cuts).toHaveLength(6);
   expect(cuts[0].start).toBe(0);
-  expect(cuts.at(-1)?.end).toBe(9);
+  expect(cuts[cuts.length - 1]?.end).toBe(9);
   expect(cuts.every((cut) => cut.start >= 0 && cut.end <= 9 && cut.end > cut.start)).toBe(true);
   expect(buildQuickVideoCandidates(Number.NaN)).toHaveLength(0);
   expect(buildQuickVideoCandidates(0.1)).toHaveLength(0);
