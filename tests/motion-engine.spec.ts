@@ -33,7 +33,7 @@ test("color grade returns stable canvas filter values for each style and strengt
       expect(filter).toContain("contrast(");
       expect(filter).toContain("saturate(");
       expect(filter).toContain("brightness(");
-      expect(filter).toContain("NaN").toBe(false);
+      expect(filter).not.toContain("NaN");
     }
   }
 });
