@@ -262,8 +262,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < 0.2;
-    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / 0.2)) : 1;
+    const transitionDuration = style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
+    const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
     const transitionType = cutIndex % 8;
     context.fillStyle = "#090b12";
