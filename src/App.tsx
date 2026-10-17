@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen } from "lucide-react";
+import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X } from "lucide-react";
 import { analyzeVideoForHighlights, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -171,6 +171,38 @@ export default function App() {
     event.target.value = "";
   };
 
+  const reorderPhoto = (index: number, direction: -1 | 1) => {
+    if (!isImageMode) return;
+    const target = index + direction;
+    if (target < 0 || target >= mediaFiles.length) return;
+    const nextFiles = [...mediaFiles];
+    const [moved] = nextFiles.splice(index, 1);
+    nextFiles.splice(target, 0, moved);
+    setMediaFiles(nextFiles);
+    setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    setOutputUrl("");
+    setStage("ready");
+    setError("");
+    setMessage("");
+  };
+
+  const removePhoto = (index: number) => {
+    if (!isImageMode) return;
+    const nextFiles = mediaFiles.filter((_, fileIndex) => fileIndex !== index);
+    setMediaFiles(nextFiles);
+    setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    setOutputUrl("");
+    setStage(nextFiles.length ? "ready" : "empty");
+    setError("");
+    setMessage("");
+  };
+
+  const clearMusic = () => {
+    setMusicFile(null);
+    setMusicUrl("");
+    setError("");
+  };
+
   const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -301,7 +333,15 @@ export default function App() {
           </button>
         ) : (
           <div className="dravex-preview-card">
-            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={mediaUrls[index]}><img src={mediaUrls[index]} alt={file.name} /></div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
+            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={file.name + "-" + index}>
+              <img src={mediaUrls[index]} alt={file.name} />
+              <div className="dravex-image-tools">
+                <span title={file.name}>{index + 1}</span>
+                <button type="button" aria-label={`Переместить фото ${index + 1} выше`} title="Выше" disabled={index === 0} onClick={() => reorderPhoto(index, -1)}><ArrowUp size={14} /></button>
+                <button type="button" aria-label={`Переместить фото ${index + 1} ниже`} title="Ниже" disabled={index === mediaFiles.length - 1} onClick={() => reorderPhoto(index, 1)}><ArrowDown size={14} /></button>
+                <button type="button" aria-label={`Удалить фото ${index + 1}`} title="Удалить фото" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
+              </div>
+            </div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
             <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
           </div>
         )}
@@ -319,7 +359,7 @@ export default function App() {
           <div className="dravex-more-content">
             <label className="dravex-duration"><span>Максимальная длина</span><select value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => setQuality(event.target.value as "720p" | "1080p")}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
-            <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button></div>
+            <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><div className="dravex-music-actions"><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => setBeatSync(event.target.value === "on")}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
           <div className="dravex-project-actions">
