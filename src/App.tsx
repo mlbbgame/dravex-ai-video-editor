@@ -200,6 +200,8 @@ export default function App() {
 
   const onMediaSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
+    // Reset immediately so choosing the same file again still fires a change event.
+    event.target.value = "";
     if (!files.length) return;
     const hasInvalid = files.some((file) => !file.type.startsWith("video/") && !file.type.startsWith("image/"));
     const videos = files.filter((file) => file.type.startsWith("video/"));
