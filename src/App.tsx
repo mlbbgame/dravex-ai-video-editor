@@ -8,13 +8,28 @@ import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
-const styleOptions: Array<{ id: EditStyle; title: string; note: string; icon: typeof Sparkles }> = [
-  { id: "auto", title: "Автоматически", note: "Темп, движение и эффекты", icon: Sparkles },
-  { id: "velocity", title: "Динамичный", note: "Быстрые склейки", icon: WandSparkles },
-  { id: "cinematic", title: "Кино", note: "Плавный ритм", icon: Film },
-  { id: "story", title: "Спокойный", note: "Мягкая подача", icon: Play },
-  { id: "anime", title: "Аниме", note: "Яркий контраст", icon: Sparkles },
-  { id: "glitch", title: "Глитч", note: "Цифровые вспышки", icon: ScanLine }
+type TransitionPreset = "auto" | "cinematic" | "action";
+type EffectPreset = "soft" | "balanced" | "strong";
+type MontageVariant = {
+  id: string;
+  title: string;
+  note: string;
+  style: EditStyle;
+  transition: TransitionPreset;
+  strength: EffectPreset;
+  previewClass: string;
+  icon: typeof Sparkles;
+};
+
+const montageVariants: MontageVariant[] = [
+  { id: "auto", title: "Умный авто", note: "Подберём по материалу", style: "auto", transition: "auto", strength: "balanced", previewClass: "auto", icon: Sparkles },
+  { id: "velocity", title: "Velocity", note: "Резко и динамично", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
+  { id: "cinema", title: "Cinematic", note: "Мягкое движение", style: "cinematic", transition: "cinematic", strength: "soft", previewClass: "cinema", icon: Film },
+  { id: "anime", title: "Anime Impact", note: "Ярко и контрастно", style: "anime", transition: "action", strength: "strong", previewClass: "anime", icon: Sparkles },
+  { id: "glitch", title: "Glitch Rush", note: "Цифровые вспышки", style: "glitch", transition: "action", strength: "strong", previewClass: "glitch", icon: ScanLine },
+  { id: "story", title: "Soft Story", note: "Спокойная история", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Play },
+  { id: "pulse", title: "Beat Pulse", note: "Ритмичные склейки", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
+  { id: "neon", title: "Neon Action", note: "Неон и резкий темп", style: "glitch", transition: "auto", strength: "balanced", previewClass: "neon", icon: ScanLine },
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
@@ -100,7 +115,6 @@ export default function App() {
       setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
       setStyle((project.style as EditStyle) || "auto");
       setDuration(project.duration || 30);
-      setAspectRatio(project.aspectRatio ?? "9:16");
       setAspectRatio(project.aspectRatio ?? "9:16");
       setQuality(project.quality || "720p");
       setBeatSync(project.beatSync !== false);
@@ -369,13 +383,26 @@ export default function App() {
           </div>
         )}
 
-        <div className="dravex-section-title"><div><h2>Как смонтировать?</h2><p>Не уверен — оставь автоматический выбор.</p></div><Sparkles size={20} /></div>
-        <div className="dravex-styles">
-          {styleOptions.map((option) => {
-            const Icon = option.icon;
-            return <button key={option.id} type="button" className={`dravex-style ${style === option.id ? "is-selected" : ""}`} onClick={() => { setStyle(option.id); invalidateOutput(); }} aria-pressed={style === option.id}><span className="dravex-style-icon"><Icon size={18} /></span><span className="dravex-style-copy"><strong>{option.title}</strong><small>{option.note}</small></span>{style === option.id && <CheckCircle2 className="dravex-style-check" size={18} />}</button>;
+        <div className="dravex-section-title"><div><h2>Выбери вариант монтажа</h2><p>Листай варианты и нажми на стиль, который нравится.</p></div><Sparkles size={20} /></div>
+        <div className="dravex-variant-rail" aria-label="Варианты автоматического монтажа">
+          {montageVariants.map((variant) => {
+            const Icon = variant.icon;
+            const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
+            return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => { setStyle(variant.style); setTransitionMode(variant.transition); setEffectStrength(variant.strength); invalidateOutput(); }} aria-pressed={selected}>
+              <span className={`dravex-variant-preview preview-${variant.previewClass}`}>
+                {mediaFiles.length > 0 ? (isImageMode
+                  ? <img src={mediaUrls[0]} alt="" loading="lazy" />
+                  : <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />)
+                  : <span className="dravex-variant-placeholder"><Icon size={30} /></span>}
+                <span className="dravex-variant-overlay" />
+                <span className="dravex-variant-tag">STYLE</span>
+                {selected && <span className="dravex-variant-check"><CheckCircle2 size={17} /></span>}
+              </span>
+              <span className="dravex-variant-copy"><strong>{variant.title}</strong><small>{variant.note}</small></span>
+            </button>;
           })}
         </div>
+        <p className="dravex-variant-hint">Превью показывает пример цветового настроения. Полный монтаж, переходы и движение применяются при создании видео.</p>
 
         <details className="dravex-more">
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
