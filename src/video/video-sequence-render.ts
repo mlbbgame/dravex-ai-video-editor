@@ -5,6 +5,7 @@ import {
   type TimelineClip,
   type TimelineSource,
 } from "./timeline-contract";
+import { getColorGradeFilter, getSpeedRampRate } from "./motion-engine";
 
 export type VideoSegment = {
   kind?: "video";
@@ -671,7 +672,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
 
     context.save();
-    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
+    context.filter = suppressEffects ? "none" : getColorGradeFilter(style, effectStrength);
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
@@ -895,12 +896,15 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
 
       const { video, start, duration } = item;
       video.pause();
+      video.playbackRate = 1;
       await seek(video, start);
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
         const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
         const clipProgress = Math.min(1, elapsedSeconds / duration);
+        // Apply a smooth, per-style velocity curve while preserving the planned shot length.
+        video.playbackRate = getSpeedRampRate(style, clipProgress, cutIndex);
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
