@@ -88,6 +88,172 @@ type LoadedImage = {
 
 type LoadedSegment = LoadedVideo | LoadedImage;
 
+type EbmlSize = { length: number; value: number; unknown: boolean };
+type EbmlElement = { start: number; idLength: number; sizeStart: number; sizeLength: number; dataStart: number; dataEnd: number; size: number };
+
+function ebmlVintLength(firstByte: number, maxLength = 8): number {
+  let marker = 0x80;
+  let length = 1;
+  while (length <= maxLength && (firstByte & marker) === 0) {
+    marker >>= 1;
+    length += 1;
+  }
+  return length <= maxLength ? length : 0;
+}
+
+function readEbmlSize(bytes: Uint8Array, offset: number): EbmlSize | null {
+  if (offset >= bytes.length) return null;
+  const length = ebmlVintLength(bytes[offset], 8);
+  if (!length || offset + length > bytes.length) return null;
+  const marker = 1 << (8 - length);
+  let value = bytes[offset] & (marker - 1);
+  let unknown = value === marker - 1;
+  for (let index = 1; index < length; index += 1) {
+    value = value * 256 + bytes[offset + index];
+    if (bytes[offset + index] !== 0xff) unknown = false;
+  }
+  return { length, value, unknown };
+}
+
+function encodeEbmlSize(value: number, preferredLength = 1): Uint8Array {
+  for (let length = Math.max(1, preferredLength); length <= 8; length += 1) {
+    if (value > 2 ** (7 * length) - 2) continue;
+    const encoded = new Uint8Array(length);
+    let remaining = value;
+    for (let index = length - 1; index >= 0; index -= 1) {
+      encoded[index] = remaining & 0xff;
+      remaining = Math.floor(remaining / 256);
+    }
+    encoded[0] |= 1 << (8 - length);
+    return encoded;
+  }
+  throw new Error("WebM metadata size is too large to finalize.");
+}
+
+function ebmlIdHex(bytes: Uint8Array, offset: number, length: number): string {
+  return Array.from(bytes.slice(offset, offset + length), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function findEbmlElement(
+  bytes: Uint8Array,
+  start: number,
+  end: number,
+  wantedId: string
+): EbmlElement | null {
+  let offset = start;
+  while (offset + 5 < end) {
+    const idLength = ebmlVintLength(bytes[offset], 4);
+    if (!idLength || offset + idLength >= end) return null;
+    const sizeStart = offset + idLength;
+    const size = readEbmlSize(bytes, sizeStart);
+    if (!size) return null;
+    const dataStart = sizeStart + size.length;
+    const dataEnd = size.unknown ? end : dataStart + size.value;
+    if (dataEnd > end || dataEnd < dataStart) return null;
+    if (ebmlIdHex(bytes, offset, idLength) === wantedId) {
+      return { start: offset, idLength, sizeStart, sizeLength: size.length, dataStart, dataEnd, size: dataEnd - dataStart };
+    }
+    if (size.unknown) return null;
+    offset = dataEnd;
+  }
+  return null;
+}
+
+/**
+ * MediaRecorder WebM blobs can omit the Duration element, which makes browsers
+ * report video.duration === Infinity and prevents reliable seeking. Add or update
+ * the Matroska Duration value without re-encoding the recorded frames.
+ */
+async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
+  if (!blob.type.includes("webm") || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return blob;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const segmentStart = (() => {
+    for (let index = 0; index + 4 <= bytes.length; index += 1) {
+      if (bytes[index] === 0x18 && bytes[index + 1] === 0x53 && bytes[index + 2] === 0x80 && bytes[index + 3] === 0x67) return index;
+    }
+    return -1;
+  })();
+  if (segmentStart < 0) return blob;
+
+  const segmentSize = readEbmlSize(bytes, segmentStart + 4);
+  if (!segmentSize) return blob;
+  const segmentDataStart = segmentStart + 4 + segmentSize.length;
+  const segmentDataEnd = segmentSize.unknown ? bytes.length : Math.min(bytes.length, segmentDataStart + segmentSize.value);
+  const info = findEbmlElement(bytes, segmentDataStart, segmentDataEnd, "1549a966");
+  if (!info) return blob;
+
+  let timecodeScale = 1_000_000;
+  let durationElement: EbmlElement | null = null;
+  let cursor = info.dataStart;
+  while (cursor + 2 < info.dataEnd) {
+    const idLength = ebmlVintLength(bytes[cursor], 4);
+    if (!idLength) break;
+    const sizeStart = cursor + idLength;
+    const size = readEbmlSize(bytes, sizeStart);
+    if (!size) break;
+    const dataStart = sizeStart + size.length;
+    const dataEnd = size.unknown ? info.dataEnd : dataStart + size.value;
+    if (dataEnd > info.dataEnd || dataEnd < dataStart) break;
+    const id = ebmlIdHex(bytes, cursor, idLength);
+    if (id === "2ad7b1" && size.value > 0 && size.value <= 8) {
+      let scale = 0;
+      for (let index = dataStart; index < dataEnd; index += 1) scale = scale * 256 + bytes[index];
+      if (scale > 0) timecodeScale = scale;
+    } else if (id === "4489") {
+      durationElement = { start: cursor, idLength, sizeStart, sizeLength: size.length, dataStart, dataEnd, size: size.value };
+    }
+    if (size.unknown) break;
+    cursor = dataEnd;
+  }
+
+  const durationValue = durationSeconds * 1_000_000_000 / timecodeScale;
+  if (durationElement) {
+    const patched = bytes.slice();
+    const view = new DataView(patched.buffer, patched.byteOffset, patched.byteLength);
+    if (durationElement.size === 4) view.setFloat32(durationElement.dataStart, durationValue, false);
+    else if (durationElement.size === 8) view.setFloat64(durationElement.dataStart, durationValue, false);
+    else return blob;
+    return new Blob([patched], { type: blob.type });
+  }
+
+  const durationBytes = new Uint8Array(11);
+  durationBytes[0] = 0x44;
+  durationBytes[1] = 0x89;
+  durationBytes[2] = 0x88;
+  new DataView(durationBytes.buffer).setFloat64(3, durationValue, false);
+
+  const infoId = bytes.slice(info.start, info.start + info.idLength);
+  const infoContent = bytes.slice(info.dataStart, info.dataEnd);
+  const newInfoSize = infoContent.length + durationBytes.length;
+  const encodedInfoSize = encodeEbmlSize(newInfoSize, info.sizeLength);
+  const newInfo = new Uint8Array(infoId.length + encodedInfoSize.length + newInfoSize);
+  newInfo.set(infoId, 0);
+  newInfo.set(encodedInfoSize, infoId.length);
+  newInfo.set(infoContent, infoId.length + encodedInfoSize.length);
+  newInfo.set(durationBytes, infoId.length + encodedInfoSize.length + infoContent.length);
+
+  const infoDelta = newInfo.length - (info.dataEnd - info.start);
+  let patched = new Uint8Array(bytes.length + infoDelta);
+  patched.set(bytes.slice(0, info.start), 0);
+  patched.set(newInfo, info.start);
+  patched.set(bytes.slice(info.dataEnd), info.start + newInfo.length);
+
+  if (!segmentSize.unknown) {
+    const encodedSegmentSize = encodeEbmlSize(segmentSize.value + infoDelta, segmentSize.length);
+    const oldSizeEnd = segmentStart + 4 + segmentSize.length;
+    if (encodedSegmentSize.length === segmentSize.length) {
+      patched.set(encodedSegmentSize, segmentStart + 4);
+    } else {
+      const resized = new Uint8Array(patched.length + encodedSegmentSize.length - segmentSize.length);
+      resized.set(patched.slice(0, segmentStart + 4), 0);
+      resized.set(encodedSegmentSize, segmentStart + 4);
+      resized.set(patched.slice(oldSizeEnd), segmentStart + 4 + encodedSegmentSize.length);
+      patched = resized;
+    }
+  }
+  return new Blob([patched], { type: blob.type });
+}
+
 /** Unlock Web Audio synchronously inside a user gesture before video analysis awaits. */
 export function prepareAudioContextForUserGesture(): AudioContext | null {
   if (typeof AudioContext === "undefined") return null;
@@ -299,7 +465,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => reject(new Error("The browser stopped recording unexpectedly."));
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       stream.getTracks().forEach((track) => track.stop());
       videoStream.getTracks().forEach((track) => track.stop());
       const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
@@ -315,8 +481,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       });
       if (audioContext && audioContext !== preparedAudioContext) void audioContext.close();
       const blob = new Blob(chunks, { type: mimeType });
-      if (blob.size) resolve(blob);
-      else {
+      if (blob.size) {
+        try {
+          resolve(await finalizeWebmDuration(blob, totalDuration));
+        } catch {
+          // Preserve a playable recording even if an unusual WebM variant cannot be patched.
+          resolve(blob);
+        }
+      } else {
         const videoTrackState = videoStream.getVideoTracks().map((track) => track.readyState).join(",") || "нет";
         reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${mimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
       }
