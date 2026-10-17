@@ -701,8 +701,11 @@ export default function App() {
             {previewStatus && <p className="dravex-preview-status" role="status">{previewStatus}</p>}
           </div>
         ) : (<>
-        <div className="dravex-intro"><h1>Создай видео<br /><span>автоматически</span></h1><p>Добавь материал — мы подберём монтаж под него.</p></div>
-        <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
+        <div className="dravex-editor-layout">
+          <section className="dravex-stage-column" aria-label="Медиатека и предпросмотр">
+            <div className="dravex-intro"><div><span className="dravex-eyebrow">DRAVEX STUDIO</span><h1>Твоя история.<br /><span>Твой монтаж.</span></h1><p>Добавь материал, выбери стиль и собери ролик.</p></div><span className="dravex-editor-badge"><span />Локальный монтаж</span></div>
+            <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
+            <div className="dravex-media-heading"><div><h2>Медиатека</h2><p>{mediaFiles.length ? `${mediaFiles.length} ${isImageMode ? "фото" : "видеофайл"} · ${(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ` : "Добавь видео или фотографии для начала"}</p></div>{mediaFiles.length > 0 && <button type="button" onClick={() => videoInput.current?.click()}><Upload size={15} />Добавить</button>}</div>
         {!mediaFiles.length ? (
           <button className="dravex-upload" onClick={() => videoInput.current?.click()} type="button">
             <span className="dravex-upload-icon"><Upload size={25} /></span><strong>Добавить видео или фото</strong><span>Выбери материал из галереи телефона</span><small>Одно видео или несколько фотографий</small>
@@ -722,7 +725,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="dravex-section-title"><div><h2>Выбери вариант монтажа</h2><p>Листай варианты и нажми на стиль, который нравится.</p></div><Sparkles size={20} /></div>
+        <div className="dravex-section-title"><div><h2>Стиль монтажа</h2><p>Выбери характер будущего эдита.</p></div><Sparkles size={20} /></div>
         <div className="dravex-variant-rail" aria-label="Варианты автоматического монтажа">
           {montageVariants.map((variant) => {
             const Icon = variant.icon;
@@ -746,10 +749,13 @@ export default function App() {
           })}
         </div>
         {activeRenderedVariant && <section className="dravex-real-preview dravex-variant-player" aria-live="polite">
-          <div><strong>Сейчас выбран: {activeRenderedVariant.title}</strong><span>Это реальный результат монтажа из твоего материала. Можно посмотреть, поставить на паузу или перемотать.</span></div>
+          <div><strong>Сейчас выбран: {activeRenderedVariant.title}</strong><span>Реальный предпросмотр выбранного варианта монтажа.</span></div>
           <video key={activeRenderedVariant.id} src={activeRenderedVariant.url} controls autoPlay muted loop playsInline preload="auto" />
         </section>}
-        <p className="dravex-variant-hint">После загрузки DRAVEX автоматически готовит короткий реальный автопросмотр выбранного стиля. Выбери другой стиль — его превью появится автоматически. Кнопкой ниже можно создать дополнительные варианты; они рендерятся по очереди, чтобы беречь память телефона.</p>
+          </section>
+          <aside className="dravex-control-column" aria-label="Управление монтажом">
+            <div className="dravex-control-heading"><span className="dravex-control-icon"><Settings2 size={17} /></span><div><h2>Монтаж</h2><p>Настрой результат под себя</p></div></div>
+            <p className="dravex-variant-hint">После загрузки DRAVEX готовит короткий автопросмотр выбранного стиля. Другие варианты можно просмотреть ниже; они создаются по очереди, чтобы беречь память телефона.</p>
         <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy || renderedVariants.length === montageVariants.length} onClick={createStylePreviews}>
           {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
           {previewBusy ? `Подготовка автопросмотра… ${previewProgress}%` : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Создать дополнительные варианты (${renderedVariants.length}/${montageVariants.length})`}
@@ -783,6 +789,8 @@ export default function App() {
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
         {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div></section>}
+          </aside>
+        </div>
         </>)}
       </section>
 

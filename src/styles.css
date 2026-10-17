@@ -406,3 +406,105 @@ body {
     flex-basis: min(148px, 43vw);
   }
 }
+
+/* DRAVEX Studio interface overhaul: preview-first workspace with touch-friendly controls. */
+:root { --bg:#080a0d; --panel:#11151a; --line:#252b32; --muted:#98a2ad; --accent:#b8f45b; }
+body { background:#080a0d; }
+.dravex-app { padding:0 22px 30px; background:radial-gradient(ellipse at 18% -18%,#1d2b18 0,transparent 34rem),radial-gradient(ellipse at 100% 12%,#101b20 0,transparent 34rem),#080a0d; }
+.dravex-header { width:min(100%,1440px); height:72px; }
+.dravex-brand { font-size:19px; letter-spacing:2.4px; }
+.dravex-brand-mark { width:39px; height:39px; border-radius:12px; }
+.dravex-tabs { width:min(100%,1440px); margin:14px auto 22px; grid-template-columns:148px 148px; justify-content:start; border-color:#252c33; background:#0d1115; }
+.dravex-tabs button { min-height:44px; font-size:13px; }
+.dravex-main { width:min(100%,1440px); margin:0 auto; }
+.dravex-editor-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,360px); align-items:start; gap:22px; }
+.dravex-stage-column { min-width:0; }
+.dravex-intro { display:flex; align-items:end; justify-content:space-between; gap:20px; margin:2px 0 24px; }
+.dravex-eyebrow { display:inline-block; margin-bottom:8px; color:var(--accent); font-size:10px; font-weight:850; letter-spacing:2px; }
+.dravex-intro h1 { font-size:clamp(26px,3vw,38px); letter-spacing:-1.4px; }
+.dravex-intro p { font-size:13px; }
+.dravex-editor-badge { display:inline-flex; align-items:center; gap:8px; flex:0 0 auto; padding:9px 12px; border:1px solid #28352a; border-radius:999px; color:#b9c5b4; background:#111a12; font-size:11px; }
+.dravex-editor-badge > span { width:7px; height:7px; border-radius:50%; background:#b8f45b; box-shadow:0 0 12px #b8f45b66; }
+.dravex-media-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 10px; }
+.dravex-media-heading h2,.dravex-control-heading h2 { margin:0; color:#f1f5f0; font-size:15px; font-weight:800; }
+.dravex-media-heading p,.dravex-control-heading p { margin:5px 0 0; color:var(--muted); font-size:11px; }
+.dravex-media-heading > button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:40px; padding:0 13px; border:1px solid #35412f; border-radius:11px; color:var(--accent); background:#151d13; font-size:12px; font-weight:750; }
+.dravex-upload { min-height:220px; border-color:#3a4b32; border-radius:18px; background:linear-gradient(135deg,#131b12,#101419 68%); }
+.dravex-upload strong { font-size:16px; }
+.dravex-upload > span:not(.dravex-upload-icon) { font-size:12px; }
+.dravex-upload small { font-size:11px; }
+.dravex-preview-card { border-color:#252d34; border-radius:17px; background:#0b0e12; box-shadow:0 18px 45px #00000022; }
+.dravex-preview { width:100%; max-height:min(70svh,780px); aspect-ratio:16/9; object-fit:contain; background:#050607; }
+.dravex-image-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:9px; padding:12px; max-height:58svh; overflow:auto; }
+.dravex-image-thumb { border-radius:11px; overflow:hidden; }
+.dravex-file-row { min-height:62px; padding:12px 14px; }
+.dravex-file-row strong { font-size:12px; }
+.dravex-file-row span { font-size:11px; }
+.dravex-file-row button { min-height:38px; padding:0 13px; font-size:12px; }
+.dravex-section-title { margin:26px 0 12px; color:var(--accent); }
+.dravex-section-title h2 { font-size:16px; }
+.dravex-section-title p { font-size:12px; }
+.dravex-variant-rail { gap:12px; }
+.dravex-variant { flex-basis:168px; }
+.dravex-variant-preview { height:106px; }
+.dravex-variant-copy strong { font-size:12px; }
+.dravex-variant-copy small { font-size:11px; }
+.dravex-real-preview { border-color:#2b343c; background:#0e1216; }
+.dravex-variant-player video { max-height:55svh; }
+.dravex-control-column { min-width:0; padding:18px; border:1px solid #252d34; border-radius:19px; background:linear-gradient(180deg,#12171c,#0e1216); box-shadow:0 18px 55px #0000001f; }
+.dravex-control-heading { display:flex; align-items:center; gap:11px; padding-bottom:15px; border-bottom:1px solid #ffffff10; }
+.dravex-control-icon { display:grid; place-items:center; width:38px; height:38px; flex:0 0 auto; border:1px solid #34432c; border-radius:12px; color:var(--accent); background:#1a2415; }
+.dravex-control-column .dravex-variant-hint { margin:13px 0; color:#9da8b2; font-size:11px; line-height:1.6; }
+.dravex-control-column .dravex-preview-action { margin-top:0; }
+.dravex-control-column .dravex-more { margin-top:14px; }
+.dravex-control-column .dravex-more summary { min-height:46px; font-size:12px; }
+.dravex-control-column .dravex-more-content { grid-template-columns:minmax(0,1fr); gap:14px; padding:0 14px 15px; }
+.dravex-control-column .dravex-duration,.dravex-control-column .dravex-volume { font-size:12px; }
+.dravex-control-column .dravex-duration select { min-height:42px; font-size:12px; }
+.dravex-control-column .dravex-project-actions { display:grid; grid-template-columns:1fr; gap:8px; padding:12px 14px 14px; }
+.dravex-control-column .dravex-project-actions button { min-height:42px; font-size:12px; }
+.dravex-control-column .dravex-create { min-height:56px; margin-top:14px; border-radius:13px; font-size:14px; font-weight:850; }
+.dravex-control-column .dravex-privacy { font-size:10px; line-height:1.6; }
+.dravex-control-column .dravex-progress,.dravex-control-column .dravex-result { margin-top:15px; }
+.dravex-control-column .dravex-result-actions { display:grid; grid-template-columns:1fr; }
+.dravex-footer { width:min(100%,1440px); margin:24px auto 0; }
+.dravex-music-studio { width:min(100%,900px); margin:0 auto; }
+.dravex-main:has(.dravex-music-studio) { width:min(100%,1440px); }
+@media (max-width:980px) {
+ .dravex-app { padding-left:16px; padding-right:16px; }
+ .dravex-editor-layout { grid-template-columns:minmax(0,1fr) 310px; gap:14px; }
+ .dravex-control-column { padding:14px; }
+ .dravex-variant { flex-basis:150px; }
+}
+@media (max-width:760px) {
+ .dravex-app { padding:0 13px 24px; }
+ .dravex-header { height:62px; }
+ .dravex-tabs { grid-template-columns:1fr 1fr; margin:10px auto 18px; }
+ .dravex-main { width:100%; }
+ .dravex-editor-layout { grid-template-columns:minmax(0,1fr); gap:14px; }
+ .dravex-intro { align-items:start; margin:0 0 20px; }
+ .dravex-intro h1 { font-size:clamp(27px,7vw,35px); }
+ .dravex-intro p { max-width:270px; font-size:12px; }
+ .dravex-editor-badge { margin-top:4px; padding:7px 9px; font-size:10px; }
+ .dravex-media-heading { margin-bottom:9px; }
+ .dravex-upload { min-height:180px; }
+ .dravex-preview { max-height:64svh; aspect-ratio:9/16; }
+ .dravex-image-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; padding:8px; max-height:52svh; }
+ .dravex-image-thumb { min-height:95px; }
+ .dravex-file-row { align-items:center; }
+ .dravex-variant-rail { gap:9px; }
+ .dravex-variant { flex-basis:144px; }
+ .dravex-variant-preview { height:91px; }
+ .dravex-control-column { padding:15px; border-radius:16px; }
+ .dravex-control-column .dravex-more-content { grid-template-columns:1fr; }
+ .dravex-control-column .dravex-project-actions { grid-template-columns:1fr 1fr; }
+ .dravex-control-column .dravex-project-actions button:first-child { grid-column:1/-1; }
+ .dravex-control-column .dravex-create { position:sticky; bottom:10px; z-index:5; box-shadow:0 8px 30px #0008,0 0 0 5px #080a0dcc; }
+}
+@media (max-width:420px) {
+ .dravex-app { padding-left:10px; padding-right:10px; }
+ .dravex-editor-badge { max-width:118px; white-space:nowrap; }
+ .dravex-control-column .dravex-project-actions { grid-template-columns:1fr; }
+ .dravex-control-column .dravex-project-actions button:first-child { grid-column:auto; }
+ .dravex-variant { flex-basis:136px; }
+}
