@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { stat } from "node:fs/promises";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
@@ -69,7 +70,6 @@ test("source framing fills matching aspect ratios and preserves mismatched sourc
   expect(shouldContainSource(0, 9 / 16)).toBe(true);
 });
 
- 
 test("camera motion profiles provide visible but controlled movement", () => {
   const cinematic = getCameraMotionProfile("cinematic", "balanced");
   const story = getCameraMotionProfile("story", "balanced");
@@ -80,4 +80,65 @@ test("camera motion profiles provide visible but controlled movement", () => {
   expect(story.zoom).toBeLessThan(cinematic.zoom);
   expect(strong.zoom).toBeGreaterThan(cinematic.zoom);
   expect(soft.zoom).toBeLessThan(cinematic.zoom);
+});
+
+test("one-button photo auto-montage produces a playable WebM that can be downloaded", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  // A tiny generated SVG keeps this test self-contained and avoids external media.
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800" viewBox="0 0 480 800"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#ff3d6e"/><stop offset="1" stop-color="#171b3d"/></linearGradient></defs><rect width="480" height="800" fill="url(#g)"/><circle cx="240" cy="310" r="120" fill="#fff" fill-opacity=".7"/><path d="M0 650 L180 450 L300 590 L400 500 L480 620 V800 H0Z" fill="#090b12"/></svg>',
+    "utf8",
+  );
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles({
+    name: "dravex-test-frame.svg",
+    mimeType: "image/svg+xml",
+    buffer: svg,
+  });
+
+  // The app creates a short real preview after import. Wait for that render to
+  // finish before triggering the full montage, because the phone pipeline is serialized.
+  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Автомонтаж" }).click();
+
+  const result = page.locator(".dravex-result");
+  await expect(result.getByText("Видео готово!")).toBeVisible({ timeout: 30_000 });
+  const outputVideo = result.locator("video.dravex-output");
+  await expect(outputVideo).toBeVisible();
+  await outputVideo.evaluate((video: HTMLVideoElement) => {
+    if (video.readyState >= 1) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Rendered WebM metadata did not load")), 10_000);
+      video.addEventListener("loadedmetadata", () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      video.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Rendered WebM could not be played back"));
+      }, { once: true });
+    });
+  });
+
+  const playback = await outputVideo.evaluate((video: HTMLVideoElement) => ({
+    duration: video.duration,
+    width: video.videoWidth,
+    height: video.videoHeight,
+    source: video.currentSrc,
+  }));
+  expect(playback.source).toMatch(/^blob:/);
+  expect(playback.duration).toBeGreaterThan(2);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
+
+  const downloadPromise = page.waitForEvent("download");
+  await result.getByRole("link", { name: "Сохранить видео" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^dravex-video-.*\.webm$/);
+  expect(await download.failure()).toBeNull();
+  const downloadedFile = await download.path();
+  expect(downloadedFile).toBeTruthy();
+  expect((await stat(downloadedFile!)).size).toBeGreaterThan(10_000);
 });
