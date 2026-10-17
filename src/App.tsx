@@ -200,7 +200,10 @@ export default function App() {
   const clearMusic = () => {
     setMusicFile(null);
     setMusicUrl("");
+    if (musicInput.current) musicInput.current.value = "";
+    setOutputUrl("");
     setError("");
+    setMessage("");
   };
 
   const onMusicSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -213,7 +216,10 @@ export default function App() {
     if (musicUrl) URL.revokeObjectURL(musicUrl);
     setMusicFile(file);
     setMusicUrl(URL.createObjectURL(file));
+    event.target.value = "";
+    setOutputUrl("");
     setError("");
+    setMessage("");
   };
 
   const createMontage = async () => {
