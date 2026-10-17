@@ -160,6 +160,7 @@ export default function App() {
       setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
       setStyle((project.style as EditStyle) || "auto");
       setDuration(project.duration || 30);
+      setAspectRatio(project.aspectRatio ?? "9:16");
       setQuality(project.quality || "720p");
       setBeatSync(project.beatSync !== false);
       setEffectStrength(project.effectStrength ?? "balanced");
@@ -325,7 +326,7 @@ export default function App() {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
       }
-      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : styleOptions.find((item) => item.id === style)?.title ?? "Автоматический");
+      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
       setStage("rendering");
       setMessage("Собираем видео и применяем выбранный стиль…");
