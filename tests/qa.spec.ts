@@ -285,7 +285,8 @@ test("one-button source-video montage renders and downloads a playable WebM", as
 });
 
 
-test("long source-video montage handles 60-second input and exports the requested short edit", async ({ page }) => {
+for (const sourceDuration of [60, 300]) {
+  test(`long source-video montage handles ${sourceDuration}-second input and exports the requested short edit`, async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -297,13 +298,13 @@ test("long source-video montage handles 60-second input and exports the requeste
   await durationSlider.press("Home");
   await expect(durationSlider).toHaveValue("5");
 
-  // A tiny 60-second VP8/WebM clip exercises the long-video frame-sampling path.
+  // Tiny 1-minute and 5-minute VP8/WebM clips exercise sampling across the full source timeline.
   const fixturePath = `/tmp/dravex-test-long-source-${process.pid}.webm`;
   execFileSync("ffmpeg", [
     "-hide_banner", "-loglevel", "error",
     "-f", "lavfi", "-i", "color=c=red:s=64x64:r=2",
     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-    "-t", "60", "-c:v", "libvpx", "-deadline", "realtime",
+    "-t", String(sourceDuration), "-c:v", "libvpx", "-deadline", "realtime",
     "-cpu-used", "8", "-b:v", "20k", "-g", "2", "-pix_fmt", "yuv420p",
     "-c:a", "libopus", "-b:a", "32k", "-shortest", "-f", "webm", fixturePath, "-y"
   ], { stdio: "pipe" });
@@ -373,4 +374,5 @@ test("long source-video montage handles 60-second input and exports the requeste
   expect(videoStream?.width).toBeGreaterThan(0);
   expect(videoStream?.height).toBeGreaterThan(0);
   expect(audioStream?.codec_name).toBe("opus");
-});
+  });
+}
