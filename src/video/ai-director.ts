@@ -102,13 +102,27 @@ export function inferMotionCues(
 
 export function inferTrackedObjectCues(previousObjects: DetectedObject[], currentObjects: DetectedObject[]): string[] {
   const cues: string[] = [];
+  const matchedPrevious = new Set<number>();
   for (const current of currentObjects) {
-    const previous = previousObjects.find((item) => item.label === current.label);
-    if (!previous) continue;
-    const previousCenterX = (previous.box.xmin + previous.box.xmax) / 2;
-    const previousCenterY = (previous.box.ymin + previous.box.ymax) / 2;
     const currentCenterX = (current.box.xmin + current.box.xmax) / 2;
     const currentCenterY = (current.box.ymin + current.box.ymax) / 2;
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    previousObjects.forEach((item, index) => {
+      if (matchedPrevious.has(index) || item.label !== current.label) return;
+      const centerX = (item.box.xmin + item.box.xmax) / 2;
+      const centerY = (item.box.ymin + item.box.ymax) / 2;
+      const distance = Math.hypot(currentCenterX - centerX, currentCenterY - centerY);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    if (bestIndex < 0) continue;
+    matchedPrevious.add(bestIndex);
+    const previous = previousObjects[bestIndex];
+    const previousCenterX = (previous.box.xmin + previous.box.xmax) / 2;
+    const previousCenterY = (previous.box.ymin + previous.box.ymax) / 2;
     const centerShift = Math.hypot(currentCenterX - previousCenterX, currentCenterY - previousCenterY) / Math.hypot(320, 180);
     const previousArea = Math.max(1, (previous.box.xmax - previous.box.xmin) * (previous.box.ymax - previous.box.ymin));
     const currentArea = Math.max(1, (current.box.xmax - current.box.xmin) * (current.box.ymax - current.box.ymin));
@@ -195,7 +209,7 @@ export async function analyzeWithAIDirector(
   }
 
   const video = document.createElement("video");
-  video.preload = "auto";
+  video.preload = "metadata";
   video.muted = true;
   video.playsInline = true;
   video.crossOrigin = "anonymous";
@@ -256,14 +270,13 @@ export async function analyzeWithAIDirector(
   const nearestSampleIndex = (index: number) => selectedIndices.reduce((best, candidateIndex) =>
     Math.abs(candidateIndex - index) < Math.abs(best - index) ? candidateIndex : best, selectedIndices[0]);
   const indexed = candidates.map((candidate, index) => {
-    const nearestIndex = nearestSampleIndex(index);
-    const objects = detectionsByCandidate.get(nearestIndex) ?? [];
-    const position = sampledPosition.get(nearestIndex) ?? 0;
-    const previousIndex = position > 0 ? selectedIndices[position - 1] : -1;
+    const isModelSample = sampledPosition.has(index);
+    const objects = isModelSample ? detectionsByCandidate.get(index) ?? [] : [];
+    const position = sampledPosition.get(index) ?? -1;
+    const previousIndex = isModelSample && position > 0 ? selectedIndices[position - 1] : -1;
     const previousObjects = previousIndex >= 0 ? detectionsByCandidate.get(previousIndex) ?? [] : [];
     const previousLabels = previousObjects.map((item) => item.label);
     const labels = [...new Set(objects.map((item) => item.label))];
-    const isModelSample = sampledPosition.has(index);
     const novelty = isModelSample && previousLabels.length
       ? labels.filter((label) => !previousLabels.includes(label)).length / Math.max(1, new Set([...labels, ...previousLabels]).size)
       : 0;
