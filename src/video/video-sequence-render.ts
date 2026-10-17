@@ -893,9 +893,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const sourceGain = sourceVideoGainNodes.get(video);
       if (sourceGain && audioContext) {
         const audioNow = audioContext.currentTime;
+        const fadeSeconds = Math.min(0.045, duration / 3);
+        const targetGain = loadedAudio.length > 0 ? 0.28 : 1;
         sourceGain.gain.cancelScheduledValues(audioNow);
         sourceGain.gain.setValueAtTime(0, audioNow);
-        sourceGain.gain.linearRampToValueAtTime(loadedAudio.length > 0 ? 0.28 : 1, audioNow + 0.045);
+        sourceGain.gain.linearRampToValueAtTime(targetGain, audioNow + fadeSeconds);
+        const fadeOutStart = audioNow + Math.max(fadeSeconds, duration - fadeSeconds);
+        sourceGain.gain.setValueAtTime(targetGain, fadeOutStart);
+        sourceGain.gain.linearRampToValueAtTime(0, fadeOutStart + fadeSeconds);
       }
       await video.play();
       const clipStartedAt = performance.now();
@@ -908,12 +913,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
-      const clipEndedAt = audioContext?.currentTime ?? 0;
-      if (sourceGain && audioContext) {
-        sourceGain.gain.cancelScheduledValues(clipEndedAt);
-        sourceGain.gain.setValueAtTime(sourceGain.gain.value, clipEndedAt);
-        sourceGain.gain.linearRampToValueAtTime(0, clipEndedAt + 0.045);
-      }
+      // The gain automation was scheduled against the clip duration so the fade-out
+      // finishes at the cut without extending the rendered timeline.
       video.pause();
       savePreviousFrame();
       completed += duration;
