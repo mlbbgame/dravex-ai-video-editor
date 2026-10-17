@@ -38,7 +38,7 @@ jobs:
         working-directory: app-source
         run: npm install --no-audit --no-fund
 
-      # Publish DRAVEX Music Studio: 20 ready-to-use CC0 music tracks with inline preview and one-tap apply (no manual user download), search/category filters, local audio upload, beat-sync, track credits, accurate page metadata, clear empty-state guidance, adjustable duration slider, and mobile-first editor
+      # Publish DRAVEX Music Studio: curated CC0 tracks for Phonk/Drift, Anime/Jumpstyle, Slowed/Dark, TikTok/Shorts, Gaming, Cinematic, Electronic and Chill; one-tap apply, style filters, mobile QA
       # at the main URL, while preserving /preview/ as an identical compatibility URL.
       - name: Build primary DRAVEX site
         working-directory: app-source
