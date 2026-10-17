@@ -138,7 +138,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
-      return { kind: "image", name: segment.name, image, duration: Math.max(1, Math.min(segment.duration ?? 3, 10)) };
+      return { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
     }
     const videoSegment = segment as VideoSegment;
     let pendingVideo = videoCache.get(videoSegment.url);
