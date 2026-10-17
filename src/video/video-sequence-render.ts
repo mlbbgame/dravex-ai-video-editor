@@ -31,6 +31,7 @@ type SequenceOptions = {
   quality?: string;
   style?: SequenceRenderStyle;
   effectStrength?: "soft" | "balanced" | "strong";
+  transitionMode?: "auto" | "cinematic" | "action";
   suppressEffects?: boolean;
   suppressFlashes?: boolean;
   suppressShake?: boolean;
@@ -127,7 +128,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -273,11 +274,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionDuration = style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
-    const transitionType = cutIndex % 8;
+    const actionTransitions = [0, 3, 4, 5, 7];
+    const transitionType = transitionMode === "cinematic"
+      ? (cutIndex % 2 === 0 ? 8 : 0)
+      : transitionMode === "action"
+        ? actionTransitions[(cutIndex - 1) % actionTransitions.length]
+        : cutIndex % 8;
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
     // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
@@ -340,6 +346,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         const dh = drawHeight * punch;
         context.drawImage(source, (width - dw) / 2 + offsetX, (height - dh) / 2 + offsetY, dw, dh);
       }
+    } else if (transitionWindow && transitionType === 8) {
+      // A true crossfade keeps the outgoing frame underneath and fades the new shot in.
+      context.globalAlpha = transitionProgress;
+      drawIncoming();
     } else if (transitionWindow && (transitionType === 1 || transitionType === 2)) {
       // Directional wipes alternate left-to-right and right-to-left.
       const revealWidth = width * Math.max(0.025, transitionProgress);
