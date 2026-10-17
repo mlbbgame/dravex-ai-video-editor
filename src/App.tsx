@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import { analyzeWithAIDirector } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
@@ -444,6 +445,7 @@ export default function App() {
       let renderDuration = duration;
       let sourceVideoDuration = 0;
       let analysisFallback = false;
+      let directorNote = "";
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
       if (isImageMode) {
         const photoCount = mediaFiles.length;
@@ -479,7 +481,27 @@ export default function App() {
             const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
             actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
           }
-          segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+          setMessage("AI Director: загружаем модель распознавания объектов и анализируем сцены…");
+          const directorResult = await analyzeWithAIDirector(
+            videoUrl,
+            analysis.duration,
+            analysis.samples,
+            analysis.candidates,
+            actualStyle,
+            (progress) => {
+              setScan({ current: progress.current, total: progress.total, time: 0 });
+              if (progress.phase === "loading-model") {
+                setMessage("AI Director: загружаем модель распознавания объектов…");
+              } else if (progress.phase === "reading-frames") {
+                setMessage(`AI Director: анализируем кадры ${progress.current} из ${progress.total}…`);
+              } else {
+                setMessage("AI Director: ранжируем фрагменты под выбранный стиль…");
+              }
+            }
+          );
+          directorNote = directorResult.note;
+          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+          setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
           sourceVideoDuration = await getVideoDuration(videoUrl);
@@ -550,7 +572,7 @@ export default function App() {
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
       setStage("done");
-      setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : "Готово! Посмотри результат и сохрани видео.");
+      setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
