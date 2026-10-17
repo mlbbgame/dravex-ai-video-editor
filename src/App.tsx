@@ -441,7 +441,7 @@ export default function App() {
           style: previewStyle,
           effectStrength: variant.strength,
           transitionMode: variant.transition,
-          suppressAudio: !audioTracks.length,
+          suppressAudio: false,
           targetDurationSeconds: previewDuration,
           onProgress: (progress) => {
             if (generation === previewGeneration.current) {
@@ -695,7 +695,7 @@ export default function App() {
         style: previewStyle,
         effectStrength: variant.strength,
         transitionMode: variant.transition,
-        suppressAudio: !audioTracks.length,
+        suppressAudio: false,
         targetDurationSeconds: previewDuration,
         onProgress: (progress) => {
           if (generation === previewGeneration.current) setPreviewProgress(Math.round(progress));
