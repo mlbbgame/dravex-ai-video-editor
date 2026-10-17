@@ -35,6 +35,22 @@ export function shouldContainSource(sourceAspect: number, outputAspect: number):
   return Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
 }
 
+export type CameraMotionProfile = { zoom: number; pan: number };
+
+/** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
+export function getCameraMotionProfile(
+  style: SequenceRenderStyle,
+  strength: "soft" | "balanced" | "strong" = "balanced"
+): CameraMotionProfile {
+  const scale = strength === "soft" ? 0.72 : strength === "strong" ? 1.28 : 1;
+  const base = style === "velocity" ? { zoom: 0.145, pan: 0.072 }
+    : style === "anime" ? { zoom: 0.12, pan: 0.055 }
+      : style === "glitch" ? { zoom: 0.125, pan: 0.058 }
+        : style === "story" ? { zoom: 0.072, pan: 0.032 }
+          : { zoom: 0.115, pan: 0.052 };
+  return { zoom: base.zoom * scale, pan: base.pan * scale };
+}
+
 type SequenceOptions = {
   segments: SequenceSegment[];
   audioTracks?: AudioSegment[];
@@ -317,8 +333,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
     // DRAVEX Camera V2: eased push/pull plus varied directional paths for stills.
-    const strengthScale = effectStrength === "soft" ? 0.62 : effectStrength === "strong" ? 1.32 : 1;
-    const motion = suppressEffects ? 0 : (style === "velocity" ? 0.16 : style === "anime" ? 0.115 : style === "glitch" ? 0.12 : style === "story" ? 0.055 : 0.105) * strengthScale;
+    const strengthScale = effectStrength === "soft" ? 0.72 : effectStrength === "strong" ? 1.28 : 1;
+    const cameraMotion = getCameraMotionProfile(style, effectStrength);
+    const motion = suppressEffects ? 0 : cameraMotion.zoom;
     const isPhoto = source instanceof HTMLImageElement;
     const eased = progress * progress * (3 - 2 * progress);
     const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
@@ -332,12 +349,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : (style === "velocity" ? 0.065 : style === "anime" ? 0.045 : style === "glitch" ? 0.05 : style === "story" ? 0.018 : 0.045) * strengthScale;
-    const panPhase = eased * Math.PI / 2;
+    const panAmount = suppressEffects ? 0 : cameraMotion.pan;
+    // Travel across the frame instead of easing from a static center to one side.
+    // The symmetric path makes movement perceptible at the start and end of each still.
+    const panPhase = eased * Math.PI;
     const pathX = [1, -1, 0.72, -0.72, 0.45, -0.45][cutIndex % 6];
     const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
-    const panX = Math.sin(panPhase) * width * panAmount * pathX;
-    const panY = Math.sin(panPhase) * height * panAmount * pathY;
+    const panX = Math.cos(panPhase) * width * panAmount * pathX;
+    const panY = Math.cos(panPhase) * height * panAmount * pathY;
     const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
