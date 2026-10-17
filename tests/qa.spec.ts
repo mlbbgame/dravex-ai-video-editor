@@ -353,10 +353,24 @@ test("long source-video montage handles 60-second input and exports the requeste
   expect(await download.failure()).toBeNull();
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
-  const audioCodec = execFileSync("ffprobe", [
-    "-v", "error", "-select_streams", "a:0",
-    "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
+  expect(download.suggestedFilename()).toMatch(/\\.webm$/);
+  const probeOutput = execFileSync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height",
+    "-of", "json",
     downloadedFile!
-  ], { encoding: "utf8" }).trim();
-  expect(audioCodec).not.toBe("");
+  ], { encoding: "utf8" });
+  const probe = JSON.parse(probeOutput) as {
+    format?: { duration?: string; format_name?: string };
+    streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+  };
+  const videoStream = probe.streams?.find((stream) => stream.codec_type === "video");
+  const audioStream = probe.streams?.find((stream) => stream.codec_type === "audio");
+  expect(probe.format?.format_name).toContain("webm");
+  expect(Number(probe.format?.duration)).toBeGreaterThan(3.5);
+  expect(Number(probe.format?.duration)).toBeLessThanOrEqual(5.5);
+  expect(videoStream?.codec_name).toMatch(/^(vp8|vp9|av1)$/);
+  expect(videoStream?.width).toBeGreaterThan(0);
+  expect(videoStream?.height).toBeGreaterThan(0);
+  expect(audioStream?.codec_name).toBe("opus");
 });
