@@ -496,6 +496,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
+  const sourceVideoGainNodes = new Map<HTMLVideoElement, GainNode>();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
     for (const item of loaded) {
@@ -503,9 +504,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       connectedVideoElements.add(item.video);
       const source = audioContext.createMediaElementSource(item.video);
       const sourceGain = audioContext.createGain();
-      sourceGain.gain.value = loadedAudio.length > 0 ? 0.28 : 1;
+      // Fade each clip's original audio at cut boundaries to reduce clicks and pops.
+      sourceGain.gain.value = 0;
       source.connect(sourceGain);
       sourceGain.connect(audioDestination);
+      sourceVideoGainNodes.set(item.video, sourceGain);
     }
     for (const item of loadedAudio) {
       const source = audioContext.createMediaElementSource(item.audio);
@@ -887,6 +890,13 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       video.pause();
       video.playbackRate = 1;
       await seek(video, start);
+      const sourceGain = sourceVideoGainNodes.get(video);
+      if (sourceGain && audioContext) {
+        const audioNow = audioContext.currentTime;
+        sourceGain.gain.cancelScheduledValues(audioNow);
+        sourceGain.gain.setValueAtTime(0, audioNow);
+        sourceGain.gain.linearRampToValueAtTime(loadedAudio.length > 0 ? 0.28 : 1, audioNow + 0.045);
+      }
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
@@ -897,6 +907,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+      const clipEndedAt = audioContext?.currentTime ?? 0;
+      if (sourceGain && audioContext) {
+        sourceGain.gain.cancelScheduledValues(clipEndedAt);
+        sourceGain.gain.setValueAtTime(sourceGain.gain.value, clipEndedAt);
+        sourceGain.gain.linearRampToValueAtTime(0, clipEndedAt + 0.045);
       }
       video.pause();
       savePreviousFrame();
