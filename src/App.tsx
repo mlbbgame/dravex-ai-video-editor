@@ -80,6 +80,36 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   return segments;
 }
 
+async function alignPreviewSegmentsToMusic(
+  segments: Array<VideoSegment | ImageSegment>,
+  variantId: string,
+  previewDuration: number,
+  sourceDuration: number,
+  musicUrl: string,
+  beatSyncEnabled: boolean
+): Promise<Array<VideoSegment | ImageSegment>> {
+  if (variantId !== "pulse" || !beatSyncEnabled || !musicUrl || segments.length < 2
+    || sourceDuration < previewDuration) return segments;
+  try {
+    const analysis = await detectMusicBeats(musicUrl);
+    const beats = analysis.beats.filter((beat) => beat > 0.05 && beat < previewDuration - 0.05);
+    if (beats.length < 3 || analysis.confidence === "weak") return segments;
+    const boundaries = snapCutBoundariesToBeats(beats, previewDuration, segments.length, 0.95);
+    return segments.map((segment, index) => {
+      const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
+      if (segment.kind === "image") return { ...segment, duration: nextDuration };
+      const videoSegment = segment as VideoSegment;
+      const safeDuration = Math.min(nextDuration, sourceDuration);
+      const center = (videoSegment.trimStart + videoSegment.trimEnd) / 2;
+      const trimStart = Math.max(0, Math.min(sourceDuration - safeDuration, center - safeDuration / 2));
+      return { ...videoSegment, trimStart, trimEnd: trimStart + safeDuration };
+    });
+  } catch {
+    // Beat analysis is an enhancement, not a reason to block a preview.
+    return segments;
+  }
+}
+
 export default function App() {
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
@@ -396,6 +426,9 @@ export default function App() {
             trimEnd: cut.trimEnd
           }));
         }
+        previewSegments = await alignPreviewSegmentsToMusic(
+          previewSegments, variant.id, previewDuration, sourceDuration, musicUrl, beatSync && Boolean(musicFile)
+        );
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
@@ -626,6 +659,7 @@ export default function App() {
         ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
         : variant.style;
       let previewDuration = requestedPreviewDuration;
+      let sourceDuration = requestedPreviewDuration;
       let previewSegments: Array<VideoSegment | ImageSegment>;
       if (isImageMode) {
         const indices = selectVariantPreviewIndices(mediaFiles.length, variant.id);
@@ -636,7 +670,7 @@ export default function App() {
           duration: requestedPreviewDuration / Math.max(1, indices.length)
         }));
       } else {
-        const sourceDuration = await getVideoDuration(videoUrl);
+        sourceDuration = await getVideoDuration(videoUrl);
         const plan = planVariantPreviewCuts(sourceDuration, requestedPreviewDuration, variant.id);
         previewDuration = plan.duration;
         previewSegments = plan.cuts.map((cut) => ({
@@ -646,6 +680,9 @@ export default function App() {
           trimEnd: cut.trimEnd
         }));
       }
+      previewSegments = await alignPreviewSegmentsToMusic(
+        previewSegments, variant.id, previewDuration, sourceDuration, musicUrl, beatSync && Boolean(musicFile)
+      );
       const audioTracks: AudioSegment[] = musicUrl && musicFile
         ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
         : [];
