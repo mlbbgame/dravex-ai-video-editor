@@ -69,6 +69,7 @@ export default function App() {
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
+  const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
   const [projectMessage, setProjectMessage] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
   const [scan, setScan] = useState<HighlightProgress>({ current: 0, total: 0, time: 0 });
@@ -102,6 +103,7 @@ export default function App() {
       setBeatSync(project.beatSync !== false);
       setEffectStrength(project.effectStrength ?? "balanced");
       setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+      setTransitionMode(project.transitionMode ?? "auto");
       setStage("ready");
       setProjectMessage("Найден сохранённый проект на этом устройстве.");
     }).catch(() => { /* A private browser or disabled IndexedDB must not prevent editing. */ });
@@ -115,7 +117,7 @@ export default function App() {
     setProjectBusy(true);
     setProjectMessage("");
     try {
-      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, quality, beatSync, effectStrength, musicVolume });
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, quality, beatSync, effectStrength, musicVolume, transitionMode });
       setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
     } catch (caught) {
       setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
@@ -145,6 +147,7 @@ export default function App() {
       setBeatSync(project.beatSync !== false);
       setEffectStrength(project.effectStrength ?? "balanced");
       setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+      setTransitionMode(project.transitionMode ?? "auto");
       setStage("ready");
       setOutputUrl("");
       setProjectMessage("Проект восстановлен.");
@@ -318,6 +321,7 @@ export default function App() {
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
+        transitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress
       });
@@ -377,6 +381,7 @@ export default function App() {
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><div className="dravex-music-actions"><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
+            <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
             <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
             <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => { setBeatSync(event.target.value === "on"); invalidateOutput(); }}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
