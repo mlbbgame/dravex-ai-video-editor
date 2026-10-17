@@ -5,7 +5,7 @@ const videoExtensions = new Set(["3gp", "avi", "m4v", "mkv", "mov", "mp4", "mpeg
 
 /**
  * Android and desktop file pickers do not always provide a MIME type.
- * Prefer a real image/video MIME type, then fall back to the filename extension.
+ * Prefer a recognized filename extension, then fall back to MIME metadata.
  */
 export function getMediaKind(file: Pick<File, "name" | "type">): MediaKind {
   // Some Android pickers report an incorrect MIME type for otherwise recognizable
