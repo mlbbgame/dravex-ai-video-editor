@@ -269,9 +269,10 @@ test("long source-video montage handles 60-second input and exports the requeste
   execFileSync("ffmpeg", [
     "-hide_banner", "-loglevel", "error",
     "-f", "lavfi", "-i", "color=c=red:s=64x64:r=2",
-    "-t", "60", "-an", "-c:v", "libvpx", "-deadline", "realtime",
+    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+    "-t", "60", "-c:v", "libvpx", "-deadline", "realtime",
     "-cpu-used", "8", "-b:v", "20k", "-g", "2", "-pix_fmt", "yuv420p",
-    "-f", "webm", fixturePath, "-y"
+    "-c:a", "libopus", "-b:a", "32k", "-shortest", "-f", "webm", fixturePath, "-y"
   ], { stdio: "pipe" });
   const sourceVideo = await readFile(fixturePath);
   await page.locator('input[accept="video/*,image/*"]').setInputFiles({
@@ -312,4 +313,17 @@ test("long source-video montage handles 60-second input and exports the requeste
   expect(playback.duration).toBeLessThanOrEqual(5.5);
   expect(playback.width).toBeGreaterThan(0);
   expect(playback.height).toBeGreaterThan(0);
+
+  const downloadPromise = page.waitForEvent("download");
+  await result.getByRole("link", { name: "Сохранить видео" }).click();
+  const download = await downloadPromise;
+  expect(await download.failure()).toBeNull();
+  const downloadedFile = await download.path();
+  expect(downloadedFile).toBeTruthy();
+  const audioCodec = execFileSync("ffprobe", [
+    "-v", "error", "-select_streams", "a:0",
+    "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
+    downloadedFile!
+  ], { encoding: "utf8" }).trim();
+  expect(audioCodec).not.toBe("");
 });
