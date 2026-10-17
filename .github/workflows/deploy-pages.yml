@@ -38,7 +38,7 @@ jobs:
         working-directory: app-source
         run: npm install --no-audit --no-fund
 
-      # Publish DRAVEX Music Studio: six original locally generated beats, searchable mood categories, audio preview/upload/download, beat-sync control, official music-source links, licensing guidance, adjustable duration slider, and mobile-first editor
+      # Publish DRAVEX Music Studio: six original locally generated beats, searchable mood categories, audio preview/upload/download, beat-sync control, verified official music-library links, licensing guidance, adjustable duration slider, and mobile-first editor
       # at the main URL, while preserving /preview/ as an identical compatibility URL.
       - name: Build primary DRAVEX site
         working-directory: app-source
