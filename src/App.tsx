@@ -9,7 +9,7 @@ type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
 const styleOptions: Array<{ id: EditStyle; title: string; note: string; icon: typeof Sparkles }> = [
-  { id: "auto", title: "Автоматически", note: "Подберём по видео", icon: Sparkles },
+  { id: "auto", title: "Автоматически", note: "Темп, движение и эффекты", icon: Sparkles },
   { id: "velocity", title: "Динамичный", note: "Быстрые склейки", icon: WandSparkles },
   { id: "cinematic", title: "Кино", note: "Плавный ритм", icon: Film },
   { id: "story", title: "Спокойный", note: "Мягкая подача", icon: Play },
@@ -192,14 +192,35 @@ export default function App() {
     setScan({ current: 0, total: 0, time: 0 });
     try {
       setStage("analyzing");
-      setMessage(isImageMode ? "Подготавливаем фотографии…" : "Смотрим на смену кадров и подбираем темп…");
+      setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
       let segments: Array<VideoSegment | ImageSegment>;
       let renderDuration = duration;
       let sourceVideoDuration = 0;
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
       if (isImageMode) {
-        actualStyle = style === "auto" ? "cinematic" : actualStyle;
-        segments = mediaFiles.map((file, index) => ({ kind: "image" as const, name: file.name, url: mediaUrls[index], duration: duration / mediaFiles.length }));
+        const photoCount = mediaFiles.length;
+        // Auto-director treats the selected duration as a ceiling: it avoids holding a small photo set on screen for 6–10 seconds per image.
+        actualStyle = style === "auto"
+          ? (photoCount >= 4 || (musicFile !== null && beatSync) ? "velocity" : "cinematic")
+          : actualStyle;
+        const shotSeconds = actualStyle === "velocity" ? (musicFile && beatSync ? 1.25 : 1.55)
+          : actualStyle === "glitch" ? 1.35
+          : actualStyle === "anime" ? 1.65
+          : actualStyle === "story" ? 3.1
+          : 2.35;
+        renderDuration = Math.min(duration, Math.max(4, photoCount * shotSeconds));
+        const rhythm = actualStyle === "velocity" ? [0.72, 1.04, 1.2, 0.84, 1.1]
+          : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
+          : actualStyle === "story" ? [1.12, 0.92, 1.08, 1, 0.9]
+          : [0.9, 1.08, 1, 1.12, 0.9];
+        const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length]);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        segments = mediaFiles.map((file, index) => ({
+          kind: "image" as const,
+          name: file.name,
+          url: mediaUrls[index],
+          duration: renderDuration * weights[index] / totalWeight
+        }));
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
         const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
@@ -296,7 +317,7 @@ export default function App() {
         <details className="dravex-more">
           <summary><Settings2 size={16} />Дополнительные настройки</summary>
           <div className="dravex-more-content">
-            <label className="dravex-duration"><span>Длина видео</span><select value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
+            <label className="dravex-duration"><span>Максимальная длина</span><select value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 секунд</option><option value={30}>30 секунд</option><option value={60}>До 60 секунд</option></select></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => setQuality(event.target.value as "720p" | "1080p")}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} /><button type="button" onClick={() => musicInput.current?.click()}><Music2 size={16} />{musicFile ? musicFile.name : "Добавить свой трек"}</button></div>
             <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => setBeatSync(event.target.value === "on")}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
