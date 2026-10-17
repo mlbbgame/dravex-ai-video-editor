@@ -1,3 +1,11 @@
+import {
+  validateEditTimeline,
+  type EditTimeline,
+  type TimelineAudioTrack,
+  type TimelineClip,
+  type TimelineSource,
+} from "./timeline-contract";
+
 export type VideoSegment = {
   kind?: "video";
   name: string;
@@ -407,6 +415,79 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     segment,
     audio: await loadAudio(segment)
   })));
+
+  // Validate the actual, metadata-resolved render sequence before allocating the
+  // canvas/recorder. This checks the plan the browser will really render, not
+  // only the earlier user/model request.
+  const timelineSources: TimelineSource[] = [];
+  const videoSourceIds = new Map<HTMLVideoElement, string>();
+  let timelineCursor = 0;
+  const timelineClips: TimelineClip[] = loaded.map((item, index) => {
+    const timelineStart = timelineCursor;
+    const timelineEnd = timelineStart + item.duration;
+    timelineCursor = timelineEnd;
+
+    if (item.kind === "video") {
+      let sourceId = videoSourceIds.get(item.video);
+      if (!sourceId) {
+        sourceId = `video-source-${videoSourceIds.size + 1}`;
+        videoSourceIds.set(item.video, sourceId);
+        timelineSources.push({ id: sourceId, kind: "video", duration: item.video.duration });
+      }
+      return {
+        id: `clip-${index + 1}`,
+        sourceId,
+        kind: "video",
+        timelineStart,
+        timelineEnd,
+        sourceRange: { start: item.start, end: item.end },
+        playbackRate: 1,
+      };
+    }
+
+    const sourceId = `image-source-${index + 1}`;
+    timelineSources.push({ id: sourceId, kind: "image" });
+    return {
+      id: `clip-${index + 1}`,
+      sourceId,
+      kind: "image",
+      timelineStart,
+      timelineEnd,
+      playbackRate: 1,
+    };
+  });
+
+  const timelineAudioTracks: TimelineAudioTrack[] = loadedAudio.map(({ audio, segment }, index) => {
+    const sourceId = `audio-source-${index + 1}`;
+    timelineSources.push({ id: sourceId, kind: "audio", duration: audio.duration });
+    return {
+      id: `audio-track-${index + 1}`,
+      sourceId,
+      timelineStart: 0,
+      timelineEnd: totalDuration,
+      sourceRange: { start: 0, end: audio.duration },
+      gain: Math.max(0, Math.min(1, segment.volume ?? 0.65)),
+      fadeInSeconds: Math.min(0.65, totalDuration * 0.15),
+      fadeOutSeconds: Math.min(0.9, totalDuration * 0.2),
+      loop: true,
+    };
+  });
+
+  const timelineResolution: EditTimeline["resolution"] =
+    quality === "preview" || quality === "1080p" || quality === "4K" ? quality : "720p";
+  const timeline: EditTimeline = {
+    schemaVersion: 1,
+    targetDuration: totalDuration,
+    aspectRatio: aspectRatio as EditTimeline["aspectRatio"],
+    resolution: timelineResolution,
+    frameRate: 24,
+    clips: timelineClips,
+    audioTracks: timelineAudioTracks,
+  };
+  const timelineValidation = validateEditTimeline(timeline, timelineSources);
+  if (!timelineValidation.valid) {
+    throw new Error(`Некорректный монтажный план: ${timelineValidation.errors.join(" ")}`);
+  }
 
   const { width, height } = dimensionsFor(aspectRatio, quality);
   const canvas = document.createElement("canvas");
