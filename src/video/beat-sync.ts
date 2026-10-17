@@ -89,7 +89,7 @@ export function snapCutBoundariesToBeats(
 
   const boundaries = [0];
   const minimumGap = Math.min(0.48, targetDuration / Math.max(2, segmentCount * 1.25));
-  const tolerance = Math.min(0.38, Math.max(0.16, preferredShotSeconds * 0.18));
+  const tolerance = Math.min(0.55, Math.max(0.22, preferredShotSeconds * 0.3));
   for (let index = 1; index < segmentCount; index += 1) {
     const ideal = targetDuration * index / segmentCount;
     const nearby = beats
