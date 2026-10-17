@@ -196,8 +196,15 @@ export async function analyzeVideoForHighlights(
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
     let previous: Uint8ClampedArray | null = null;
+    const analysisStartedAt = performance.now();
+    // Never let frame scanning monopolize a phone for several minutes. The caller
+    // can fall back to evenly spaced cuts while still exporting a usable video.
+    const analysisBudgetMs = duration > 1800 ? 60_000 : 90_000;
 
     for (let index = 0; index < total; index += 1) {
+      if (performance.now() - analysisStartedAt > analysisBudgetMs) {
+        throw new Error("Анализ длинного видео занял слишком много времени — используем равномерный монтаж.");
+      }
       const time = Math.min(duration - 0.08, index * interval + Math.min(0.12, interval * 0.08));
       await seekTo(video, time);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
