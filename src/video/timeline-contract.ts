@@ -86,19 +86,29 @@ export function validateEditTimeline(input: unknown, sources: readonly TimelineS
   if (!Array.isArray(sources)) return { valid: false, errors: ["Source metadata must be an array."] };
   const sourceById = new Map<string, TimelineSource>();
   sources.forEach((source, index) => {
-    if (!isRecord(source) || typeof source.id !== "string" || !source.id.trim()) {
+    const rawSource: unknown = source;
+    if (!isRecord(rawSource) || typeof rawSource.id !== "string" || !rawSource.id.trim()) {
       errors.push(`Source ${index + 1} must have a non-empty ID.`);
       return;
     }
-    if (sourceById.has(source.id)) errors.push(`Source ID "${source.id}" is duplicated.`);
-    if (!["video", "image", "audio"].includes(source.kind)) {
-      errors.push(`Source "${source.id}" has an unsupported media kind.`);
+
+    const sourceId = rawSource.id;
+    const sourceKind = rawSource.kind;
+    if (sourceKind !== "video" && sourceKind !== "image" && sourceKind !== "audio") {
+      errors.push(`Source "${sourceId}" has an unsupported media kind.`);
       return;
     }
-    if (source.kind !== "image" && (!isFiniteNumber(source.duration) || source.duration <= 0)) {
-      errors.push(`Source "${source.id}" must have a finite positive duration.`);
+    const sourceDuration = rawSource.duration;
+    if (sourceKind !== "image" && (!isFiniteNumber(sourceDuration) || sourceDuration <= 0)) {
+      errors.push(`Source "${sourceId}" must have a finite positive duration.`);
     }
-    sourceById.set(source.id, source);
+    if (sourceById.has(sourceId)) errors.push(`Source ID "${sourceId}" is duplicated.`);
+    const normalizedSource: TimelineSource = {
+      id: sourceId,
+      kind: sourceKind,
+      ...(isFiniteNumber(sourceDuration) ? { duration: sourceDuration } : {}),
+    };
+    sourceById.set(sourceId, normalizedSource);
   });
 
   if (input.schemaVersion !== 1) errors.push("Unsupported timeline schema version.");
