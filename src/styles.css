@@ -108,7 +108,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-footer svg, .dravex-footer span { color: var(--accent); }
 .dravex-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 300px; overflow: auto; padding: 10px; }
 .dravex-image-thumb { min-width: 0; overflow: hidden; border: 1px solid #ffffff12; border-radius: 9px; background: #090a0b; }
-.dravex-image-thumb img { display: block; width: 100%; height: 115px; object-fit: cover; }
+.dravex-image-thumb img, .dravex-image-thumb video { display: block; width: 100%; height: 115px; object-fit: cover; }
 .dravex-image-tools { display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 5px; border-top: 1px solid #ffffff12; }
 .dravex-image-tools span { min-width: 17px; color: #9da2a9; font-size: 10px; font-variant-numeric: tabular-nums; }
 .dravex-image-tools button { width: 27px; height: 27px; display: grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid #33373c; border-radius: 7px; color: #dce0d7; background: #17191c; }
