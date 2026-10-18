@@ -1,4 +1,5 @@
 export type OutputQualityReport = {
+  frames: Array<{ time: number; dataUrl: string }>;
   duration: number;
   width: number;
   height: number;
@@ -43,8 +44,8 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
       throw new Error("В экспортированном видео отсутствуют корректные метаданные.");
     }
     const canvas = document.createElement("canvas");
-    canvas.width = 48;
-    canvas.height = 27;
+    canvas.width = 160;
+    canvas.height = 90;
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Canvas недоступен для проверки кадров.");
     const sampleCount = Math.min(9, Math.max(3, Math.ceil(video.duration / 3)));
@@ -52,9 +53,11 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
     const blackFrameTimes: number[] = [];
     const frozenFramePairs: number[] = [];
     let previousPixels: Uint8ClampedArray | null = null;
+    const frames: Array<{ time: number; dataUrl: string }> = [];
     for (const time of times) {
       await seekTo(video, time);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      frames.push({ time, dataUrl: canvas.toDataURL("image/jpeg", 0.68) });
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       let totalLuma = 0;
       let veryDarkPixels = 0;
@@ -80,7 +83,7 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
     if (blackFrameTimes.length) findings.push("Обнаружены почти чёрные кадры около: " + blackFrameTimes.map((time) => time.toFixed(1) + " с").join(", ") + ". Проверь, не задуманы ли они как переход.");
     if (frozenFramePairs.length) findings.push("Некоторые контрольные точки почти не меняются (около " + frozenFramePairs.map((time) => time.toFixed(1) + " с").join(", ") + "). Это может быть статичный кадр или зависание — проверь воспроизведение.");
     if (!findings.length) findings.push("На контрольных точках явных чёрных кадров или почти одинаковых соседних кадров не обнаружено.");
-    return { duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: blackFrameTimes.length || frozenFramePairs.length ? "warning" : "ok" };
+    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: blackFrameTimes.length || frozenFramePairs.length ? "warning" : "ok" };
   } finally {
     video.removeAttribute("src");
     video.load();
