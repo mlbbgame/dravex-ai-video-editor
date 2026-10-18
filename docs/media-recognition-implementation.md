@@ -65,3 +65,11 @@ The provider boundary is tested with a fake adapter only. Passing these tests pr
 - This comparison detects visual similarity only. It does not identify objects, people, places, speech, or story meaning and must not be presented as semantic AI.
 - The export inspector registers metadata listeners before assigning the local Blob URL to avoid missing fast cached-media events.
 - All of this runs locally; no photos or videos are uploaded to a DRAVEX server.
+
+
+## Mobile rendering and output inspection
+
+- Photo decoding is capped at two concurrent images during similarity analysis to reduce peak memory pressure on Android.
+- Before montage rendering, still images are rasterized to a bounded canvas: 1280 px long edge for 720p and 1920 px for 1080p. This avoids retaining full 12–50 MP decoded camera bitmaps throughout the export. The trade-off is that 720p exports intentionally use a lower-resolution working image.
+- Export inspection thumbnails are tappable: they seek the actual rendered video to the sampled timestamp, so users can inspect suspicious moments without uploading media elsewhere.
+- These checks improve reliability and inspectability; they do not establish semantic scene understanding or judge creative quality.
