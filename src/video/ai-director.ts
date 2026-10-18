@@ -198,7 +198,7 @@ export async function analyzeWithAIDirector(
   // Local WASM object detection may stall the UI on memory-constrained phones.
   // Long clips already have a bounded full-timeline visual scan; keep them exportable
   // by ranking those candidates without loading the heavier local model.
-  if (duration > 30) {
+  if (duration >= 30) {
     return {
       candidates: emptyCandidates,
       detectedLabels: [],
