@@ -645,7 +645,7 @@ export default function App() {
   const createSelectedPreview = async () => {
     if (!mediaFiles.length || busy || previewBusy) return;
     const variant = selectedVariant;
-    if (!montageVariants.some((item) => item.id === variant.id)) return;
+    // Custom style settings also need a real preview; their generated IDs are intentionally not in montageVariants.
     if (renderedVariants.some((item) => item.id === variant.id)) return;
 
     setPreviewBusy(true);
