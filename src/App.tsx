@@ -7,6 +7,7 @@ import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
+import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -114,6 +115,8 @@ export default function App() {
   const [previewStatus, setPreviewStatus] = useState("");
   const [renderedVariants, setRenderedVariants] = useState<RenderedVariant[]>([]);
   const [cutCount, setCutCount] = useState(0);
+  const [qualityReport, setQualityReport] = useState<OutputQualityReport | null>(null);
+  const [qualityCheckBusy, setQualityCheckBusy] = useState(false);
   const renderedVariantUrls = useRef<string[]>([]);
   const previewGeneration = useRef(0);
   const [usedStyle, setUsedStyle] = useState("");
@@ -557,8 +560,19 @@ export default function App() {
       const nextUrl = URL.createObjectURL(blob);
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
+      setQualityReport(null);
+      setQualityCheckBusy(true);
       setStage("done");
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : "Готово! Посмотри результат и сохрани видео.");
+      // Inspect the actual encoded blob. QA is advisory and never discards a rendered result.
+      try {
+        setQualityReport(await inspectRenderedVideo(blob));
+      } catch (qualityError) {
+        console.warn("DRAVEX output QA failed:", qualityError);
+        setQualityReport({ duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь его вручную."], severity: "warning" });
+      } finally {
+        setQualityCheckBusy(false);
+      }
     } catch (caught) {
       setStage("error");
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
@@ -790,7 +804,17 @@ export default function App() {
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
-        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div></section>}
+        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>
+          <section className="dravex-quality-report" aria-live="polite">
+            <div className="dravex-quality-heading"><ScanLine size={17} /><strong>Проверка готового видео</strong><span className={qualityReport?.severity === "ok" ? "is-ok" : qualityReport ? "is-warning" : ""}>{qualityCheckBusy ? "Проверяем…" : qualityReport?.severity === "ok" ? "Без явных проблем" : qualityReport ? "Нужна проверка" : "Ожидание"}</span></div>
+            {qualityCheckBusy && <p>Проверяем реальные кадры экспорта, чёрные участки и возможные повторы. Это не оценка художественного качества.</p>}
+            {qualityReport && <>
+              {qualityReport.duration > 0 && <div className="dravex-quality-stats"><span>{qualityReport.duration.toFixed(1)} сек.<small>длительность</small></span><span>{qualityReport.width}×{qualityReport.height}<small>размер кадра</small></span><span>{qualityReport.sampledFrames}<small>кадров проверено</small></span></div>}
+              <ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul>
+              <p className="dravex-quality-note">Автоматическая проверка помогает найти технические подозрения, но не заменяет просмотр: она не умеет надёжно оценивать вкус монтажа, синхронизацию с музыкой или силу эффектов.</p>
+            </>}
+          </section>
+        </section>}
         </>)}
       </section>
 
