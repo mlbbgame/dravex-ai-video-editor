@@ -318,28 +318,45 @@ function loadImage(segment: ImageSegment, maxEdge: number): Promise<HTMLCanvasEl
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.decoding = "async";
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      image.onload = null;
+      image.onerror = null;
+    };
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      image.src = "";
+      reject(new Error(`Фото «${segment.name}» не открылось за 15 секунд. Попробуй другой файл или уменьши размер изображения.`));
+    }, 15_000);
     image.onload = () => {
       try {
-        // Phone photos can be 12–50 megapixels. Keeping each original decoded
-        // bitmap resident while rendering a montage can exhaust Android memory.
-        // Match the export preset: conserve memory for 720p, retain more detail
-        // for 1080p. Both paths avoid holding full 12–50 MP camera bitmaps.
+        // Phone photos can be 12–50 megapixels. Decode at most two originals
+        // at once, then retain only bounded canvases for the montage on Android.
         const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
         canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
         const context = canvas.getContext("2d");
         if (!context) {
+          cleanup();
           reject(new Error(`Could not prepare image for mobile rendering: ${segment.name}`));
           return;
         }
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        cleanup();
+        image.src = "";
         resolve(canvas);
       } catch {
+        cleanup();
+        image.src = "";
         reject(new Error(`Could not prepare image for mobile rendering: ${segment.name}`));
       }
     };
-    image.onerror = () => reject(new Error(`Could not read image: ${segment.name}`));
+    image.onerror = () => {
+      cleanup();
+      reject(new Error(`Could not read image: ${segment.name}`));
+    };
     image.src = segment.url;
   });
 }
@@ -392,23 +409,35 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
-  const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
-    if (segment.kind === "image") {
-      const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
-      return { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+  // Do not decode every high-resolution phone photo (or initialize every source
+  // video) at once. A two-worker pool caps peak memory on Android while keeping
+  // segment order stable in the resulting timeline.
+  const loaded: LoadedSegment[] = new Array(segments.length);
+  let nextSegmentIndex = 0;
+  const loaderCount = Math.min(2, segments.length);
+  await Promise.all(Array.from({ length: loaderCount }, async () => {
+    while (nextSegmentIndex < segments.length) {
+      const index = nextSegmentIndex;
+      nextSegmentIndex += 1;
+      const segment = segments[index];
+      if (segment.kind === "image") {
+        const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
+        loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+        continue;
+      }
+      const videoSegment = segment as VideoSegment;
+      let pendingVideo = videoCache.get(videoSegment.url);
+      if (!pendingVideo) {
+        pendingVideo = loadVideo(videoSegment);
+        videoCache.set(videoSegment.url, pendingVideo);
+      }
+      const video = await pendingVideo;
+      if (suppressAudio) video.muted = true;
+      const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
+      const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
+      const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
+      loaded[index] = { kind: "video", name: segment.name, video, start, end, duration: end - start };
     }
-    const videoSegment = segment as VideoSegment;
-    let pendingVideo = videoCache.get(videoSegment.url);
-    if (!pendingVideo) {
-      pendingVideo = loadVideo(videoSegment);
-      videoCache.set(videoSegment.url, pendingVideo);
-    }
-    const video = await pendingVideo;
-    if (suppressAudio) video.muted = true;
-    const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
-    const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
-    const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
-    return { kind: "video", name: segment.name, video, start, end, duration: end - start };
   }));
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
