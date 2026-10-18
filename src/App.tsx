@@ -549,7 +549,31 @@ export default function App() {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
       } else if (musicUrl && musicFile && beatSync && isSequenceMode) {
-        setMessage("Музыка будет добавлена. Автоматическая подгонка склеек под бит для смешанных видео и фото появится в следующем этапе.");
+        setMessage("Анализируем ритм музыки для смешанной последовательности…");
+        try {
+          const beatAnalysis = await detectMusicBeats(musicUrl);
+          const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
+          if (usableBeats.length >= 3 && beatAnalysis.confidence !== "weak" && segments.length > 1) {
+            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "glitch" ? 1.35 : actualStyle === "anime" ? 1.65 : actualStyle === "story" ? 3.2 : 2.2;
+            const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
+            const syncedSegments = await Promise.all(segments.map(async (segment, index) => {
+              const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
+              if (segment.kind === "image") return { ...segment, duration: nextDuration };
+              const videoSegment = segment as VideoSegment;
+              const fullDuration = await getVideoDuration(videoSegment.url).catch(() => videoSegment.trimEnd);
+              const center = (videoSegment.trimStart + videoSegment.trimEnd) / 2;
+              const safeDuration = Math.min(nextDuration, Math.max(0.2, fullDuration));
+              const start = Math.max(0, Math.min(Math.max(0, fullDuration - safeDuration), center - safeDuration / 2));
+              return { ...videoSegment, trimStart: start, trimEnd: start + safeDuration };
+            }));
+            segments = syncedSegments;
+            setMessage(`Ритм найден: склейки смешанных фото и видео подстроены под ${usableBeats.length} музыкальных акцентов.`);
+          } else {
+            setMessage("Ритм трека определяется ненадёжно — используем безопасные длительности кадров.");
+          }
+        } catch {
+          setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
+        }
       }
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);

@@ -68,6 +68,7 @@ type SequenceOptions = {
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
   audioContext?: AudioContext;
+  speedRamp?: boolean;
 };
 
 type LoadedVideo = {
@@ -359,7 +360,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext, speedRamp = style === "velocity" }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -814,17 +815,23 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
 
       const { video, start, duration } = item;
       video.pause();
+      video.playbackRate = 1;
       await seek(video, start);
       await video.play();
       const clipStartedAt = performance.now();
       while (performance.now() - clipStartedAt < duration * 1000) {
         const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
         const clipProgress = Math.min(1, elapsedSeconds / duration);
+        // Velocity edits get a smooth speed-ramp curve: ease into acceleration, then settle back before the cut.
+        // The curve averages around 1x so the selected clip duration remains stable.
+        if (speedRamp) video.playbackRate = Math.max(0.45, Math.min(1.75, 1 + 0.62 * Math.sin(clipProgress * Math.PI * 2)));
+        else video.playbackRate = 1;
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       video.pause();
+      video.playbackRate = 1;
       savePreviousFrame();
       completed += duration;
     }
