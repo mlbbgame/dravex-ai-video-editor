@@ -333,3 +333,70 @@ test("long source-video montage handles 60-second input and exports the requeste
   ], { encoding: "utf8" }).trim();
   expect(audioCodec).not.toBe("");
 });
+
+test("mixed video and photo sequence preserves the selected order and exports a playable WebM", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("details.dravex-more > summary").click();
+
+  const durationSlider = page.getByRole("slider", { name: "Длительность ролика в секундах" });
+  await expect(durationSlider).toBeVisible();
+  await durationSlider.focus();
+  await durationSlider.press("Home");
+  await expect(durationSlider).toHaveValue("5");
+
+  const fixturePath = `/tmp/dravex-test-mixed-source-${process.pid}.webm`;
+  execFileSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=2",
+    "-t", "2", "-an", "-c:v", "libvpx", "-deadline", "realtime",
+    "-cpu-used", "8", "-b:v", "20k", "-g", "2", "-pix_fmt", "yuv420p",
+    "-f", "webm", fixturePath, "-y"
+  ], { stdio: "pipe" });
+  const sourceVideo = await readFile(fixturePath);
+  await unlink(fixturePath);
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800"><rect width="480" height="800" fill="#b8f45b"/><circle cx="240" cy="400" r="150" fill="#111827"/></svg>',
+    "utf8",
+  );
+
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles([
+    { name: "dravex-mixed-video.webm", mimeType: "video/webm", buffer: sourceVideo },
+    { name: "dravex-mixed-photo.svg", mimeType: "image/svg+xml", buffer: svg },
+  ]);
+
+  await expect(page.locator(".dravex-image-thumb")).toHaveCount(2);
+  await expect(page.getByText(/медиафайлов в монтажной последовательности/i)).toBeVisible();
+  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Автомонтаж" }).click();
+
+  const result = page.locator(".dravex-result");
+  await expect(result.getByText("Видео готово!")).toBeVisible({ timeout: 45_000 });
+  const outputVideo = result.locator("video.dravex-output");
+  await expect(outputVideo).toBeVisible();
+  await outputVideo.evaluate((video: HTMLVideoElement) => {
+    if (video.readyState >= 1) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Mixed-media WebM metadata did not load")), 10_000);
+      video.addEventListener("loadedmetadata", () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      video.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Mixed-media WebM could not be played back"));
+      }, { once: true });
+    });
+  });
+  const playback = await outputVideo.evaluate((video: HTMLVideoElement) => ({
+    duration: video.duration,
+    width: video.videoWidth,
+    height: video.videoHeight,
+  }));
+  expect(playback.duration).toBeGreaterThan(3);
+  expect(playback.duration).toBeLessThanOrEqual(5.5);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
+});
+
