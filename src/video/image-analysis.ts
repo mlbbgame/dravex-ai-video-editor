@@ -63,11 +63,12 @@ async function readImageSignature(url: string): Promise<number[]> {
   return signature;
 }
 
-export async function analyzeImageSequence(urls: string[]): Promise<ImageSequenceAnalysis> {
+export async function analyzeImageSequence(urls: string[], onProgress?: (current: number, total: number) => void): Promise<ImageSequenceAnalysis> {
   // Do not decode every full-resolution phone photo at once. A bounded worker pool
   // reduces peak memory on Android while keeping the result order deterministic.
   const signatures: Array<number[] | null> = Array.from({ length: urls.length }, () => null);
   let nextIndex = 0;
+  let completedCount = 0;
   const workerCount = Math.min(2, urls.length);
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (nextIndex < urls.length) {
@@ -78,6 +79,9 @@ export async function analyzeImageSequence(urls: string[]): Promise<ImageSequenc
       } catch {
         // Analysis must never block a usable montage; renderer will report decode errors.
         signatures[index] = null;
+      } finally {
+        completedCount += 1;
+        onProgress?.(completedCount, urls.length);
       }
     }
   }));
