@@ -112,7 +112,8 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
 export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", suppressEffects = false, suppressFlashes = false, suppressShake = false, targetDurationSeconds, onProgress }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
-  const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+  // Prefer VP8 on mobile: some Android encoders advertise VP9 but produce empty or unplayable recordings.
+  const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/webm;codecs=vp9"].find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
@@ -164,7 +165,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (!context) throw new Error("Could not initialize the video renderer.");
 
   const videoStream = canvas.captureStream(24);
-  const audioContext = typeof AudioContext !== "undefined" ? new AudioContext() : null;
+  // Do not add an unused audio track to image-only exports: some Android recorders fail when
+  // MediaRecorder receives an otherwise empty Web Audio destination.
+  const hasSourceVideo = loaded.some((item) => item.kind === "video");
+  const needsAudio = loadedAudio.length > 0 || hasSourceVideo;
+  const audioContext = needsAudio && typeof AudioContext !== "undefined" ? new AudioContext() : null;
   const audioDestination = audioContext?.createMediaStreamDestination();
   if (audioContext && audioDestination) {
     const connectedVideoElements = new Set<HTMLVideoElement>();
@@ -181,6 +186,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       source.connect(gain);
       gain.connect(audioDestination);
     }
+  }
+  if (!videoStream.getVideoTracks().some((track) => track.readyState === "live")) {
+    throw new Error("Could not start the canvas video stream. Reload the page and try again.");
+  }
+  if (loadedAudio.length > 0 && (!audioContext || !audioDestination || !audioDestination.stream.getAudioTracks().some((track) => track.readyState === "live"))) {
+    throw new Error("The background audio track could not be connected. Try the latest Chrome and export again.");
   }
   const stream = new MediaStream([
     ...videoStream.getVideoTracks(),
