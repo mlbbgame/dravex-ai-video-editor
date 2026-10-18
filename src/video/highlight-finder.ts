@@ -1,4 +1,4 @@
-export type HighlightSample = {
+import { detectFrameObjects, inferActionCue, loadSemanticObjectModel, type DetectedObject } from "./semantic-vision";\n\nexport type HighlightSample = {
   time: number;
   score: number;
   motion: number;
@@ -133,7 +133,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-function frameFeatures(data: Uint8ClampedArray) {
+function normalizeMotionScore(motion: number, contrast: number, saturation: number, semantic: number): number {\n  // Real object confidence now contributes to ranking when the optional model is available.\n  return motion * (semantic > 0 ? 0.48 : 0.62) + contrast * 0.22 + saturation * 0.10 + semantic * 0.20;\n}\n\nfunction frameFeatures(data: Uint8ClampedArray) {
   let sum = 0;
   let saturation = 0;
   const lumas: number[] = [];
@@ -174,16 +174,6 @@ export async function analyzeVideoForHighlights(
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
-    // Short clips do not need expensive frame-by-frame seeking. On Android this
-    // avoids flaky seek events while still producing a clean, evenly spaced edit.
-    if (duration <= 15) {
-      const candidates = buildQuickVideoCandidates(duration);
-      const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
-        time, score, motion, contrast
-      }));
-      onProgress?.({ current: candidates.length, total: candidates.length, time: duration });
-      return { duration, samples, candidates };
-    }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
     canvas.height = 45;
@@ -194,7 +184,7 @@ export async function analyzeVideoForHighlights(
     // A wider interval on long clips reduces seeking overhead without scanning every frame.
     const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
-    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
+    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; objects: DetectedObject[] }> = [];\n    // The pretrained detector is optional and cached; a blocked CDN never blocks editing.\n    const detectorPromise = loadSemanticObjectModel();\n    let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;\n    let detectorResolved = false;\n    const detectorStride = Math.max(1, Math.ceil(total / 12));
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -217,7 +207,7 @@ export async function analyzeVideoForHighlights(
         }
         motion /= pixels.length / 4;
       }
-      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation });
+      let objects: DetectedObject[] = [];\n      if (index % detectorStride === 0) {\n        if (!detectorResolved) { detector = await detectorPromise; detectorResolved = true; }\n        if (detector) objects = await detectFrameObjects(detector, video);\n      }\n      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
