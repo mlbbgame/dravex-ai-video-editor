@@ -529,7 +529,7 @@ export default function App() {
           const beatAnalysis = await detectMusicBeats(musicUrl);
           const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
           if (usableBeats.length >= 3 && beatAnalysis.confidence !== "weak") {
-            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "glitch" ? 1.35 : actualStyle === "anime" ? 1.65 : actualStyle === "travel" ? 4.2 : actualStyle === "story" ? 3.6 : 2.2;
+            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "glitch" ? 1.35 : actualStyle === "anime" ? 1.65 : 2.2;
             const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
             segments = segments.map((segment, index) => {
               const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
@@ -579,7 +579,7 @@ export default function App() {
         setQualityReport(await inspectRenderedVideo(blob));
       } catch (qualityError) {
         console.warn("DRAVEX output QA failed:", qualityError);
-        setQualityReport({ duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь его вручную."], severity: "warning" });
+        setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь его вручную."], severity: "warning" });
       } finally {
         setQualityCheckBusy(false);
       }
