@@ -271,11 +271,16 @@ export default function App() {
     const target = index + direction;
     if (target < 0 || target >= mediaFiles.length) return;
     const nextFiles = [...mediaFiles];
+    const nextUrls = [...mediaUrls];
     const [moved] = nextFiles.splice(index, 1);
+    const [movedUrl] = nextUrls.splice(index, 1);
     nextFiles.splice(target, 0, moved);
+    nextUrls.splice(target, 0, movedUrl);
     clearRenderedVariants();
     setMediaFiles(nextFiles);
-    setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    // Keep each existing object URL paired with its file. Recreating URLs on
+    // every reorder leaks browser resources and can be costly on Android.
+    setMediaUrls(nextUrls);
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
@@ -287,9 +292,13 @@ export default function App() {
   const removePhoto = (index: number) => {
     if (!isImageMode) return;
     const nextFiles = mediaFiles.filter((_, fileIndex) => fileIndex !== index);
+    const removedUrl = mediaUrls[index];
+    const nextUrls = mediaUrls.filter((_, fileIndex) => fileIndex !== index);
+    if (removedUrl) URL.revokeObjectURL(removedUrl);
     clearRenderedVariants();
     setMediaFiles(nextFiles);
-    setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    // Reuse URLs for remaining files and release the removed file immediately.
+    setMediaUrls(nextUrls);
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
