@@ -1,10 +1,16 @@
 import { expect, test } from "@playwright/test";
-import { readFile, stat, unlink } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
+
+async function saveExportArtifact(sourcePath: string, fileName: string): Promise<void> {
+  const artifactDirectory = "test-results/exported-videos";
+  await mkdir(artifactDirectory, { recursive: true });
+  await copyFile(sourcePath, `${artifactDirectory}/${fileName}`);
+}
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
   await page.goto("/");
@@ -303,6 +309,7 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(10_000);
+  await saveExportArtifact(downloadedFile!, "photos-montage.webm");
 });
 
 
@@ -369,6 +376,7 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(1_000);
+  await saveExportArtifact(downloadedFile!, "source-video-montage.webm");
 });
 
 
@@ -461,5 +469,6 @@ for (const sourceDuration of [60, 300]) {
   expect(videoStream?.width).toBeGreaterThan(0);
   expect(videoStream?.height).toBeGreaterThan(0);
   expect(audioStream?.codec_name).toBe("opus");
+  await saveExportArtifact(downloadedFile!, `long-source-${sourceDuration}s.webm`);
   });
 }
