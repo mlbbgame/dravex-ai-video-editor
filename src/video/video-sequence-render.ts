@@ -524,7 +524,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const animeTransitions = [0, 3, 4, 7];
     const glitchTransitions = [0, 3, 5, 7];
     const transitionIndex = Math.max(0, cutIndex - 1);
-    const transitionType = style === "travel"
+    const transitionType = style === "travel" || effectStrength === "none"
       ? 8
       : transitionMode === "cinematic"
         ? (cutIndex % 2 === 0 ? 8 : 0)
