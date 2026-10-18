@@ -456,7 +456,7 @@ export default function App() {
     setScan({ current: 0, total: 0, time: 0 });
     try {
       setStage("analyzing");
-      setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
+      setMessage(isImageMode ? "Проверяем фотографии и ищем визуальные повторы…" : "Смотрим на смену кадров и подбираем темп…");
       let segments: Array<VideoSegment | ImageSegment>;
       let renderDuration = duration;
       let sourceVideoDuration = 0;
