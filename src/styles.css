@@ -27,7 +27,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; color: #10140c; background: var(--accent); }
 .dravex-local { display: inline-flex; align-items: center; gap: 7px; color: #a3a8ad; font-size: 10px; }
 .dravex-local > span { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.dravex-main { width: min(100%, 500px); margin: 0 auto; }
+.dravex-main { width: min(100%, 760px); margin: 0 auto; }
 .dravex-intro { margin: 26px 0 20px; }
 .dravex-intro h1 { margin: 0; font-size: clamp(29px, 7vw, 39px); line-height: 1.08; letter-spacing: -1.6px; font-weight: 850; }
 .dravex-intro h1 span { color: var(--accent); }
@@ -40,7 +40,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-upload > span:not(.dravex-upload-icon) { color: #c1c5ca; font-size: 11px; }
 .dravex-upload small { color: #81868e; font-size: 10px; }
 .dravex-preview-card { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #121417; }
-.dravex-preview { display: block; width: 100%; max-height: 340px; background: #070809; object-fit: contain; }
+.dravex-preview { display: block; width: 100%; max-height: min(58vh, 560px); min-height: 220px; background: #070809; object-fit: contain; border-radius: 14px; }
 .dravex-file-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; }
 .dravex-file-row > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .dravex-file-row strong { overflow: hidden; color: #f1f3ee; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -374,4 +374,18 @@ body {
   .dravex-track-details { flex-basis: calc(100% - 58px); }
   .dravex-track-preview { max-width: 100%; }
   .dravex-track-card > button { margin-left: 50px; min-width: 130px; }
+}
+
+
+/* Preview studio pass: use the available desktop width without sacrificing phone layouts. */
+@media (min-width: 760px) {
+  .dravex-app { padding-left: 24px; padding-right: 24px; }
+  .dravex-main { width: min(100%, 820px); }
+  .dravex-preview-card, .dravex-real-preview { border-radius: 18px; }
+  .dravex-preview { max-height: min(62vh, 620px); }
+  .dravex-variant-rail { gap: 14px; }
+  .dravex-variant { flex-basis: 176px; }
+}
+@media (max-width: 520px) {
+  .dravex-preview { min-height: 180px; max-height: 52vh; }
 }
