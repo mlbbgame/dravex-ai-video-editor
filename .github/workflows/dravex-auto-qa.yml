@@ -54,6 +54,15 @@ jobs:
             echo "No test:qa script on this revision; build check completed."
           fi
 
+      - name: Upload representative rendered videos for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dravex-rendered-samples
+          path: test-results/dravex-*-montage.webm
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
