@@ -213,6 +213,18 @@ export async function analyzeWithAIDirector(
     return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
   }
 
+  // Browser-side object detection can monopolize the main thread on low-memory
+  // phones. For longer sources, preserve full-timeline visual ranking and skip
+  // model initialization; the cloud/job-backed long-video path is a later phase.
+  if (duration > 30) {
+    return {
+      candidates: emptyCandidates,
+      detectedLabels: [],
+      modelLoaded: false,
+      note: "Для длинного видео используем ограниченный анализ движения и контраста, чтобы не зависал телефон."
+    };
+  }
+
   let detector: ObjectDetector;
   try {
     onProgress?.({ current: 0, total: 100, phase: "loading-model" });
