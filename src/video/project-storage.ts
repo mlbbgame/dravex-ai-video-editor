@@ -62,3 +62,20 @@ export async function loadLocalProject(): Promise<SavedDravexProject | null> {
     database.close();
   }
 }
+
+
+/** Remove the autosaved project when a fresh browser-tab session starts. */
+export async function clearLocalProject(): Promise<void> {
+  const database = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("projects", "readwrite");
+      transaction.objectStore("projects").delete(PROJECT_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("Не удалось очистить сохранённый проект."));
+      transaction.onabort = () => reject(transaction.error ?? new Error("Очистка проекта отменена."));
+    });
+  } finally {
+    database.close();
+  }
+}
