@@ -276,7 +276,7 @@ export default function App() {
       setError("Для стабильной работы на телефоне добавляй не более 12 видео или смешанных клипов за раз. Фотографии можно добавлять пакетами до 80.");
       return;
     }
-    if (intake.warnings.length) setMessage(intake.warnings.join(" "));
+    const intakeWarning = intake.warnings.join(" ");
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
     clearRenderedVariants();
     setMediaFiles(files);
@@ -285,7 +285,7 @@ export default function App() {
     setPreviewUrl("");
     setPreviewStatus("");
     setError("");
-    setMessage("");
+    setMessage(intakeWarning);
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
     event.target.value = "";
