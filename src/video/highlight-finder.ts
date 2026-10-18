@@ -199,9 +199,9 @@ export async function analyzeVideoForHighlights(
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
-    // Keep frame analysis bounded for mobile browsers: at most about 60 samples.
-    // A wider interval on long clips reduces seeking overhead without scanning every frame.
-    const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
+    // Keep frame analysis bounded for mobile browsers: at most about 30 samples.
+    // Long sources use wider intervals so slow seeks do not monopolize the editor.
+    const interval = Math.max(2, duration / 30, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
     let previous: Uint8ClampedArray | null = null;
