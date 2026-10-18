@@ -196,16 +196,31 @@ export async function analyzeWithAIDirector(
   }
 
   let detector: ObjectDetector;
+  const pendingDetector = getDetector((progress) => onProgress?.({ current: progress, total: 100, phase: "loading-model" }));
+  let modelTimeout = 0;
   try {
     onProgress?.({ current: 0, total: 100, phase: "loading-model" });
-    detector = await getDetector((progress) => onProgress?.({ current: progress, total: 100, phase: "loading-model" }));
+    // The detector is an enhancement, never a hard dependency for export.
+    // Avoid leaving a montage blocked indefinitely on a slow/offline model download.
+    detector = await Promise.race([
+      pendingDetector,
+      new Promise<ObjectDetector>((_, reject) => {
+        modelTimeout = window.setTimeout(
+          () => reject(new Error("Истекло время загрузки модели AI Director.")),
+          10_000
+        );
+      })
+    ]);
   } catch {
+    if (detectorPromise === pendingDetector) detectorPromise = null;
     return {
       candidates: emptyCandidates,
       detectedLabels: [],
       modelLoaded: false,
-      note: "Модель объектов недоступна офлайн или не загрузилась. Использован резервный анализ движения и контраста."
+      note: "Модель объектов не загрузилась вовремя или недоступна офлайн. Использован резервный анализ движения и контраста."
     };
+  } finally {
+    window.clearTimeout(modelTimeout);
   }
 
   const video = document.createElement("video");
