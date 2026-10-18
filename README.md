@@ -84,3 +84,8 @@ The isolated preview renderer now uses an eased Velocity speed curve and style-a
 ## Preview AI Director update (2026-10-18)
 
 The isolated preview now includes an experimental object-aware AI Director: it can attempt browser-side object detection on sampled video frames, use detected labels alongside visual motion/contrast signals when ranking highlights, and analyze short clips instead of relying only on clip duration. Object detection uses a pretrained model loaded on demand; if the model cannot load, the editor falls back to its existing visual analysis. Motion-based action cues are heuristics, not full action recognition or deep scene understanding. This update is confined to `feature/dravex-full-editor-upgrade`; the primary editor source branch `feature/dravex-camera-audio-v2` remains unchanged. Automated build and mobile-browser smoke tests passed; real Android-device video analysis and export still need hands-on verification.
+
+
+## Preview Auto QA (2026-10-18)
+
+The isolated preview branch now includes an automated browser QA workflow that builds DRAVEX, exercises a real browser-based montage/export flow, captures visual evidence, and generates a Markdown QA summary. Reports and screenshots are uploaded as GitHub Actions artifacts for 14 days. This is technical regression testing, not an automated guarantee of artistic quality; real Android-device testing and human review of the exported edit are still required. The Auto QA changes are isolated to `feature/dravex-full-editor-upgrade`; the primary editor source branch `feature/dravex-camera-audio-v2` is unchanged.
