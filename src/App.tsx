@@ -549,7 +549,7 @@ export default function App() {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
       } else if (musicUrl && musicFile && beatSync && isSequenceMode) {
-        setMessage("Музыка будет добавлена. Автоматическая подгонка склеек под бит для смешанных видео и фото появится в следующем этапе.");
+        setMessage("Музыка добавлена. Для смешанной последовательности используем безопасные длительности кадров; точная подгонка каждой склейки под бит пока доступна для отдельного видео и фотомонтажа.");
       }
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
