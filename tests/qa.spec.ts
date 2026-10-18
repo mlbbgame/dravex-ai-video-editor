@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFile, stat, unlink } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
@@ -308,6 +308,9 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(10_000);
+  // Keep a real exported sample so the team can inspect rendered frames, not just green test results.
+  await mkdir("test-results", { recursive: true });
+  await copyFile(downloadedFile!, "test-results/dravex-photo-montage.webm");
 });
 
 
@@ -374,6 +377,9 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(1_000);
+  // Preserve a short source-video export for visual review of the real renderer output.
+  await mkdir("test-results", { recursive: true });
+  await copyFile(downloadedFile!, "test-results/dravex-source-video-montage.webm");
 });
 
 
