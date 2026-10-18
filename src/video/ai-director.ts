@@ -195,6 +195,18 @@ export async function analyzeWithAIDirector(
     return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
   }
 
+  // Local WASM object detection may stall the UI on memory-constrained phones.
+  // Long clips already have a bounded full-timeline visual scan; keep them exportable
+  // by ranking those candidates without loading the heavier local model.
+  if (duration >= 30) {
+    return {
+      candidates: emptyCandidates,
+      detectedLabels: [],
+      modelLoaded: false,
+      note: "Для длинного видео использован ограниченный анализ движения и контраста, чтобы не перегружать телефон."
+    };
+  }
+
   let detector: ObjectDetector;
   const pendingDetector = getDetector((progress) => onProgress?.({ current: progress, total: 100, phase: "loading-model" }));
   let modelTimeout = 0;
