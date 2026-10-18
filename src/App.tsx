@@ -477,7 +477,10 @@ export default function App() {
           : 2.35;
         renderDuration = Math.min(duration, Math.max(4, photoCount * shotSeconds));
         setMessage("Проверяем визуальные повторы, не меняя порядок фотографий…");
-        const imageAnalysis = await analyzeImageSequence(mediaUrls);
+        const imageAnalysis = await analyzeImageSequence(mediaUrls, (current, total) => {
+          setScan({ current, total, time: 0 });
+          setMessage(`Проверяем фотографии: ${current} из ${total}…`);
+        });
         const rhythm = actualStyle === "velocity" ? [0.72, 1.04, 1.2, 0.84, 1.1]
           : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
           : actualStyle === "travel" ? [1.08, 0.96, 1.12, 0.94, 1.04]
