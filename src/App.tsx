@@ -172,14 +172,18 @@ export default function App() {
     let isFreshSession = false;
     try {
       isFreshSession = !window.sessionStorage.getItem(sessionKey);
-      if (isFreshSession) window.sessionStorage.setItem(sessionKey, "active");
     } catch {
       // If session storage is blocked, prefer a clean editor rather than restoring stale media.
       isFreshSession = true;
     }
 
     const projectPromise = isFreshSession
-      ? clearLocalProject().then(() => null)
+      ? clearLocalProject().then(() => {
+          // Mark the tab active only after stale project data is definitely cleared.
+          // If the page reloads while clearing, the next load will safely clear again.
+          try { window.sessionStorage.setItem(sessionKey, "active"); } catch { /* best effort */ }
+          return null;
+        })
       : loadLocalProject();
 
     void projectPromise.then((project) => {
