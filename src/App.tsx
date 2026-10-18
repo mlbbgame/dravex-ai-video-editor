@@ -5,7 +5,7 @@ import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type
 import { analyzeWithAIDirector } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
-import { loadLocalProject, saveLocalProject } from "./video/project-storage";
+import { clearLocalProject, loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
@@ -161,11 +161,26 @@ export default function App() {
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => () => { renderedVariantUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
-  // Restore the last project automatically so a refresh or returning from Music
-  // does not force the user to import media and configure the edit again.
+  // Keep a project during the current tab session (including refreshes), but
+  // start from a clean editor when the site is opened in a fresh tab session.
+  // sessionStorage survives reloads and is cleared when the tab is closed.
   useEffect(() => {
     let cancelled = false;
-    void loadLocalProject().then((project) => {
+    const sessionKey = "dravex-active-editor-session-v1";
+    let isFreshSession = false;
+    try {
+      isFreshSession = !window.sessionStorage.getItem(sessionKey);
+      if (isFreshSession) window.sessionStorage.setItem(sessionKey, "active");
+    } catch {
+      // If session storage is blocked, prefer a clean editor rather than restoring stale media.
+      isFreshSession = true;
+    }
+
+    const projectPromise = isFreshSession
+      ? clearLocalProject().then(() => null)
+      : loadLocalProject();
+
+    void projectPromise.then((project) => {
       if (cancelled) return;
       if (project?.files?.length) {
         setMediaFiles(project.files);
@@ -181,7 +196,7 @@ export default function App() {
         setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
         setTransitionMode(project.transitionMode ?? "auto");
         setStage("ready");
-        setProjectMessage("Последний проект восстановлен автоматически.");
+        setProjectMessage("Проект восстановлен в рамках текущего сеанса.");
       }
     }).catch(() => {
       // Keep the editor usable even if this browser blocks local storage.
@@ -191,8 +206,7 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Save changes quietly in the background. Empty media is also saved after the
-  // user clears the editor, preventing an older project from unexpectedly returning.
+  // Save changes quietly during this tab session. A fresh session clears this copy.
   useEffect(() => {
     if (!projectHydrated) return;
     const timeout = window.setTimeout(() => {
