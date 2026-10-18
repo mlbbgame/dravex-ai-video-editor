@@ -398,5 +398,11 @@ test("mixed video and photo sequence preserves the selected order and exports a 
   expect(playback.duration).toBeLessThanOrEqual(5.5);
   expect(playback.width).toBeGreaterThan(0);
   expect(playback.height).toBeGreaterThan(0);
+
+  // Removing either kind of item from a mixed queue must work, not silently no-op.
+  await page.getByRole("button", { name: "Удалить медиафайл 1" }).click();
+  await expect(page.locator(".dravex-image-thumb")).toHaveCount(1);
+  await expect(page.getByText(/1 фотографий добавлено/i)).toBeVisible();
+  await expect(result.getByText("Видео готово!")).toHaveCount(0);
 });
 
