@@ -52,6 +52,20 @@ test("director profiles express distinct goals and effect preferences", () => {
   expect(directorProfiles["cinematic-travel"].pacing).toBe("measured");
   expect(directorProfiles["cinematic-travel"].preferredTransitions).toContain("smooth");
   expect(directorProfiles["cinematic-travel"].eventPriorities).toContain("landscape");
+
+  expect(directorProfiles["nature-wildlife"].eventPriorities).toContain("waterfall-flow");
+  expect(directorProfiles["nature-wildlife"].eventPriorities).toContain("macro-detail");
+  expect(directorProfiles["nature-wildlife"].preferredEffects).toContain("color-grade");
+
+  expect(directorProfiles["food-cooking"].eventPriorities).toContain("chopping");
+  expect(directorProfiles["food-cooking"].eventPriorities).toContain("finished-dish");
+
+  expect(directorProfiles["people-everyday"].eventPriorities).toContain("face-visible");
+  expect(directorProfiles["people-everyday"].eventPriorities).toContain("pet-behavior");
+  expect(directorProfiles["people-everyday"].preferredEffects).not.toContain("flash");
+
+  expect(directorProfiles["product-diy"].eventPriorities).toContain("tools-materials");
+  expect(directorProfiles["product-diy"].eventPriorities).toContain("final-result");
 });
 
 test("valid director plan passes source-bound validation", () => {
