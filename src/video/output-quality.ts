@@ -37,9 +37,12 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
+  // Register listeners before assigning src; cached/local blobs can emit metadata
+  // almost immediately, otherwise the inspection may wait 12 seconds and fail.
+  const metadataReady = waitForMediaEvent(video, "loadedmetadata");
   video.src = url;
   try {
-    await waitForMediaEvent(video, "loadedmetadata");
+    await metadataReady;
     if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
       throw new Error("В экспортированном видео отсутствуют корректные метаданные.");
     }
