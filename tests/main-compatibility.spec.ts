@@ -24,11 +24,11 @@ function photoFixture(): Buffer {
   );
 }
 
-async function importMixedMedia(page: import("@playwright/test").Page) {
+async function importMixedMedia(page: import("@playwright/test").Page, emptyMime = false) {
   const sourceVideo = await makeVideoFixture("dravex-main-compat-video");
   await page.locator('input[accept="video/*,audio/*,image/*"]').setInputFiles([
-    { name: "compat-video.webm", mimeType: "video/webm", buffer: sourceVideo },
-    { name: "compat-photo.svg", mimeType: "image/svg+xml", buffer: photoFixture() },
+    { name: "compat-video.webm", mimeType: emptyMime ? "" : "video/webm", buffer: sourceVideo },
+    { name: "compat-photo.svg", mimeType: emptyMime ? "" : "image/svg+xml", buffer: photoFixture() },
   ]);
 }
 
@@ -48,7 +48,7 @@ test("main app opens and mixed media can be imported, reordered and removed", as
   await expect(page.getByRole("button", { name: "AI Creator", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Manual Studio", exact: true })).toBeVisible();
 
-  await importMixedMedia(page);
+  await importMixedMedia(page, true); // simulate Android pickers that provide no MIME type
   const rows = page.locator(".clip-row");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("compat-video.webm");
