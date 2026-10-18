@@ -19,7 +19,7 @@ export type AudioSegment = {
   volume?: number;
 };
 
-export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
+export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story" | "travel";
 
 export type SequenceSegment = VideoSegment | ImageSegment;
 
@@ -46,8 +46,9 @@ export function getCameraMotionProfile(
   const base = style === "velocity" ? { zoom: 0.145, pan: 0.072 }
     : style === "anime" ? { zoom: 0.12, pan: 0.055 }
       : style === "glitch" ? { zoom: 0.125, pan: 0.058 }
-        : style === "story" ? { zoom: 0.072, pan: 0.032 }
-          : { zoom: 0.115, pan: 0.052 };
+        : style === "travel" ? { zoom: 0.045, pan: 0.018 }
+          : style === "story" ? { zoom: 0.072, pan: 0.032 }
+            : { zoom: 0.115, pan: 0.052 };
   return { zoom: base.zoom * scale, pan: base.pan * scale };
 }
 
@@ -512,7 +513,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionDuration = style === "travel" ? 0.82 : transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
@@ -527,7 +528,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       ? (cutIndex % 2 === 0 ? 8 : 0)
       : transitionMode === "action"
         ? actionTransitions[transitionIndex % actionTransitions.length]
-        : style === "cinematic" || style === "story"
+        : style === "cinematic" || style === "story" || style === "travel"
           ? calmTransitions[transitionIndex % calmTransitions.length]
           : style === "glitch"
             ? glitchTransitions[transitionIndex % glitchTransitions.length]
@@ -564,7 +565,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
     const panX = Math.cos(panPhase) * width * panAmount * pathX;
     const panY = Math.cos(panPhase) * height * panAmount * pathY;
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
+    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" && style !== "travel" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
@@ -590,7 +591,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
 
     context.save();
-    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
+    context.filter = suppressEffects ? "none" : style === "travel" ? "contrast(1.02) saturate(1.02) brightness(1.01)" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
@@ -682,12 +683,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
       shade.addColorStop(0, "rgba(5,7,12,0)");
-      shade.addColorStop(1, "rgba(5,7,12,0.18)");
+      shade.addColorStop(1, style === "travel" ? "rgba(5,7,12,0.07)" : "rgba(5,7,12,0.18)");
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
+    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story" && style !== "travel") {
       const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
@@ -736,7 +737,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
-      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
+      vignette.addColorStop(1, style === "travel" ? "rgba(0,0,0,0.04)" : style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
     }
