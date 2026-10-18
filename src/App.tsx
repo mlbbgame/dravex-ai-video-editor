@@ -220,14 +220,22 @@ export default function App() {
     // Reset immediately so choosing the same file again still fires a change event.
     event.target.value = "";
     if (!files.length) return;
+    const emptyFiles = files.filter((file) => file.size === 0);
+    if (emptyFiles.length) {
+      setError(`Файл ${emptyFiles[0].name} пустой или не был передан браузеру. Проверь исходный файл и выбери его ещё раз.`);
+      return;
+    }
     const hasInvalid = files.some((file) => getMediaKind(file) === "unknown");
     const videos = files.filter((file) => getMediaKind(file) === "video");
     const images = files.filter((file) => getMediaKind(file) === "image");
     if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
       setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
-      event.target.value = "";
       return;
     }
+    // Large files are allowed: rejecting them here would make Android uploads
+    // appear broken. Warn about browser memory limits and select safer defaults.
+    const totalBytes = files.reduce((total, file) => total + file.size, 0);
+    const largeFiles = files.filter((file) => file.size >= 100 * 1024 * 1024);
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
     clearRenderedVariants();
     setMediaFiles(files);
@@ -236,7 +244,12 @@ export default function App() {
     setPreviewUrl("");
     setPreviewStatus("");
     setError("");
-    setMessage("");
+    if (largeFiles.length) {
+      setQuality("720p");
+      setMessage(`Материал загружен: ${files.length} файл(ов), ${(totalBytes / (1024 * 1024)).toFixed(1)} МБ. Большой файл не отклонён; для Android выбрано более безопасное качество 720p. Держи вкладку открытой при анализе и экспорте.`);
+    } else {
+      setMessage(`Материал загружен: ${files.length} файл(ов), ${(totalBytes / (1024 * 1024)).toFixed(1)} МБ. Можно запускать монтаж.`);
+    }
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
     event.target.value = "";
