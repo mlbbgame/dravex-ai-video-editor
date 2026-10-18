@@ -5,7 +5,7 @@
  * upload media, or render video. Keep it independent of any model vendor.
  */
 
-export type DirectorProfileId = "aggressive-car" | "cinematic-travel";
+export type DirectorProfileId = "aggressive-car" | "cinematic-travel" | "nature-wildlife" | "food-cooking" | "people-everyday" | "product-diy";
 export type DirectorVariantId = "hype" | "cinematic" | "emotion" | "signature";
 export type DirectorTransition = "cut" | "short-impact" | "smooth" | "match-motion";
 export type DirectorEffect = "speed-ramp" | "motion-blur" | "flash" | "camera-motion" | "color-grade";
@@ -74,6 +74,46 @@ export const directorProfiles: Record<DirectorProfileId, DirectorProfile> = {
     preferredTransitions: ["cut", "smooth", "match-motion"],
     preferredEffects: ["camera-motion", "color-grade"],
     eventPriorities: ["establishing-shot", "landscape", "travel-motion", "location-change", "expressive-detail"],
+    pacing: "measured",
+  },
+  "nature-wildlife": {
+    id: "nature-wildlife",
+    title: "Nature & Wildlife",
+    summary: "Calm, natural edits for landscapes, waterfalls, forests, clouds, birds, animals, and macro details.",
+    preferredMusic: ["ambient", "nature-atmosphere", "gentle-cinematic"],
+    preferredTransitions: ["cut", "smooth", "match-motion"],
+    preferredEffects: ["camera-motion", "color-grade"],
+    eventPriorities: ["landscape-establishing-shot", "waterfall-flow", "cloud-movement", "bird-flight", "animal-behavior", "macro-detail", "natural-light", "quiet-moment"],
+    pacing: "measured",
+  },
+  "food-cooking": {
+    id: "food-cooking",
+    title: "Food & Cooking",
+    summary: "Understand cooking as a sequence and connect preparation, cooking, serving, appetizing close-ups, and the finished dish.",
+    preferredMusic: ["warm-acoustic", "light-groove", "upbeat-cooking"],
+    preferredTransitions: ["cut", "smooth", "match-motion"],
+    preferredEffects: ["camera-motion", "color-grade"],
+    eventPriorities: ["ingredients-overview", "chopping", "mixing", "seasoning", "frying", "baking", "plating", "texture-close-up", "steam", "finished-dish"],
+    pacing: "measured",
+  },
+  "people-everyday": {
+    id: "people-everyday",
+    title: "People, Pets & Everyday Life",
+    summary: "Preserve faces, emotions, interactions, and meaningful moments with careful framing and restrained effects.",
+    preferredMusic: ["warm-acoustic", "gentle-cinematic", "light-ambient"],
+    preferredTransitions: ["cut", "smooth", "match-motion"],
+    preferredEffects: ["color-grade"],
+    eventPriorities: ["face-visible", "smile", "emotion-change", "eye-contact", "person-interaction", "pet-behavior", "family-moment", "important-action", "clean-ending"],
+    pacing: "measured",
+  },
+  "product-diy": {
+    id: "product-diy",
+    title: "Products, Tutorials & DIY",
+    summary: "Explain a process in order: overview, tools and materials, close-up details, each step, and the final result.",
+    preferredMusic: ["light-electronic", "focused-ambient", "upbeat-tutorial"],
+    preferredTransitions: ["cut", "smooth", "match-motion"],
+    preferredEffects: ["camera-motion", "color-grade"],
+    eventPriorities: ["finished-result-teaser", "overview-shot", "tools-materials", "detail-close-up", "step-start", "step-completion", "before-after", "final-result"],
     pacing: "measured",
   },
 };
