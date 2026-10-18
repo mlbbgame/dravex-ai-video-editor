@@ -56,3 +56,12 @@ Use a small backend service and private object storage before adding full render
 ## Current verification
 
 The provider boundary is tested with a fake adapter only. Passing these tests proves input/output validation, **not** that AI recognition works. Build and mobile browser QA passed for commit `1e44dd29a6b7a25bc210418d9ab89ca5e9d6803d`; the new provider-contract changes must pass CI before this milestone is considered verified.
+
+
+## Local visual analysis improvements (test branch)
+
+- Short video clips are now sampled from decoded frames instead of being assigned highlights from duration alone. Sampling stays sparse and bounded for mobile browsers; if decoding fails, the editor keeps its safe evenly spaced fallback.
+- Photo montage performs a low-resolution, browser-local comparison of adjacent images. Near-duplicate neighbours receive slightly less screen time, while the user's photo order remains unchanged.
+- This comparison detects visual similarity only. It does not identify objects, people, places, speech, or story meaning and must not be presented as semantic AI.
+- The export inspector registers metadata listeners before assigning the local Blob URL to avoid missing fast cached-media events.
+- All of this runs locally; no photos or videos are uploaded to a DRAVEX server.
