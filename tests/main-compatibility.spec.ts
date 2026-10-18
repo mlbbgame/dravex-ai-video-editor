@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFile, stat, unlink } from "node:fs/promises";
+import { getMediaKind } from "../src/video/media-kind";
 
 async function makeVideoFixture(name: string): Promise<Buffer> {
   const path = `/tmp/${name}-${process.pid}.webm`;
@@ -30,6 +31,15 @@ async function importMixedMedia(page: import("@playwright/test").Page) {
     { name: "compat-photo.svg", mimeType: "image/svg+xml", buffer: photoFixture() },
   ]);
 }
+
+test("media type detection tolerates empty or incorrect Android MIME metadata", () => {
+  expect(getMediaKind({ name: "clip.mp4", type: "" })).toBe("video");
+  expect(getMediaKind({ name: "clip.webm", type: "application/octet-stream" })).toBe("video");
+  expect(getMediaKind({ name: "photo.jpg", type: "" })).toBe("image");
+  expect(getMediaKind({ name: "song.mp3", type: "" })).toBe("audio");
+  expect(getMediaKind({ name: "notes.pdf", type: "" })).toBe("unknown");
+  expect(getMediaKind({ name: "clip.mp4", type: "image/jpeg" })).toBe("video");
+});
 
 test("main app opens and mixed media can be imported, reordered and removed", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
