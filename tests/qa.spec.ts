@@ -209,6 +209,33 @@ test("camera motion profiles provide visible but controlled movement", () => {
   expect(none.pan).toBe(0);
 });
 
+test("reordering and removing photos reuses the correct local object URLs", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const makeSvg = (fill: string) => Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="200"><rect width="120" height="200" fill="${fill}"/></svg>`,
+    "utf8",
+  );
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles([
+    { name: "dravex-red.svg", mimeType: "image/svg+xml", buffer: makeSvg("#ff0000") },
+    { name: "dravex-blue.svg", mimeType: "image/svg+xml", buffer: makeSvg("#0000ff") },
+  ]);
+  const thumbnails = page.locator(".dravex-image-thumb img");
+  await expect(thumbnails).toHaveCount(2);
+  await expect.poll(async () => thumbnails.nth(0).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(async () => thumbnails.nth(1).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  const originalUrls = await thumbnails.evaluateAll((imgs: HTMLImageElement[]) => imgs.map((img) => img.src));
+
+  await page.getByRole("button", { name: "Переместить фото 2 выше" }).click();
+  await expect(thumbnails.nth(0)).toHaveAttribute("src", originalUrls[1]);
+  await expect(thumbnails.nth(1)).toHaveAttribute("src", originalUrls[0]);
+
+  await page.getByRole("button", { name: "Удалить фото 1" }).click();
+  await expect(thumbnails).toHaveCount(1);
+  await expect(thumbnails.nth(0)).toHaveAttribute("src", originalUrls[0]);
+  await expect.poll(async () => thumbnails.nth(0).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+});
+
 test("one-button photo auto-montage produces a playable WebM that can be downloaded", async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
