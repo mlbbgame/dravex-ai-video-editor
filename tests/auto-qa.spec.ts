@@ -69,7 +69,7 @@ test("DRAVEX Auto QA captures a real rendered output and a compact evidence repo
   const downloadPromise = page.waitForEvent("download");
   await result.getByRole("link", { name: "Сохранить видео" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/\\.webm$/);
+  expect(download.suggestedFilename()).toMatch(/\.webm$/);
   expect(await download.failure()).toBeNull();
   const filePath = await download.path();
   expect(filePath).toBeTruthy();
