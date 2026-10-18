@@ -15,8 +15,9 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
 });
 
 
-test("saved local projects are not restored automatically on page startup", async ({ page }) => {
+test("same-tab reload restores a project but a fresh tab session starts clean", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
   await page.evaluate(async () => {
     const request = indexedDB.open("dravex-projects", 1);
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -51,10 +52,32 @@ test("saved local projects are not restored automatically on page startup", asyn
     database.close();
   });
 
+  // Reloading the same tab is part of the current session, so its project must return.
+  await page.reload();
+  await expect(page.locator(".dravex-image-grid")).toHaveCount(1);
+  await expect(page.getByText(/1 фотографий добавлено/)).toBeVisible();
+
+  // Clearing sessionStorage simulates opening the site in a genuinely fresh tab.
+  await page.evaluate(() => window.sessionStorage.clear());
   await page.reload();
   await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
   await expect(page.locator(".dravex-image-grid")).toHaveCount(0);
-  await expect(page.getByText("Найден сохранённый проект на этом устройстве.")).toHaveCount(0);
+  const storedFileCount = await page.evaluate(async () => {
+    const request = indexedDB.open("dravex-projects", 1);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const project = await new Promise<{ files?: File[] } | undefined>((resolve, reject) => {
+      const transaction = database.transaction("projects", "readonly");
+      const getRequest = transaction.objectStore("projects").get("last-project");
+      getRequest.onsuccess = () => resolve(getRequest.result);
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+    database.close();
+    return project?.files?.length ?? 0;
+  });
+  expect(storedFileCount).toBe(0);
 });
 
 test("choosing a montage style highlights exactly one matching variant", async ({ page }) => {
@@ -218,7 +241,7 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
 
   // The app creates a short real preview after import. Wait for that render to
   // finish before triggering the full montage, because the phone pipeline is serialized.
-  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
@@ -283,7 +306,7 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   });
 
   await expect(page.locator("video.dravex-preview")).toBeVisible();
-  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
@@ -360,7 +383,7 @@ for (const sourceDuration of [60, 300]) {
 
   await unlink(fixturePath);
   await expect(page.locator("video.dravex-preview")).toBeVisible();
-  await expect(page.getByText(/Предварительный просмотр готов:/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
