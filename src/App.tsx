@@ -48,7 +48,12 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
-  const ranked = [...candidates].sort((a, b) => b.score - a.score);
+  const styleScore = (moment: HighlightMoment) => {
+    // Calm edits should favour stable, readable shots instead of blindly chasing motion.
+    const motionPenalty = style === "travel" ? 0.62 : style === "story" ? 0.4 : style === "cinematic" ? 0.2 : 0;
+    return moment.score - Math.max(0, moment.motion) * motionPenalty;
+  };
+  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
   const selected: HighlightMoment[] = [];
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
@@ -407,8 +412,7 @@ export default function App() {
           aspectRatio,
           quality: "preview",
           style: previewStyle,
-          effectStrength: effectStrength,
-          suppressEffects: effectStrength === "none",
+          effectStrength: variant.strength,
           transitionMode: variant.transition,
           suppressAudio: !audioTracks.length,
           targetDurationSeconds: previewDuration,
