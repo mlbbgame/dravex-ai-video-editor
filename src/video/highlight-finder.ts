@@ -161,7 +161,7 @@ function normalizeMotionScore(motion: number, contrast: number, saturation: numb
 export async function analyzeVideoForHighlights(
   url: string,
   onProgress?: (progress: HighlightProgress) => void
-): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[] }> {
+): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[]; semanticAvailable: boolean }> {
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
@@ -278,7 +278,7 @@ export async function analyzeVideoForHighlights(
         .sort((a, b) => a.time - b.time);
     }
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
-    return { duration, samples, candidates };
+    return { duration, samples, candidates, semanticAvailable: Boolean(detector) };
   } finally {
     video.pause();
     video.removeAttribute("src");
