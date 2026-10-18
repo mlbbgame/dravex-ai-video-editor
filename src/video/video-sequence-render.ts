@@ -567,7 +567,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
     const panX = Math.cos(panPhase) * width * panAmount * pathX;
     const panY = Math.cos(panPhase) * height * panAmount * pathY;
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" && style !== "travel" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
+    const shake = !suppressEffects && effectStrength !== "none" && !suppressShake && cutProgress < 0.22 && style !== "story" && style !== "travel" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
@@ -722,7 +722,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
-    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
+    if (!suppressEffects && effectStrength !== "none" && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
       const streakAlpha = (1 - cutProgress / 0.28) * 0.27 * strengthScale;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
@@ -736,7 +736,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       }
       context.restore();
     }
-    if (!suppressEffects) {
+    if (!suppressEffects && effectStrength !== "none") {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
       vignette.addColorStop(1, style === "travel" ? "rgba(0,0,0,0.04)" : style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
