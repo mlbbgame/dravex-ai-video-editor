@@ -414,31 +414,50 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // segment order stable in the resulting timeline.
   const loaded: LoadedSegment[] = new Array(segments.length);
   let nextSegmentIndex = 0;
+  let loadError: unknown = null;
   const loaderCount = Math.min(2, segments.length);
   await Promise.all(Array.from({ length: loaderCount }, async () => {
-    while (nextSegmentIndex < segments.length) {
+    while (nextSegmentIndex < segments.length && !loadError) {
       const index = nextSegmentIndex;
       nextSegmentIndex += 1;
       const segment = segments[index];
-      if (segment.kind === "image") {
-        const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
-        loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
-        continue;
+      try {
+        if (segment.kind === "image") {
+          const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
+          loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+          continue;
+        }
+        const videoSegment = segment as VideoSegment;
+        let pendingVideo = videoCache.get(videoSegment.url);
+        if (!pendingVideo) {
+          pendingVideo = loadVideo(videoSegment);
+          videoCache.set(videoSegment.url, pendingVideo);
+        }
+        const video = await pendingVideo;
+        if (suppressAudio) video.muted = true;
+        const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
+        const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
+        const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
+        loaded[index] = { kind: "video", name: segment.name, video, start, end, duration: end - start };
+      } catch (error) {
+        loadError ??= error;
       }
-      const videoSegment = segment as VideoSegment;
-      let pendingVideo = videoCache.get(videoSegment.url);
-      if (!pendingVideo) {
-        pendingVideo = loadVideo(videoSegment);
-        videoCache.set(videoSegment.url, pendingVideo);
-      }
-      const video = await pendingVideo;
-      if (suppressAudio) video.muted = true;
-      const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
-      const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
-      const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
-      loaded[index] = { kind: "video", name: segment.name, video, start, end, duration: end - start };
     }
   }));
+  if (loadError) {
+    // A failed file must not leave already-decoded source media alive in the
+    // background after the UI has reported the export error.
+    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
+      image.width = 1;
+      image.height = 1;
+    });
+    throw loadError instanceof Error ? loadError : new Error("Не удалось подготовить исходные файлы для монтажа.");
+  }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
   // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
