@@ -23,21 +23,28 @@ export function calculateVisualSimilarity(first: number[], second: number[]): nu
 async function readImageSignature(url: string): Promise<number[]> {
   const image = new Image();
   image.decoding = "async";
+  let timeout = 0;
+  let resolveLoad: (() => void) | undefined;
+  let rejectLoad: ((error: Error) => void) | undefined;
   const loaded = new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error("Image inspection timed out.")), 10000);
-    image.onload = () => {
-      window.clearTimeout(timeout);
-      resolve();
-    };
-    image.onerror = () => {
-      window.clearTimeout(timeout);
-      reject(new Error("Image could not be decoded for inspection."));
-    };
+    resolveLoad = resolve;
+    rejectLoad = reject;
+    timeout = window.setTimeout(() => reject(new Error("Image inspection timed out.")), 10000);
   });
+  image.onload = () => {
+    window.clearTimeout(timeout);
+    resolveLoad?.();
+  };
+  image.onerror = () => {
+    window.clearTimeout(timeout);
+    rejectLoad?.(new Error("Image could not be decoded for inspection."));
+  };
   image.src = url;
-  if (!image.complete || image.naturalWidth <= 0) await loaded;
-  else {
-    // Cached local object URLs may be complete before a listener would normally fire.
+  if (image.complete && image.naturalWidth > 0) {
+    window.clearTimeout(timeout);
+    resolveLoad?.();
+  } else {
+    await loaded;
   }
 
   const canvas = document.createElement("canvas");
