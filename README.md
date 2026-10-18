@@ -63,3 +63,10 @@ The self-introduction studio creates a short, six-scene animated presentation ab
 ## Persistent learning memory (experimental)
 
 The Reference Lab can store locally observed pacing profiles in browser `localStorage` across visits, combine repeated samples by pace, and record explicit helpful / not-helpful feedback. Positive feedback can guide which automatic highlight variant is preselected in later sessions. This is a small transparent heuristic feedback loop, not neural-network training, not cloud synchronization, and not autonomous discovery of TikTok/YouTube media. The current browser-only app cannot read frames or audio inside cross-origin platform embeds. Automatic web research and full link-based audiovisual analysis require a permitted media source and/or a backend integration; the app must not claim these steps ran when they did not.
+
+
+## Preview editor update (2026-10-18)
+
+The isolated GitHub Pages preview at `/preview/` is being rebuilt from `feature/dravex-full-editor-upgrade`. Recent preview-only improvements include a wider editor workspace, a larger source-video preview, a smooth playback-speed ramp for Velocity edits, and music-beat-aware cut timing for mixed photo/video sequences when beat detection is reliable. These changes do not alter the primary app source branch (`feature/dravex-camera-audio-v2`).
+
+The preview is still an evolving browser-based editor: semantic scene understanding by a true AI model, a full multi-track timeline, MP4 encoding, and real-device Android export validation remain separate work items.
