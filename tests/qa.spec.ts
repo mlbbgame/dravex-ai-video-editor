@@ -80,6 +80,30 @@ test("same-tab reload restores a project but a fresh tab session starts clean", 
   expect(storedFileCount).toBe(0);
 });
 
+test("browser Back from Music returns to the current editor without losing media", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="480"><rect width="320" height="480" fill="#243b53"/><circle cx="160" cy="180" r="90" fill="#d9f99d"/></svg>',
+    "utf8",
+  );
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles({
+    name: "back-navigation-test.svg",
+    mimeType: "image/svg+xml",
+    buffer: svg,
+  });
+  await expect(page.locator(".dravex-photo-preview")).toBeVisible();
+
+  const tabs = page.getByRole("navigation", { name: "Разделы DRAVEX" });
+  await tabs.getByRole("button", { name: "Музыка" }).click();
+  await expect(page.getByRole("heading", { name: /Твоя музыка/i })).toBeVisible();
+  await page.goBack();
+
+  await expect(tabs.getByRole("button", { name: "Монтаж" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".dravex-photo-preview")).toBeVisible();
+  await expect(page.locator(".dravex-image-grid .dravex-image-thumb")).toHaveCount(1);
+});
+
 test("choosing a montage style highlights exactly one matching variant", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
