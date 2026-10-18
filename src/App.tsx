@@ -442,6 +442,7 @@ export default function App() {
       let renderDuration = duration;
       let sourceVideoDuration = 0;
       let analysisFallback = false;
+      let directorSummary = "";
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
       if (isSequenceMode) {
         actualStyle = style === "auto" ? "cinematic" : actualStyle;
