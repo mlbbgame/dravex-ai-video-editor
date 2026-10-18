@@ -82,8 +82,7 @@ test("main renderer exports a playable WebM from a video plus a still image", as
   expect(fileStats.size).toBeGreaterThan(1_000);
 
   const probe = JSON.parse(execFileSync("ffprobe", [
-    "-v", "error", "-show_entries", "format=duration",
-    "-show_entries", "stream=codec_type,codec_name,width,height",
+    "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
     "-of", "json", outputPath!
   ], { encoding: "utf8" }));
   expect(probe.streams.some((stream: { codec_type: string }) => stream.codec_type === "video")).toBe(true);
