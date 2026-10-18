@@ -1,3 +1,6 @@
+import { getExportProfile, chooseSupportedWebmMimeType } from "./export-profile";
+import { validateEditTimeline, type EditTimeline, type TimelineSource } from "./timeline-contract";
+
 export type VideoSegment = {
   kind?: "video";
   name: string;
@@ -302,14 +305,8 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
 }
 
 const dimensionsFor = (aspectRatio: string, quality = "720p") => {
-  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
-  let base: { width: number; height: number };
-  if (quality === "preview") base = aspectRatio === "16:9" ? { width: 480, height: 270 } : aspectRatio === "1:1" ? { width: 360, height: 360 } : aspectRatio === "4:5" ? { width: 360, height: 450 } : { width: 360, height: 640 };
-  else if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
-  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
-  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
-  else base = { width: 720, height: 1280 };
-  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
+  const profile = getExportProfile(aspectRatio, quality);
+  return { width: profile.width, height: profile.height };
 };
 
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
@@ -398,7 +395,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
-  const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/webm;codecs=vp9"].find((type) => MediaRecorder.isTypeSupported(type));
+  const mimeType = chooseSupportedWebmMimeType((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
@@ -443,6 +440,57 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     audio: await loadAudio(segment)
   })));
 
+  // Validate the actual, metadata-resolved edit before allocating the recording canvas.
+  // This catches impossible trims, timeline gaps and audio bounds before a blank export can start.
+  const timelineSources: TimelineSource[] = loaded.map((item, index) => ({
+    id: `visual-source-${index + 1}`,
+    kind: item.kind,
+    ...(item.kind === "video" ? { duration: item.video.duration } : {}),
+  }));
+  let timelineCursor = 0;
+  const timelineClips: EditTimeline["clips"] = loaded.map((item, index) => {
+    const timelineStart = timelineCursor;
+    timelineCursor += item.duration;
+    return {
+      id: `visual-clip-${index + 1}`,
+      sourceId: `visual-source-${index + 1}`,
+      kind: item.kind,
+      timelineStart,
+      timelineEnd: timelineCursor,
+      ...(item.kind === "video" ? { sourceRange: { start: item.start, end: item.end } } : {}),
+      playbackRate: 1,
+    };
+  });
+  const timelineAudioTracks: EditTimeline["audioTracks"] = loadedAudio.map(({ audio, segment }, index) => {
+    const sourceId = `audio-source-${index + 1}`;
+    timelineSources.push({ id: sourceId, kind: "audio", duration: audio.duration });
+    const fade = Math.min(0.2, totalDuration / 4);
+    return {
+      id: `audio-track-${index + 1}`,
+      sourceId,
+      timelineStart: 0,
+      timelineEnd: totalDuration,
+      sourceRange: { start: 0, end: audio.duration },
+      gain: segment.volume ?? 1,
+      fadeInSeconds: fade,
+      fadeOutSeconds: fade,
+      loop: true,
+    };
+  });
+  const timeline: EditTimeline = {
+    schemaVersion: 1,
+    targetDuration: totalDuration,
+    aspectRatio: aspectRatio as EditTimeline["aspectRatio"],
+    resolution: quality as EditTimeline["resolution"],
+    frameRate: 24,
+    clips: timelineClips,
+    audioTracks: timelineAudioTracks,
+  };
+  const timelineValidation = validateEditTimeline(timeline, timelineSources);
+  if (!timelineValidation.valid) {
+    throw new Error(`Не удалось проверить монтаж перед экспортом: ${timelineValidation.errors.slice(0, 3).join(" ")}`);
+  }
+
   const { width, height } = dimensionsFor(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -450,7 +498,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not initialize the video renderer.");
 
-  const videoStream = canvas.captureStream(24);
+  const videoStream = canvas.captureStream(getExportProfile(aspectRatio, quality).frameRate);
   // Do not create an AudioContext for a no-music export. On some Android
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
@@ -494,7 +542,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
     throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
-  const bitrate = quality === "preview" ? 1_200_000 : quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
+  const bitrate = getExportProfile(aspectRatio, quality).videoBitsPerSecond;
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
   const chunks: BlobPart[] = [];
   const result = new Promise<Blob>((resolve, reject) => {
