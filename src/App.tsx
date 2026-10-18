@@ -715,7 +715,7 @@ export default function App() {
         <button type="button" className={activeTab === "music" ? "is-active" : ""} aria-pressed={activeTab === "music"} onClick={() => setActiveTab("music")}><Music2 size={17} />Музыка{musicFile && <span className="dravex-tab-dot" aria-label="Музыка выбрана" />}</button>
       </nav>
 
-      <section className="dravex-main">
+      <section className={`dravex-main ${activeTab === "editor" ? "dravex-editor-layout" : "dravex-music-layout"}`}>
         <input ref={musicInput} className="dravex-hidden" type="file" accept="audio/*" onChange={onMusicSelected} />
         {activeTab === "music" ? (
           <div className="dravex-music-studio">

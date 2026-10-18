@@ -389,3 +389,116 @@ body {
 @media (max-width: 520px) {
   .dravex-preview { min-height: 180px; max-height: 52vh; }
 }
+
+
+/* DRAVEX interface redesign v1: spacious desktop editing desk, focused mobile workflow. */
+.dravex-header { width: min(100%, 1180px); height: 72px; }
+.dravex-tabs { width: min(100%, 1180px); margin-top: 12px; }
+.dravex-editor-layout {
+  width: min(100%, 1180px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(340px, .88fr);
+  align-items: start;
+  column-gap: clamp(20px, 3vw, 38px);
+  row-gap: 14px;
+}
+.dravex-editor-layout > .dravex-intro { grid-column: 1 / -1; margin: 24px 0 8px; }
+.dravex-editor-layout > .dravex-intro h1 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -1.8px; }
+.dravex-editor-layout > .dravex-intro p { font-size: 14px; }
+.dravex-editor-layout > .dravex-upload,
+.dravex-editor-layout > .dravex-preview-card { grid-column: 1; grid-row: span 5; align-self: start; }
+.dravex-editor-layout > .dravex-upload { min-height: clamp(300px, 42vw, 540px); border-radius: 22px; }
+.dravex-editor-layout > .dravex-preview-card {
+  position: sticky;
+  top: 12px;
+  overflow: hidden;
+  border-radius: 20px;
+  border-color: #343c40;
+  background: #080a0c;
+  box-shadow: 0 22px 70px #00000040, 0 1px 0 #ffffff08 inset;
+}
+.dravex-editor-layout .dravex-preview { max-height: min(72vh, 760px); min-height: 320px; border-radius: 0; }
+.dravex-editor-layout .dravex-image-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-height: min(65vh, 640px);
+  padding: 14px;
+}
+.dravex-editor-layout .dravex-image-thumb { border-radius: 12px; }
+.dravex-editor-layout .dravex-image-thumb img,
+.dravex-editor-layout .dravex-image-thumb video { height: clamp(112px, 14vw, 190px); }
+.dravex-editor-layout .dravex-image-tools { padding: 6px; gap: 5px; }
+.dravex-editor-layout .dravex-image-tools button { width: 30px; height: 30px; }
+.dravex-editor-layout .dravex-file-row { padding: 14px 16px; }
+.dravex-editor-layout .dravex-file-row strong { font-size: 13px; }
+.dravex-editor-layout .dravex-file-row span { font-size: 11px; }
+.dravex-editor-layout > .dravex-section-title,
+.dravex-editor-layout > .dravex-variant-rail,
+.dravex-editor-layout > .dravex-real-preview,
+.dravex-editor-layout > .dravex-variant-hint,
+.dravex-editor-layout > .dravex-preview-action,
+.dravex-editor-layout > .dravex-preview-status,
+.dravex-editor-layout > .dravex-more { grid-column: 2; min-width: 0; }
+.dravex-editor-layout > .dravex-section-title { margin: 0 0 2px; align-self: end; }
+.dravex-editor-layout > .dravex-section-title h2 { font-size: 18px; letter-spacing: -.35px; }
+.dravex-editor-layout > .dravex-section-title p { font-size: 12px; }
+.dravex-editor-layout .dravex-variant-rail { gap: 10px; margin: 0; padding: 3px 2px 12px; }
+.dravex-editor-layout .dravex-variant { flex-basis: clamp(128px, 14vw, 160px); border-radius: 15px; }
+.dravex-editor-layout .dravex-variant-preview { aspect-ratio: 4 / 4.3; }
+.dravex-editor-layout .dravex-variant-copy { padding: 11px; }
+.dravex-editor-layout .dravex-variant-copy strong { font-size: 12px; }
+.dravex-editor-layout .dravex-variant-copy small { font-size: 11px; }
+.dravex-editor-layout .dravex-real-preview { margin-top: 0; }
+.dravex-editor-layout > .dravex-variant-hint { margin: 0; font-size: 11px; }
+.dravex-editor-layout .dravex-preview-action { margin-top: 0; min-height: 46px; }
+.dravex-editor-layout .dravex-more { margin-top: 0; }
+.dravex-editor-layout .dravex-more summary { min-height: 46px; font-size: 12px; }
+.dravex-editor-layout .dravex-more-content { gap: 14px; padding: 0 14px 14px; }
+.dravex-editor-layout .dravex-create { grid-column: 1 / -1; min-height: 58px; margin-top: 6px; border-radius: 15px; font-size: 15px; }
+.dravex-editor-layout > .dravex-privacy,
+.dravex-editor-layout > .dravex-progress,
+.dravex-editor-layout > .dravex-error,
+.dravex-editor-layout > .dravex-result { grid-column: 1 / -1; width: 100%; }
+.dravex-editor-layout > .dravex-privacy { margin-top: -5px; }
+.dravex-editor-layout > .dravex-result { max-width: 760px; justify-self: center; }
+.dravex-music-layout { width: min(100%, 920px); }
+.dravex-app { padding-bottom: 40px; }
+.dravex-upload, .dravex-preview-card, .dravex-more, .dravex-result { box-shadow: 0 12px 32px #00000020; }
+.dravex-upload strong { font-size: 16px; }
+.dravex-upload > span:not(.dravex-upload-icon) { font-size: 12px; }
+.dravex-create { box-shadow: 0 10px 30px #c4ff681c; }
+.dravex-create:focus-visible, .dravex-project-actions button:focus-visible, .dravex-image-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+@media (max-width: 760px) {
+  .dravex-header { height: 62px; }
+  .dravex-tabs { width: 100%; }
+  .dravex-editor-layout { display: block; }
+  .dravex-editor-layout > .dravex-intro { margin: 22px 0 16px; }
+  .dravex-editor-layout > .dravex-upload { min-height: 190px; }
+  .dravex-editor-layout > .dravex-preview-card { position: static; margin-bottom: 18px; }
+  .dravex-editor-layout .dravex-preview { max-height: min(64vh, 600px); min-height: 220px; }
+  .dravex-editor-layout .dravex-image-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); max-height: 340px; padding: 10px; gap: 8px; }
+  .dravex-editor-layout .dravex-image-thumb img,
+  .dravex-editor-layout .dravex-image-thumb video { height: 115px; }
+  .dravex-editor-layout > .dravex-section-title { margin: 24px 0 12px; }
+  .dravex-editor-layout > .dravex-variant-hint { margin: 0 0 10px; }
+  .dravex-editor-layout > .dravex-preview-action { margin-top: 4px; }
+  .dravex-editor-layout > .dravex-more { margin-top: 14px; }
+  .dravex-editor-layout > .dravex-create {
+    position: sticky;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    z-index: 5;
+    margin-top: 16px;
+    box-shadow: 0 8px 28px #0009, 0 0 0 1px #c4ff6822;
+  }
+  .dravex-editor-layout > .dravex-privacy { padding-bottom: 4px; }
+}
+@media (max-width: 420px) {
+  .dravex-editor-layout .dravex-section-title h2 { font-size: 15px; }
+  .dravex-editor-layout .dravex-variant-rail { margin-right: -1px; }
+  .dravex-editor-layout .dravex-variant { flex-basis: min(43vw, 158px); }
+}
+@media (min-width: 761px) {
+  .dravex-editor-layout > .dravex-preview-status { font-size: 11px; }
+  .dravex-editor-layout > .dravex-create { max-width: 560px; justify-self: center; width: 100%; }
+}
