@@ -184,7 +184,7 @@ export async function analyzeVideoForHighlights(
     // A wider interval on long clips reduces seeking overhead without scanning every frame.
     const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
-    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; objects: DetectedObject[] }> = [];\n    // The pretrained detector is optional and cached; a blocked CDN never blocks editing.\n    const detectorPromise = loadSemanticObjectModel();\n    let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;\n    let detectorResolved = false;\n    const detectorStride = Math.max(1, Math.ceil(total / 12));
+    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; objects: DetectedObject[] }> = [];\n    // The pretrained detector is optional and cached; a blocked CDN never blocks editing.\n    const detectorPromise = loadSemanticObjectModel();\n    let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;\n    const detectorStride = Math.max(1, Math.ceil(total / 12));
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -207,7 +207,14 @@ export async function analyzeVideoForHighlights(
         }
         motion /= pixels.length / 4;
       }
-      let objects: DetectedObject[] = [];\n      if (index % detectorStride === 0) {\n        if (!detectorResolved) { detector = await detectorPromise; detectorResolved = true; }\n        if (detector) objects = await detectFrameObjects(detector, video);\n      }\n      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
+      let objects: DetectedObject[] = [];\n      if (index % detectorStride === 0) {\n        const readiness = await Promise.race([
+          detectorPromise.then((model) => ({ ready: true as const, model })),
+          new Promise<{ ready: false; model: null }>((resolve) =>
+            window.setTimeout(() => resolve({ ready: false, model: null }), 0)
+          )
+        ]);
+        if (readiness.ready) detector = readiness.model;
+        if (detector) objects = await detectFrameObjects(detector, video);\n      }\n      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
