@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   directorProfiles,
+  suggestDirectorProfile,
   validateDirectorPlan,
   type DirectorEditPlan,
 } from "../src/video/director-contract";
@@ -66,6 +67,20 @@ test("director profiles express distinct goals and effect preferences", () => {
 
   expect(directorProfiles["product-diy"].eventPriorities).toContain("tools-materials");
   expect(directorProfiles["product-diy"].eventPriorities).toContain("final-result");
+});
+
+test("scene labels suggest the matching content profile", () => {
+  expect(suggestDirectorProfile(["waterfall-flow", "macro-detail"])).toBe("nature-wildlife");
+  expect(suggestDirectorProfile(["chopping", "finished-dish"])).toBe("food-cooking");
+  expect(suggestDirectorProfile(["face-visible", "pet-behavior"])).toBe("people-everyday");
+  expect(suggestDirectorProfile(["tools-materials", "final-result"])).toBe("product-diy");
+  expect(suggestDirectorProfile(["drift", "tire-smoke"])).toBe("aggressive-car");
+});
+
+test("unknown or ambiguous scene labels use a restrained cinematic fallback", () => {
+  expect(suggestDirectorProfile([])).toBe("cinematic-travel");
+  expect(suggestDirectorProfile(["unrecognized-event"])).toBe("cinematic-travel");
+  expect(suggestDirectorProfile(["waterfall-flow", "chopping"])).toBe("cinematic-travel");
 });
 
 test("valid director plan passes source-bound validation", () => {
