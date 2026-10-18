@@ -6,6 +6,8 @@ import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRe
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
+import { assessMediaSelection } from "./video/media-intake";
+import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -40,6 +42,45 @@ const montageVariants: MontageVariant[] = [
   { id: "pulse", title: "Beat Pulse", note: "Ритмичные склейки", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
   { id: "neon", title: "Neon Action", note: "Неон и резкий темп", style: "glitch", transition: "auto", strength: "balanced", previewClass: "neon", icon: ScanLine },
 ];
+
+function previewVariantKey(variantId: string, style: Exclude<EditStyle, "auto">): string {
+  if (variantId === "cinema" || style === "cinematic" || style === "story") return "cinema";
+  if (variantId === "pulse") return "pulse";
+  if (style === "velocity" || style === "anime" || style === "glitch" || variantId === "neon") return "velocity";
+  return "auto";
+}
+
+async function buildVariantPreviewSegments(
+  mediaFiles: File[],
+  mediaUrls: string[],
+  previewDuration: number,
+  variantId: string,
+  previewStyle: Exclude<EditStyle, "auto">,
+): Promise<Array<VideoSegment | ImageSegment>> {
+  const key = previewVariantKey(variantId, previewStyle);
+  if (mediaFiles.length === 1 && getMediaKind(mediaFiles[0]) === "video") {
+    const sourceDuration = await getVideoDuration(mediaUrls[0]).catch(() => 0);
+    const plan = planVariantPreviewCuts(sourceDuration, previewDuration, key);
+    if (plan.cuts.length) {
+      return plan.cuts.map((cut) => ({
+        name: mediaFiles[0].name,
+        url: mediaUrls[0],
+        trimStart: cut.trimStart,
+        trimEnd: cut.trimEnd,
+      }));
+    }
+  }
+
+  const previewIndices = selectVariantPreviewIndices(mediaFiles.length, key);
+  const previewCount = Math.max(1, previewIndices.length);
+  return previewIndices.map((sourceIndex) => {
+    const file = mediaFiles[sourceIndex];
+    const url = mediaUrls[sourceIndex];
+    return getMediaKind(file) === "image"
+      ? { kind: "image" as const, name: file.name, url, duration: previewDuration / previewCount }
+      : { name: file.name, url, trimStart: 0, trimEnd: previewDuration / previewCount };
+  });
+}
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
   // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
@@ -225,10 +266,17 @@ export default function App() {
       setError("Выбери только поддерживаемые видеофайлы и изображения.");
       return;
     }
-    if (files.length > 12) {
-      setError("Для стабильной работы на телефоне добавляй не более 12 клипов или фотографий за раз.");
+    const intake = assessMediaSelection(files);
+    if (!intake.valid) {
+      setError(intake.errors.join(" "));
       return;
     }
+    const photosOnly = files.every((file) => getMediaKind(file) === "image");
+    if (files.length > 12 && !photosOnly) {
+      setError("Для стабильной работы на телефоне добавляй не более 12 видео или смешанных клипов за раз. Фотографии можно добавлять пакетами до 80.");
+      return;
+    }
+    if (intake.warnings.length) setMessage(intake.warnings.join(" "));
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
     clearRenderedVariants();
     setMediaFiles(files);
@@ -373,17 +421,7 @@ export default function App() {
         const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
           ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
           : variant.style;
-        const previewCount = Math.min(mediaFiles.length, 6);
-        const previewIndices = Array.from({ length: previewCount }, (_, index) =>
-          previewCount === 1 ? 0 : Math.round(index * (mediaFiles.length - 1) / (previewCount - 1))
-        );
-        const previewSegments: Array<VideoSegment | ImageSegment> = previewIndices.map((sourceIndex) => {
-          const file = mediaFiles[sourceIndex];
-          const url = mediaUrls[sourceIndex];
-          return getMediaKind(file) === "image"
-            ? { kind: "image" as const, name: file.name, url, duration: previewDuration / previewCount }
-            : { name: file.name, url, trimStart: 0, trimEnd: previewDuration / previewCount };
-        });
+        const previewSegments = await buildVariantPreviewSegments(mediaFiles, mediaUrls, previewDuration, variant.id, previewStyle);
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
@@ -662,17 +700,7 @@ export default function App() {
       const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
         ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
         : variant.style;
-      const previewCount = Math.min(mediaFiles.length, 6);
-      const previewIndices = Array.from({ length: previewCount }, (_, index) =>
-        previewCount === 1 ? 0 : Math.round(index * (mediaFiles.length - 1) / (previewCount - 1))
-      );
-      const previewSegments: Array<VideoSegment | ImageSegment> = previewIndices.map((sourceIndex) => {
-        const file = mediaFiles[sourceIndex];
-        const url = mediaUrls[sourceIndex];
-        return getMediaKind(file) === "image"
-          ? { kind: "image" as const, name: file.name, url, duration: previewDuration / previewCount }
-          : { name: file.name, url, trimStart: 0, trimEnd: previewDuration / previewCount };
-      });
+      const previewSegments = await buildVariantPreviewSegments(mediaFiles, mediaUrls, previewDuration, variant.id, previewStyle);
       const audioTracks: AudioSegment[] = musicUrl && musicFile
         ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
         : [];
