@@ -24,10 +24,10 @@ jobs:
           ref: feature/dravex-camera-audio-v2
           path: app-source
 
-      - name: Check out isolated compatibility test build
+      - name: Check out rebuilt DRAVEX project for the preview
         uses: actions/checkout@v4
         with:
-          ref: feature/dravex-main-compatibility-audit
+          ref: feature/dravex-full-editor-upgrade
           path: preview-source
 
       - name: Configure GitHub Pages
@@ -53,15 +53,15 @@ jobs:
           mkdir -p dist
           cp -R app-source/dist/. dist/
 
-      - name: Install preview dependencies
+      - name: Install rebuilt DRAVEX dependencies
         working-directory: preview-source
         run: npm install --no-audit --no-fund
 
-      - name: Build isolated compatibility preview
+      - name: Build the rebuilt DRAVEX preview
         working-directory: preview-source
         run: npm run build -- --base=/dravex-ai-video-editor/preview/
 
-      - name: Add compatibility preview under /preview/
+      - name: Replace the old preview with the rebuilt DRAVEX project under /preview/
         run: |
           mkdir -p dist/preview
           cp -R preview-source/dist/. dist/preview/
