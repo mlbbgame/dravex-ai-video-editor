@@ -421,3 +421,8 @@ body {
 .dravex-quality-report ul { margin: 9px 0; padding-left: 17px; }
 .dravex-quality-report li + li { margin-top: 5px; }
 .dravex-quality-report .dravex-quality-note { margin: 8px 0 0; color: #858c94; }
+
+
+/* Travel Flow: calm, natural style preview with restrained color and movement. */
+.preview-travel > img, .preview-travel > video { filter: saturate(1.02) contrast(1.02) brightness(1.02); }
+.preview-travel .dravex-variant-overlay { background: linear-gradient(180deg, #e5f3df0a, transparent 48%, #06120b45); }
