@@ -1,6 +1,7 @@
 import { cloneElement, isValidElement, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { renderImageSlideshow } from "./video/local-render";
 import { renderVideoSequence } from "./video/video-sequence-render";
+import { getMediaKind } from "./video/media-kind";
 import { extractPromptDuration, generateLocalPlan, getPromptRenderPreferences, inferPromptSettings, makeOverlayTitle } from "./video/plan-generator";
 import { analyzeVideoForHighlights, buildHighlightVariants, type HighlightProgress, type HighlightVariant } from "./video/highlight-finder";
 import EvolutionEngine, { trackEvolutionEvent } from "./EvolutionEngine";
@@ -172,16 +173,17 @@ export default function App() {
 
   const addFiles = (fileList: FileList | null) => {
     if (!fileList?.length) return;
-    const accepted = Array.from(fileList).filter((file) =>
-      file.type.startsWith("video/") || file.type.startsWith("audio/") || file.type.startsWith("image/")
-    );
-    const newClips = accepted.map((file): MediaClip => ({
-      id: uid(),
-      name: file.name,
-      kind: file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "image",
-      url: URL.createObjectURL(file),
-      bytes: file.size
-    }));
+    const newClips = Array.from(fileList).flatMap((file): MediaClip[] => {
+      const kind = getMediaKind(file);
+      if (kind === "unknown") return [];
+      return [{
+        id: uid(),
+        name: file.name,
+        kind,
+        url: URL.createObjectURL(file),
+        bytes: file.size
+      }];
+    });
     setClips((current) => [...current, ...newClips]);
     if (newClips.length) trackEvolutionEvent("media_imported");
     if (!activeId && newClips[0]) setActiveId(newClips[0].id);
