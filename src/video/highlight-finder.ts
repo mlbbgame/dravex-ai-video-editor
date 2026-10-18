@@ -1,8 +1,13 @@
+import { detectFrameObjects, inferActionCue, loadSemanticObjectModel, type DetectedObject } from "./semantic-vision";
+
 export type HighlightSample = {
   time: number;
   score: number;
   motion: number;
   contrast: number;
+  objectLabels?: string[];
+  semanticScore?: number;
+  actionCue?: string;
 };
 
 export type HighlightMoment = {
@@ -12,6 +17,9 @@ export type HighlightMoment = {
   score: number;
   motion: number;
   contrast: number;
+  objectLabels?: string[];
+  semanticScore?: number;
+  actionCue?: string;
 };
 
 export type HighlightVariant = {
@@ -161,7 +169,7 @@ function frameFeatures(data: Uint8ClampedArray) {
 export async function analyzeVideoForHighlights(
   url: string,
   onProgress?: (progress: HighlightProgress) => void
-): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[] }> {
+): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[]; semanticAvailable: boolean }> {
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
@@ -174,16 +182,6 @@ export async function analyzeVideoForHighlights(
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
-    // Short clips do not need expensive frame-by-frame seeking. On Android this
-    // avoids flaky seek events while still producing a clean, evenly spaced edit.
-    if (duration <= 15) {
-      const candidates = buildQuickVideoCandidates(duration);
-      const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
-        time, score, motion, contrast
-      }));
-      onProgress?.({ current: candidates.length, total: candidates.length, time: duration });
-      return { duration, samples, candidates };
-    }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
     canvas.height = 45;
@@ -194,7 +192,12 @@ export async function analyzeVideoForHighlights(
     // A wider interval on long clips reduces seeking overhead without scanning every frame.
     const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
-    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
+    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; objects: DetectedObject[] }> = [];
+    // The pretrained detector is optional and cached; a blocked CDN never blocks editing.
+    const detectorPromise = loadSemanticObjectModel();
+    let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;
+    const detectorStride = Math.max(1, Math.ceil(total / 12));
+    const detectionFrames: Array<{ sampleIndex: number; frame: HTMLCanvasElement }> = [];
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -217,10 +220,45 @@ export async function analyzeVideoForHighlights(
         }
         motion /= pixels.length / 4;
       }
-      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation });
+      let objects: DetectedObject[] = [];
+      if (index % detectorStride === 0) {
+        const readiness = await Promise.race([
+          detectorPromise.then((model) => ({ ready: true as const, model })),
+          new Promise<{ ready: false; model: null }>((resolve) =>
+            window.setTimeout(() => resolve({ ready: false, model: null }), 0)
+          )
+        ]);
+        if (readiness.ready) detector = readiness.model;
+        if (detector) objects = await detectFrameObjects(detector, video);
+      }
+      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
+      if (index % detectorStride === 0) {
+        const snapshot = document.createElement("canvas");
+        snapshot.width = canvas.width;
+        snapshot.height = canvas.height;
+        const snapshotContext = snapshot.getContext("2d");
+        snapshotContext?.drawImage(canvas, 0, 0);
+        detectionFrames.push({ sampleIndex: raw.length - 1, frame: snapshot });
+      }
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+
+    // Give the optional model a short grace window after frame scanning. Snapshots
+    // let us classify short clips too, even if model startup finishes after the last seek.
+    if (!detector && detectionFrames.length) {
+      detector = await Promise.race([
+        detectorPromise,
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 8_000))
+      ]);
+    }
+    if (detector) {
+      for (const captured of detectionFrames) {
+        if (!raw[captured.sampleIndex]?.objects.length) {
+          raw[captured.sampleIndex].objects = await detectFrameObjects(detector, captured.frame);
+        }
+      }
     }
 
     const normalize = (value: number, values: number[]) => {
@@ -231,14 +269,25 @@ export async function analyzeVideoForHighlights(
     };
     const motionValues = raw.map((item) => item.motion);
     const contrastValues = raw.map((item) => item.contrast);
-    const samples: HighlightSample[] = raw.map((item) => ({
-      time: item.time,
-      motion: item.motion,
-      contrast: item.contrast,
-      score: normalize(item.motion, motionValues) * 0.62
-        + normalize(item.contrast, contrastValues) * 0.25
-        + item.saturation * 0.13
-    }));
+    const samples: HighlightSample[] = raw.map((item) => {
+      const semanticScore = item.objects.length
+        ? Math.min(1, item.objects.reduce((sum, object) => sum + object.score, 0) / Math.min(3, item.objects.length))
+        : 0;
+      const normalizedMotion = normalize(item.motion, motionValues);
+      const labels = [...new Set(item.objects.map((object) => object.class))];
+      return {
+        time: item.time,
+        motion: item.motion,
+        contrast: item.contrast,
+        objectLabels: labels,
+        semanticScore,
+        actionCue: inferActionCue(item.objects, normalizedMotion),
+        score: normalizedMotion * (semanticScore > 0 ? 0.48 : 0.62)
+          + normalize(item.contrast, contrastValues) * 0.22
+          + item.saturation * 0.10
+          + semanticScore * 0.20
+      };
+    });
 
     const peaks = samples.filter((sample, index) => {
       const left = samples[index - 1]?.score ?? -1;
@@ -267,7 +316,10 @@ export async function analyzeVideoForHighlights(
         end: Math.min(duration, peak.time + half),
         score: peak.score,
         motion: peak.motion,
-        contrast: peak.contrast
+        contrast: peak.contrast,
+        objectLabels: peak.objectLabels,
+        semanticScore: peak.semanticScore,
+        actionCue: peak.actionCue
       };
     }).sort((a, b) => a.time - b.time);
 
@@ -283,12 +335,15 @@ export async function analyzeVideoForHighlights(
           end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
           score: sample.score,
           motion: sample.motion,
-          contrast: sample.contrast
+          contrast: sample.contrast,
+          objectLabels: sample.objectLabels,
+          semanticScore: sample.semanticScore,
+          actionCue: sample.actionCue
         }))
         .sort((a, b) => a.time - b.time);
     }
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
-    return { duration, samples, candidates };
+    return { duration, samples, candidates, semanticAvailable: Boolean(detector) };
   } finally {
     video.pause();
     video.removeAttribute("src");
