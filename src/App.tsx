@@ -119,9 +119,11 @@ export default function App() {
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
-  const videoFile = mediaFiles[0] ?? null;
-  const videoUrl = mediaUrls[0] ?? "";
+  const firstVideoIndex = mediaFiles.findIndex((file) => getMediaKind(file) === "video");
+  const videoFile = firstVideoIndex >= 0 ? mediaFiles[firstVideoIndex] : null;
+  const videoUrl = firstVideoIndex >= 0 ? mediaUrls[firstVideoIndex] : "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
+  const isMixedMode = mediaFiles.some((file) => getMediaKind(file) === "video") && mediaFiles.some((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
@@ -206,11 +208,12 @@ export default function App() {
     event.target.value = "";
     if (!files.length) return;
     const hasInvalid = files.some((file) => getMediaKind(file) === "unknown");
-    const videos = files.filter((file) => getMediaKind(file) === "video");
-    const images = files.filter((file) => getMediaKind(file) === "image");
-    if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
-      setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
-      event.target.value = "";
+    if (hasInvalid) {
+      setError("Выбери только поддерживаемые видеофайлы и изображения.");
+      return;
+    }
+    if (files.length > 12) {
+      setError("Для стабильной работы на телефоне добавляй не более 12 клипов или фотографий за раз.");
       return;
     }
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
@@ -228,7 +231,6 @@ export default function App() {
   };
 
   const reorderPhoto = (index: number, direction: -1 | 1) => {
-    if (!isImageMode) return;
     const target = index + direction;
     if (target < 0 || target >= mediaFiles.length) return;
     const nextFiles = [...mediaFiles];
@@ -425,7 +427,42 @@ export default function App() {
       let sourceVideoDuration = 0;
       let analysisFallback = false;
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
-      if (isImageMode) {
+      if (isMixedMode) {
+        actualStyle = style === "auto" ? "cinematic" : actualStyle;
+        const perItemTarget = renderDuration / mediaFiles.length;
+        const shotLength = actualStyle === "velocity" ? 1.05
+          : actualStyle === "glitch" ? 1.35
+          : actualStyle === "anime" ? 1.65
+          : actualStyle === "story" ? 3.1
+          : 2.2;
+        segments = [];
+        let availableDuration = 0;
+        for (let index = 0; index < mediaFiles.length; index += 1) {
+          const file = mediaFiles[index];
+          const url = mediaUrls[index];
+          if (getMediaKind(file) === "image") {
+            segments.push({ kind: "image", name: file.name, url, duration: perItemTarget });
+            availableDuration += perItemTarget;
+          } else {
+            const sourceDuration = await getVideoDuration(url);
+            if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+              throw new Error(`Не удалось прочитать длительность видео «${file.name}».`);
+            }
+            const clipDuration = Math.min(sourceDuration, perItemTarget);
+            const cuts = buildFallbackVideoCuts(sourceDuration, clipDuration, shotLength);
+            segments.push(...cuts.map((cut) => ({
+              name: file.name,
+              url,
+              trimStart: cut.trimStart,
+              trimEnd: cut.trimEnd
+            })));
+            availableDuration += clipDuration;
+          }
+          setScan({ current: index + 1, total: mediaFiles.length, time: 0 });
+        }
+        renderDuration = Math.min(renderDuration, availableDuration);
+        setMessage("Собираем видео и фотографии в выбранном порядке. Для смешанного монтажа ритм музыки пока не меняет точки склеек автоматически.");
+      } else if (isImageMode) {
         const photoCount = mediaFiles.length;
         // Auto-director treats the selected duration as a ceiling: it avoids holding a small photo set on screen for 6–10 seconds per image.
         actualStyle = style === "auto"
@@ -483,7 +520,7 @@ export default function App() {
         }
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
-      if (musicUrl && musicFile && beatSync) {
+      if (musicUrl && musicFile && beatSync && !isMixedMode) {
         setMessage("Анализируем музыкальный ритм…");
         try {
           const beatAnalysis = await detectMusicBeats(musicUrl);
@@ -507,6 +544,8 @@ export default function App() {
         } catch {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
+      } else if (musicUrl && musicFile && beatSync && isMixedMode) {
+        setMessage("Музыка будет добавлена. Автоматическая подгонка склеек под бит для смешанных видео и фото появится в следующем этапе.");
       }
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
@@ -685,20 +724,20 @@ export default function App() {
         <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
         {!mediaFiles.length ? (
           <button className="dravex-upload" onClick={() => videoInput.current?.click()} type="button">
-            <span className="dravex-upload-icon"><Upload size={25} /></span><strong>Добавить видео или фото</strong><span>Выбери материал из галереи телефона</span><small>Одно видео или несколько фотографий</small>
+            <span className="dravex-upload-icon"><Upload size={25} /></span><strong>Добавить видео или фото</strong><span>Выбери материал из галереи телефона</span><small>Можно смешивать видео и фото · до 12 файлов</small>
           </button>
         ) : (
           <div className="dravex-preview-card">
-            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={file.name + "-" + index}>
-              <img src={mediaUrls[index]} alt={file.name} />
+            {isImageMode || isMixedMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={file.name + "-" + index}>
+              {getMediaKind(file) === "image" ? <img src={mediaUrls[index]} alt={file.name} /> : <video src={mediaUrls[index]} aria-label={file.name} muted playsInline preload="metadata" />}
               <div className="dravex-image-tools">
                 <span title={file.name}>{index + 1}</span>
-                <button type="button" aria-label={`Переместить фото ${index + 1} выше`} title="Выше" disabled={index === 0} onClick={() => reorderPhoto(index, -1)}><ArrowUp size={14} /></button>
-                <button type="button" aria-label={`Переместить фото ${index + 1} ниже`} title="Ниже" disabled={index === mediaFiles.length - 1} onClick={() => reorderPhoto(index, 1)}><ArrowDown size={14} /></button>
-                <button type="button" aria-label={`Удалить фото ${index + 1}`} title="Удалить фото" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
+                <button type="button" aria-label={`Переместить медиафайл ${index + 1} выше`} title="Выше" disabled={index === 0} onClick={() => reorderPhoto(index, -1)}><ArrowUp size={14} /></button>
+                <button type="button" aria-label={`Переместить медиафайл ${index + 1} ниже`} title="Ниже" disabled={index === mediaFiles.length - 1} onClick={() => reorderPhoto(index, 1)}><ArrowDown size={14} /></button>
+                <button type="button" aria-label={`Удалить медиафайл ${index + 1}`} title="Удалить" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
               </div>
             </div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
-            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
+            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : isMixedMode ? `${mediaFiles.length} медиафайлов в монтажной последовательности` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
           </div>
         )}
 
