@@ -1,8 +1,13 @@
-import { detectFrameObjects, inferActionCue, loadSemanticObjectModel, type DetectedObject } from "./semantic-vision";\n\nexport type HighlightSample = {
+import { detectFrameObjects, inferActionCue, loadSemanticObjectModel, type DetectedObject } from "./semantic-vision";
+
+export type HighlightSample = {
   time: number;
   score: number;
   motion: number;
   contrast: number;
+  objectLabels?: string[];
+  semanticScore?: number;
+  actionCue?: string;
 };
 
 export type HighlightMoment = {
@@ -12,6 +17,9 @@ export type HighlightMoment = {
   score: number;
   motion: number;
   contrast: number;
+  objectLabels?: string[];
+  semanticScore?: number;
+  actionCue?: string;
 };
 
 export type HighlightVariant = {
@@ -184,7 +192,11 @@ export async function analyzeVideoForHighlights(
     // A wider interval on long clips reduces seeking overhead without scanning every frame.
     const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
-    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; objects: DetectedObject[] }> = [];\n    // The pretrained detector is optional and cached; a blocked CDN never blocks editing.\n    const detectorPromise = loadSemanticObjectModel();\n    let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;\n    const detectorStride = Math.max(1, Math.ceil(total / 12));
+    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; objects: DetectedObject[] }> = [];
+    // The pretrained detector is optional and cached; a blocked CDN never blocks editing.
+    const detectorPromise = loadSemanticObjectModel();
+    let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;
+    const detectorStride = Math.max(1, Math.ceil(total / 12));
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -207,14 +219,18 @@ export async function analyzeVideoForHighlights(
         }
         motion /= pixels.length / 4;
       }
-      let objects: DetectedObject[] = [];\n      if (index % detectorStride === 0) {\n        const readiness = await Promise.race([
+      let objects: DetectedObject[] = [];
+      if (index % detectorStride === 0) {
+        const readiness = await Promise.race([
           detectorPromise.then((model) => ({ ready: true as const, model })),
           new Promise<{ ready: false; model: null }>((resolve) =>
             window.setTimeout(() => resolve({ ready: false, model: null }), 0)
           )
         ]);
         if (readiness.ready) detector = readiness.model;
-        if (detector) objects = await detectFrameObjects(detector, video);\n      }\n      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
+        if (detector) objects = await detectFrameObjects(detector, video);
+      }
+      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -228,14 +244,25 @@ export async function analyzeVideoForHighlights(
     };
     const motionValues = raw.map((item) => item.motion);
     const contrastValues = raw.map((item) => item.contrast);
-    const samples: HighlightSample[] = raw.map((item) => ({
-      time: item.time,
-      motion: item.motion,
-      contrast: item.contrast,
-      score: normalize(item.motion, motionValues) * 0.62
-        + normalize(item.contrast, contrastValues) * 0.25
-        + item.saturation * 0.13
-    }));
+    const samples: HighlightSample[] = raw.map((item) => {
+      const semanticScore = item.objects.length
+        ? Math.min(1, item.objects.reduce((sum, object) => sum + object.score, 0) / Math.min(3, item.objects.length))
+        : 0;
+      const normalizedMotion = normalize(item.motion, motionValues);
+      const labels = [...new Set(item.objects.map((object) => object.class))];
+      return {
+        time: item.time,
+        motion: item.motion,
+        contrast: item.contrast,
+        objectLabels: labels,
+        semanticScore,
+        actionCue: inferActionCue(item.objects, normalizedMotion),
+        score: normalizedMotion * (semanticScore > 0 ? 0.48 : 0.62)
+          + normalize(item.contrast, contrastValues) * 0.22
+          + item.saturation * 0.10
+          + semanticScore * 0.20
+      };
+    });
 
     const peaks = samples.filter((sample, index) => {
       const left = samples[index - 1]?.score ?? -1;
@@ -264,7 +291,10 @@ export async function analyzeVideoForHighlights(
         end: Math.min(duration, peak.time + half),
         score: peak.score,
         motion: peak.motion,
-        contrast: peak.contrast
+        contrast: peak.contrast,
+        objectLabels: peak.objectLabels,
+        semanticScore: peak.semanticScore,
+        actionCue: peak.actionCue
       };
     }).sort((a, b) => a.time - b.time);
 
@@ -280,7 +310,10 @@ export async function analyzeVideoForHighlights(
           end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
           score: sample.score,
           motion: sample.motion,
-          contrast: sample.contrast
+          contrast: sample.contrast,
+          objectLabels: sample.objectLabels,
+          semanticScore: sample.semanticScore,
+          actionCue: sample.actionCue
         }))
         .sort((a, b) => a.time - b.time);
     }
