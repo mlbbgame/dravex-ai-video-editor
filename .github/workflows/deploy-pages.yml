@@ -18,16 +18,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out current primary DRAVEX site source
+      - name: Check out the current integrated DRAVEX source for the primary site
         uses: actions/checkout@v4
         with:
-          ref: feature/dravex-camera-audio-v2
+          ref: main
           path: app-source
 
-      - name: Check out rebuilt DRAVEX project for the preview
+      - name: Check out the same integrated DRAVEX source for the compatibility preview
         uses: actions/checkout@v4
         with:
-          ref: feature/dravex-full-editor-upgrade
+          ref: main
           path: preview-source
 
       - name: Configure GitHub Pages
@@ -44,7 +44,7 @@ jobs:
         working-directory: app-source
         run: npm install --no-audit --no-fund
 
-      - name: Build primary DRAVEX site (unchanged source)
+      - name: Build the integrated DRAVEX primary site
         working-directory: app-source
         run: npm run build
 
@@ -53,15 +53,15 @@ jobs:
           mkdir -p dist
           cp -R app-source/dist/. dist/
 
-      - name: Install rebuilt DRAVEX dependencies
+      - name: Install preview dependencies
         working-directory: preview-source
         run: npm install --no-audit --no-fund
 
-      - name: Build the rebuilt DRAVEX preview
+      - name: Build compatibility preview from the same integrated source
         working-directory: preview-source
         run: npm run build -- --base=/dravex-ai-video-editor/preview/
 
-      - name: Replace the old preview with the rebuilt DRAVEX project under /preview/
+      - name: Place compatibility preview under /preview/
         run: |
           mkdir -p dist/preview
           cp -R preview-source/dist/. dist/preview/
@@ -78,6 +78,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Deploy DRAVEX site and isolated preview
+      - name: Deploy integrated DRAVEX site and compatibility preview
         id: deployment
         uses: actions/deploy-pages@v4
