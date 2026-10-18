@@ -83,7 +83,9 @@ type LoadedVideo = {
 type LoadedImage = {
   kind: "image";
   name: string;
-  image: HTMLImageElement;
+  // Store a bounded-resolution canvas rather than keeping a full camera-resolution
+  // decoded bitmap alive for every photo in the montage.
+  image: HTMLCanvasElement;
   duration: number;
 };
 
@@ -312,10 +314,32 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   });
 }
 
-function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
+function loadImage(segment: ImageSegment): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
+    image.decoding = "async";
+    image.onload = () => {
+      try {
+        // Phone photos can be 12–50 megapixels. Keeping each original decoded
+        // bitmap resident while rendering a montage can exhaust Android memory.
+        // A 1280px long edge is enough for the mobile-first 720p export path and
+        // still looks clean when fitted to a 1080p frame.
+        const maxEdge = 1280;
+        const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error(`Could not prepare image for mobile rendering: ${segment.name}`));
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas);
+      } catch {
+        reject(new Error(`Could not prepare image for mobile rendering: ${segment.name}`));
+      }
+    };
     image.onerror = () => reject(new Error(`Could not read image: ${segment.name}`));
     image.src = segment.url;
   });
@@ -509,9 +533,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     hasPreviousFrame = true;
   };
 
-  const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
-    const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
-    const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+  const draw = (source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
+    const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth
+      : source instanceof HTMLCanvasElement ? source.width : source.naturalWidth;
+    const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight
+      : source instanceof HTMLCanvasElement ? source.height : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
     const transitionDuration = style === "travel" ? 0.82 : transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
@@ -546,7 +572,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const strengthScale = effectStrength === "none" ? 0 : effectStrength === "soft" ? 0.42 : effectStrength === "strong" ? 1.28 : 1;
     const cameraMotion = getCameraMotionProfile(style, effectStrength);
     const motion = suppressEffects || effectStrength === "none" ? 0 : cameraMotion.zoom;
-    const isPhoto = source instanceof HTMLImageElement;
+    const isPhoto = !(source instanceof HTMLVideoElement);
     const eased = progress * progress * (3 - 2 * progress);
     const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
     const zoomBase = isPhoto ? 1.035 : 1.04;
