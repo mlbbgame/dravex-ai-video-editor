@@ -426,3 +426,10 @@ body {
 /* Travel Flow: calm, natural style preview with restrained color and movement. */
 .preview-travel > img, .preview-travel > video { filter: saturate(1.02) contrast(1.02) brightness(1.02); }
 .preview-travel .dravex-variant-overlay { background: linear-gradient(180deg, #e5f3df0a, transparent 48%, #06120b45); }
+
+
+/* Real decoded output frames: compact local contact sheet for visual QA on mobile. */
+.dravex-frame-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.dravex-frame-strip figure { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #ffffff18; border-radius: 7px; background: #050607; }
+.dravex-frame-strip img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #050607; }
+.dravex-frame-strip figcaption { padding: 5px 4px; color: #aab0b7; font-size: 9px; text-align: center; }
