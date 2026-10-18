@@ -241,6 +241,7 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
 
   // The app creates a short real preview after import. Wait for that render to
   // finish before triggering the full montage, because the phone pipeline is serialized.
+  await expect(page.locator(".dravex-photo-preview")).toBeVisible();
   await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
