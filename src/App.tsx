@@ -387,9 +387,8 @@ export default function App() {
         const variant = pendingVariants[index];
         setPreviewStatus(`Создаём вариант ${index + 1} из ${pendingVariants.length}: ${variant.title}…`);
         const previewDuration = 3.8;
-        const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
-          ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
-          : variant.style;
+        // A larger photo set or music alone does not imply an action edit.
+        const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto" ? "cinematic" : variant.style;
         const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
           ? mediaFiles.slice(0, 6).map((file, segmentIndex) => ({
               kind: "image" as const,
