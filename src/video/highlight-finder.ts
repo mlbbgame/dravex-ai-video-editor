@@ -38,6 +38,14 @@ export type HighlightProgress = {
 };
 
 /** Build deterministic cut points for short clips without seeking through every frame. */
+/**
+ * Keep very short clips on a deterministic path to avoid fragile frame seeking
+ * on mobile. Longer clips still use sampled visual and object analysis.
+ */
+export function shouldUseQuickVideoCandidates(duration: number): boolean {
+  return Number.isFinite(duration) && duration >= 0.25 && duration <= 3;
+}
+
 export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
   if (!Number.isFinite(duration) || duration < 0.25) return [];
   const count = Math.max(2, Math.min(8, Math.ceil(duration / 1.5)));
@@ -181,6 +189,14 @@ export async function analyzeVideoForHighlights(
     const duration = video.duration;
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
+    }
+    if (shouldUseQuickVideoCandidates(duration)) {
+      const candidates = buildQuickVideoCandidates(duration);
+      const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
+        time, score, motion, contrast,
+      }));
+      onProgress?.({ current: samples.length, total: samples.length, time: duration });
+      return { duration, samples, candidates, semanticAvailable: false };
     }
     const canvas = document.createElement("canvas");
     canvas.width = 80;
