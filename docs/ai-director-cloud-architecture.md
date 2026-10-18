@@ -15,6 +15,10 @@
 - Initial director profiles:
   - **Aggressive Car Edit:** recognize acceleration, drift/turns, wheel details, smoke, camera-angle changes, and other motion peaks; match phonk, bass, or aggressive electronic music; use speed ramps, restrained motion blur, and short impact transitions where supported by the source.
   - **Cinematic / Travel:** favor establishing shots, expressive details, location changes, and smooth motion; match the soundtrack to the scene's atmosphere; use restrained camera motion, consistent color treatment, and measured pacing.
+  - **Nature & Wildlife:** recognize landscapes, waterfalls, forests, clouds, birds, animal behavior, and macro details; preserve natural color and atmosphere, use smooth pacing, and avoid flashy effects unless explicitly requested.
+  - **Food & Cooking:** infer the preparation sequence (ingredients, chopping, mixing, seasoning, frying/baking, plating); preserve chronological continuity and emphasize appetizing textures, steam, close-ups, and the finished dish.
+  - **People, Pets & Everyday Life:** prioritize visible faces, expressions, interactions, pet behavior, and meaningful moments; protect face/action framing and avoid abrupt crops, excessive effects, or cuts that remove the key moment.
+  - **Products, Tutorials & DIY:** build a comprehensible sequence from overview and materials to detail shots, ordered steps, before/after where available, and the final result.
 - These are target behaviors. The current browser prototype uses local heuristics and is not a semantic cloud AI editor.
 
 ## Proposed system
@@ -116,6 +120,7 @@ The API must validate all timestamps against the probed source duration, clamp o
 3. **Upload, storage, and queue:** resumable upload, probing, durable jobs, status reporting, deletion/retention.
 4. **First semantic vertical slice:** deep analysis for one supported source class and one profile, with confidence/fallback behavior.
 5. **Variant planner:** generate and validate 3–4 timeline plans from one analysis.
+6. **Content-profile expansion:** add Nature & Wildlife, Food & Cooking, People/Pets/Everyday Life, and Products/Tutorials/DIY with category-specific event priorities, pacing, framing rules, and restrained effect policies.
 6. **Music matching and previews:** library metadata, user audio analysis, beat alignment, low-resolution previews.
 7. **Cloud rendering and validation:** bounded render workers and end-to-end output verification.
 8. **Expand profiles and harden:** Cinematic / Travel, additional genres, long-video regression suite, cost controls, privacy review, and Android device testing.
