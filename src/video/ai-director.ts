@@ -31,7 +31,7 @@ type ObjectDetector = (input: string) => Promise<DetectedObject[]>;
 let detectorPromise: Promise<ObjectDetector> | null = null;
 
 const MODEL_ID = "Xenova/yolos-tiny";
-const MAX_MODEL_FRAMES = 8;
+const MAX_MODEL_FRAMES = 4;
 const MIN_OBJECT_CONFIDENCE = 0.35;
 
 function getDetector(onProgress?: (progress: number) => void): Promise<ObjectDetector> {
@@ -240,6 +240,8 @@ export async function analyzeWithAIDirector(
   const selectedIndices = chooseSampleIndices(candidates.length, MAX_MODEL_FRAMES);
   const detectionsByCandidate = new Map<number, DetectedObject[]>();
   const allLabels = new Set<string>();
+  const inferenceStartedAt = performance.now();
+  const inferenceBudgetMs = 10_000;
   try {
     await new Promise<void>((resolve, reject) => {
       if (video.readyState >= 1 && Number.isFinite(video.duration)) return resolve();
@@ -250,18 +252,30 @@ export async function analyzeWithAIDirector(
     });
 
     for (let position = 0; position < selectedIndices.length; position += 1) {
+      if (performance.now() - inferenceStartedAt >= inferenceBudgetMs) break;
       const index = selectedIndices[position];
       const candidate = candidates[index];
+      let inferenceTimedOut = false;
       try {
         await seek(video, Math.min(candidate.time, Math.max(0, video.duration - 0.06)));
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const detected = (await detector(canvas.toDataURL("image/jpeg", 0.78)))
-          .filter((item) => item.score >= MIN_OBJECT_CONFIDENCE)
-          .slice(0, 8);
-        detectionsByCandidate.set(index, detected);
-        detected.forEach((item) => allLabels.add(item.label));
+        let inferenceTimeoutId = 0;
+        const detected = await Promise.race([
+          detector(canvas.toDataURL("image/jpeg", 0.78)),
+          new Promise<DetectedObject[]>((_, reject) => {
+            inferenceTimeoutId = window.setTimeout(() => {
+              inferenceTimedOut = true;
+              reject(new Error("Истёк бюджет распознавания кадра."));
+            }, 2500);
+          })
+        ]).finally(() => window.clearTimeout(inferenceTimeoutId));
+        const confident = detected.filter((item) => item.score >= MIN_OBJECT_CONFIDENCE).slice(0, 8);
+        detectionsByCandidate.set(index, confident);
+        confident.forEach((item) => allLabels.add(item.label));
       } catch {
         detectionsByCandidate.set(index, []);
+        // A slow model must not queue more work or prevent the user from exporting.
+        if (inferenceTimedOut) break;
       }
       onProgress?.({ current: position + 1, total: selectedIndices.length, phase: "reading-frames" });
       if (position % 2 === 1) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
