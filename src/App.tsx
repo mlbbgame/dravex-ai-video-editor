@@ -13,7 +13,7 @@ type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "travel" | "anime
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
 type TransitionPreset = "auto" | "cinematic" | "action";
-type EffectPreset = "soft" | "balanced" | "strong";
+type EffectPreset = "none" | "soft" | "balanced" | "strong";
 type MontageVariant = {
   id: string;
   title: string;
@@ -99,7 +99,7 @@ export default function App() {
   const [style, setStyle] = useState<EditStyle>("auto");
   const [quality, setQuality] = useState<"720p" | "1080p">("720p");
   const [beatSync, setBeatSync] = useState(true);
-  const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
+  const [effectStrength, setEffectStrength] = useState<EffectPreset>("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
   const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
   const [projectMessage, setProjectMessage] = useState("");
@@ -407,7 +407,8 @@ export default function App() {
           aspectRatio,
           quality: "preview",
           style: previewStyle,
-          effectStrength: variant.strength,
+          effectStrength: effectStrength,
+          suppressEffects: effectStrength === "none",
           transitionMode: variant.transition,
           suppressAudio: !audioTracks.length,
           targetDurationSeconds: previewDuration,
@@ -556,6 +557,7 @@ export default function App() {
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
+        suppressEffects: effectStrength === "none",
         transitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress,
@@ -616,9 +618,7 @@ export default function App() {
     setError("");
     try {
       const previewDuration = 3.8;
-      const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
-        ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
-        : variant.style;
+      const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto" ? "cinematic" : variant.style;
       let previewSegments: Array<VideoSegment | ImageSegment>;
       if (isImageMode) {
         const count = Math.min(mediaFiles.length, 6);
@@ -644,7 +644,8 @@ export default function App() {
         aspectRatio,
         quality: "preview",
         style: previewStyle,
-        effectStrength: variant.strength,
+        effectStrength: effectStrength,
+        suppressEffects: effectStrength === "none",
         transitionMode: variant.transition,
         suppressAudio: !audioTracks.length,
         targetDurationSeconds: previewDuration,
@@ -792,7 +793,7 @@ export default function App() {
             <div className="dravex-music"><span>Музыка (необязательно)</span><div className="dravex-music-actions"><button type="button" onClick={() => setActiveTab("music")}><Music2 size={16} />{musicFile ? musicFile.name : "Открыть музыкальную библиотеку"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
-            <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
+            <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as EffectPreset); invalidateOutput(); }}><option value="none">Без эффектов · естественное видео</option><option value="soft">Минимальная · почти незаметно</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
             <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => { setBeatSync(event.target.value === "on"); invalidateOutput(); }}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
           <div className="dravex-project-actions">
@@ -814,6 +815,7 @@ export default function App() {
             {qualityCheckBusy && <p>Проверяем реальные кадры экспорта, чёрные участки и возможные повторы. Это не оценка художественного качества.</p>}
             {qualityReport && <>
               {qualityReport.duration > 0 && <div className="dravex-quality-stats"><span>{qualityReport.duration.toFixed(1)} сек.<small>длительность</small></span><span>{qualityReport.width}×{qualityReport.height}<small>размер кадра</small></span><span>{qualityReport.sampledFrames}<small>кадров проверено</small></span></div>}
+              <div className="dravex-frame-strip" aria-label="Контрольные кадры экспортированного видео">{qualityReport.frames.map((frame) => <figure key={frame.time}><img src={frame.dataUrl} alt={`Кадр на ${frame.time.toFixed(1)} секунде`} loading="lazy" /><figcaption>{frame.time.toFixed(1)} с</figcaption></figure>)}</div>
               <ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul>
               <p className="dravex-quality-note">Автоматическая проверка помогает найти технические подозрения, но не заменяет просмотр: она не умеет надёжно оценивать вкус монтажа, синхронизацию с музыкой или силу эффектов.</p>
             </>}
