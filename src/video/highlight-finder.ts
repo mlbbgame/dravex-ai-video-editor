@@ -197,6 +197,7 @@ export async function analyzeVideoForHighlights(
     const detectorPromise = loadSemanticObjectModel();
     let detector: Awaited<ReturnType<typeof loadSemanticObjectModel>> = null;
     const detectorStride = Math.max(1, Math.ceil(total / 12));
+    const detectionFrames: Array<{ sampleIndex: number; frame: HTMLCanvasElement }> = [];
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -231,9 +232,33 @@ export async function analyzeVideoForHighlights(
         if (detector) objects = await detectFrameObjects(detector, video);
       }
       raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation, objects });
+      if (index % detectorStride === 0) {
+        const snapshot = document.createElement("canvas");
+        snapshot.width = canvas.width;
+        snapshot.height = canvas.height;
+        const snapshotContext = snapshot.getContext("2d");
+        snapshotContext?.drawImage(canvas, 0, 0);
+        detectionFrames.push({ sampleIndex: raw.length - 1, frame: snapshot });
+      }
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+
+    // Give the optional model a short grace window after frame scanning. Snapshots
+    // let us classify short clips too, even if model startup finishes after the last seek.
+    if (!detector && detectionFrames.length) {
+      detector = await Promise.race([
+        detectorPromise,
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 8_000))
+      ]);
+    }
+    if (detector) {
+      for (const captured of detectionFrames) {
+        if (!raw[captured.sampleIndex]?.objects.length) {
+          raw[captured.sampleIndex].objects = await detectFrameObjects(detector, captured.frame);
+        }
+      }
     }
 
     const normalize = (value: number, values: number[]) => {
