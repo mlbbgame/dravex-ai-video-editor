@@ -70,3 +70,8 @@ The Reference Lab can store locally observed pacing profiles in browser `localSt
 The isolated GitHub Pages preview at `/preview/` is being rebuilt from `feature/dravex-full-editor-upgrade`. Recent preview-only improvements include a wider editor workspace, a larger source-video preview, a smooth playback-speed ramp for Velocity edits, and music-beat-aware cut timing for mixed photo/video sequences when beat detection is reliable. These changes do not alter the primary app source branch (`feature/dravex-camera-audio-v2`).
 
 The preview is still an evolving browser-based editor: semantic scene understanding by a true AI model, a full multi-track timeline, MP4 encoding, and real-device Android export validation remain separate work items.
+
+
+## Preview interface redesign (2026-10-18)
+
+The preview editor now uses a responsive two-column workspace on wider screens, with a larger media canvas and style controls beside it. On Android, the editor stays single-column with improved touch targets and an easy-to-reach Auto Edit action. Changes are isolated to `feature/dravex-full-editor-upgrade`; the primary editor source remains unchanged.
