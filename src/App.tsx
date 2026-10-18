@@ -125,6 +125,7 @@ export default function App() {
   const [qualityReport, setQualityReport] = useState<OutputQualityReport | null>(null);
   const [qualityCheckBusy, setQualityCheckBusy] = useState(false);
   const renderedVariantUrls = useRef<string[]>([]);
+  const mediaUrlsRef = useRef<string[]>([]);
   const previewGeneration = useRef(0);
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
@@ -132,10 +133,13 @@ export default function App() {
   const outputVideoRef = useRef<HTMLVideoElement>(null);
   const videoFile = mediaFiles[0] ?? null;
   const videoUrl = mediaUrls[0] ?? "";
+  // Keep the latest URLs for unmount cleanup without revoking them whenever
+  // a reorder changes the array identity.
+  mediaUrlsRef.current = mediaUrls;
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
 
-  useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
+  useEffect(() => () => { mediaUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   // Saved projects are restored only after an explicit user action, never on page startup.
   useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
