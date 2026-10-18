@@ -31,10 +31,10 @@ type ObjectDetector = (input: string) => Promise<DetectedObject[]>;
 let detectorPromise: Promise<ObjectDetector> | null = null;
 
 const MODEL_ID = "Xenova/yolos-tiny";
-const MAX_MODEL_FRAMES = 8;
+const MAX_MODEL_FRAMES = 4;
 const MIN_OBJECT_CONFIDENCE = 0.35;
-const MODEL_LOAD_TIMEOUT_MS = 15_000;
-const MODEL_FRAME_TIMEOUT_MS = 5_000;
+const MODEL_LOAD_TIMEOUT_MS = 8_000;
+const MODEL_FRAME_TIMEOUT_MS = 2_500;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -75,7 +75,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
     const timeout = window.setTimeout(() => {
       cleanup();
       reject(new Error("Истёк тайм-аут чтения кадра."));
-    }, 8000);
+    }, 2_500);
     const cleanup = () => {
       window.clearTimeout(timeout);
       video.removeEventListener("seeked", ready);
