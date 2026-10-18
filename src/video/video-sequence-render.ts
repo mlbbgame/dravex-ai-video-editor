@@ -314,7 +314,7 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   });
 }
 
-function loadImage(segment: ImageSegment): Promise<HTMLCanvasElement> {
+function loadImage(segment: ImageSegment, maxEdge: number): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.decoding = "async";
@@ -322,9 +322,8 @@ function loadImage(segment: ImageSegment): Promise<HTMLCanvasElement> {
       try {
         // Phone photos can be 12–50 megapixels. Keeping each original decoded
         // bitmap resident while rendering a montage can exhaust Android memory.
-        // A 1280px long edge is enough for the mobile-first 720p export path and
-        // still looks clean when fitted to a 1080p frame.
-        const maxEdge = 1280;
+        // Match the export preset: conserve memory for 720p, retain more detail
+        // for 1080p. Both paths avoid holding full 12–50 MP camera bitmaps.
         const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -395,7 +394,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
-      const image = await loadImage(segment);
+      const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
       return { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
     }
     const videoSegment = segment as VideoSegment;
