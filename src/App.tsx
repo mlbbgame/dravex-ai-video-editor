@@ -249,7 +249,7 @@ export default function App() {
   };
 
   const removePhoto = (index: number) => {
-    if (!isImageMode) return;
+    if (index < 0 || index >= mediaFiles.length) return;
     const nextFiles = mediaFiles.filter((_, fileIndex) => fileIndex !== index);
     clearRenderedVariants();
     setMediaFiles(nextFiles);
