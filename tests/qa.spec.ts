@@ -253,16 +253,14 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
-  // A tiny generated SVG keeps this test self-contained and avoids external media.
-  const svg = Buffer.from(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800" viewBox="0 0 480 800"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#ff3d6e"/><stop offset="1" stop-color="#171b3d"/></linearGradient></defs><rect width="480" height="800" fill="url(#g)"/><circle cx="240" cy="310" r="120" fill="#fff" fill-opacity=".7"/><path d="M0 650 L180 450 L300 590 L400 500 L480 620 V800 H0Z" fill="#090b12"/></svg>',
-    "utf8",
-  );
-  await page.locator('input[accept="video/*,image/*"]').setInputFiles({
-    name: "dravex-test-frame.svg",
-    mimeType: "",
-    buffer: svg,
-  });
+  // Four distinct, generated SVG scenes make the exported sample useful for checking cuts and camera motion.
+  const photoFixtures = [
+    { name: "dravex-test-frame-1.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800"><defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#ff3d6e"/><stop offset="1" stop-color="#171b3d"/></linearGradient></defs><rect width="480" height="800" fill="url(#g)"/><circle cx="240" cy="310" r="120" fill="#fff" fill-opacity=".7"/><path d="M0 650 L180 450 L300 590 L400 500 L480 620 V800 H0Z" fill="#090b12"/></svg>', "utf8") },
+    { name: "dravex-test-frame-2.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800"><rect width="480" height="800" fill="#103c70"/><circle cx="300" cy="260" r="150" fill="#54d8ff"/><path d="M0 520 L150 360 L270 600 L380 400 L480 520 V800 H0Z" fill="#07111f"/><path d="M0 700 L240 500 L480 690 V800 H0Z" fill="#f4b942"/></svg>', "utf8") },
+    { name: "dravex-test-frame-3.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800"><rect width="480" height="800" fill="#17251c"/><path d="M0 0 H480 V800 H0Z" fill="#d85d27"/><path d="M0 160 L480 0 L480 220 L0 390Z" fill="#f7c35b"/><path d="M0 620 L150 420 L280 620 L380 450 L480 560 V800 H0Z" fill="#101714"/><circle cx="110" cy="220" r="55" fill="#fff0bf"/></svg>', "utf8") },
+    { name: "dravex-test-frame-4.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800"><rect width="480" height="800" fill="#24133e"/><path d="M0 0 L480 180 L480 300 L0 120Z" fill="#ec4899"/><path d="M0 400 L480 250 L480 360 L0 510Z" fill="#67e8f9"/><circle cx="260" cy="500" r="135" fill="#f8fafc"/><path d="M0 680 L120 560 L220 680 L360 540 L480 660 V800 H0Z" fill="#090b12"/></svg>', "utf8") }
+  ];
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles(photoFixtures);
 
   // The app creates a short real preview after import. Wait for that render to
   // finish before triggering the full montage, because the phone pipeline is serialized.
@@ -326,13 +324,23 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   await durationSlider.press("Home");
   await expect(durationSlider).toHaveValue("5");
 
-  // Tiny, self-contained 2-second VP8/WebM clip; no external media or network access.
-  const sourceVideo = Buffer.from("GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAALEEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEjTbuMU6uEHFO7a1OsggKc7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjEuNy4xMDNXQYxMYXZmNjEuNy4xMDNEiYhAn0AAAAAAABZUrmvIrgEAAAAAAAA/14EBc8WIVK4ALmPToFCcgQAitZyDdW5kiIEAhoVWX1ZQOIOBASPjg4QdzWUA4JCwgUC6gUCagQJVsIRVuYEBElTDZ/tzc59jwIBnyJlFo4dFTkNPREVSRIeMTGF2ZjYxLjcuMTAzc3PWY8CLY8WIVK4ALmPToFBnyKFFo4dFTkNPREVSRIeUTGF2YzYxLjE5LjEwMSBsaWJ2cHhnyKFFo4hEVVJBVElPTkSHkzAwOjAwOjAyLjAwMDAwMDAwMAAfQ7Z1QPPngQCjxIEAAIDQAwCdASpAAEAAAEcIhYWImYSIAgICdaoD+AP6AgcaT8gtSEwBVjAA/v1u8//kb+PnRv/I4//8Sp7jieP//EaAo7CBAfQAMQIAARAQABgAGdf0DAAQoYArVAD+/W7z/+Rv4+dG/8jj//xKnuOJ4//8RoCjxIED6IDQAwCdASpAAEAAAEcIhYWImYSIAgICdaoD+AP6AgcaT8gtSEwBVjAA/v1u8//kb+PnRv/I4//8Sp7jieP//EaAo7CBBdwAMQIAARAQABgAGdf0DAAQoYArVAD+/W7z/+Rv4+dG/8jj//xKnuOJ4//8RoAcU7tro7uPs4EAt4r3gQHxggGj8IEDu5CzggPot4r3gQHxggGj8IF7", "base64");
+  // A moving test pattern plus audio makes the exported sample useful for visual and audio inspection.
+  const sourceFixturePath = `/tmp/dravex-test-source-${process.pid}.webm`;
+  execFileSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=12",
+    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+    "-t", "2", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8",
+    "-b:v", "180k", "-g", "12", "-pix_fmt", "yuv420p",
+    "-c:a", "libopus", "-b:a", "32k", "-shortest", "-f", "webm", sourceFixturePath, "-y"
+  ], { stdio: "pipe" });
+  const sourceVideo = await readFile(sourceFixturePath);
   await page.locator('input[accept="video/*,image/*"]').setInputFiles({
     name: "dravex-test-source.webm",
     mimeType: "video/webm",
     buffer: sourceVideo,
   });
+  await unlink(sourceFixturePath);
 
   await expect(page.locator("video.dravex-preview")).toBeVisible();
   await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
