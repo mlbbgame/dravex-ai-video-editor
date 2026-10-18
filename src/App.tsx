@@ -129,6 +129,7 @@ export default function App() {
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
+  const outputVideoRef = useRef<HTMLVideoElement>(null);
   const videoFile = mediaFiles[0] ?? null;
   const videoUrl = mediaUrls[0] ?? "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
@@ -821,13 +822,13 @@ export default function App() {
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
-        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>
+        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video ref={outputVideoRef} className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>
           <section className="dravex-quality-report" aria-live="polite">
             <div className="dravex-quality-heading"><ScanLine size={17} /><strong>Проверка готового видео</strong><span className={qualityReport?.severity === "ok" ? "is-ok" : qualityReport ? "is-warning" : ""}>{qualityCheckBusy ? "Проверяем…" : qualityReport?.severity === "ok" ? "Без явных проблем" : qualityReport ? "Нужна проверка" : "Ожидание"}</span></div>
             {qualityCheckBusy && <p>Проверяем реальные кадры экспорта, чёрные участки и возможные повторы. Это не оценка художественного качества.</p>}
             {qualityReport && <>
               {qualityReport.duration > 0 && <div className="dravex-quality-stats"><span>{qualityReport.duration.toFixed(1)} сек.<small>длительность</small></span><span>{qualityReport.width}×{qualityReport.height}<small>размер кадра</small></span><span>{qualityReport.sampledFrames}<small>кадров проверено</small></span></div>}
-              <div className="dravex-frame-strip" aria-label="Контрольные кадры экспортированного видео">{qualityReport.frames.map((frame) => <figure key={frame.time}><img src={frame.dataUrl} alt={`Кадр на ${frame.time.toFixed(1)} секунде`} loading="lazy" /><figcaption>{frame.time.toFixed(1)} с</figcaption></figure>)}</div>
+              <div className="dravex-frame-strip" aria-label="Контрольные кадры экспортированного видео">{qualityReport.frames.map((frame) => <figure key={frame.time}><button type="button" className="dravex-frame-jump" aria-label={`Перейти к ${frame.time.toFixed(1)} секунде видео`} onClick={() => { const video = outputVideoRef.current; if (video) { video.currentTime = Math.min(frame.time, Math.max(0, video.duration - 0.05)); video.pause(); } }}><img src={frame.dataUrl} alt="" loading="lazy" /><span>{frame.time.toFixed(1)} с · открыть</span></button></figure>)}</div>
               <ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul>
               <p className="dravex-quality-note">Автоматическая проверка помогает найти технические подозрения, но не заменяет просмотр: она не умеет надёжно оценивать вкус монтажа, синхронизацию с музыкой или силу эффектов.</p>
             </>}
