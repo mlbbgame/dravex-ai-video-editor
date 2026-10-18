@@ -37,6 +37,40 @@ export function shouldContainSource(sourceAspect: number, outputAspect: number):
 
 export type CameraMotionProfile = { zoom: number; pan: number };
 
+/** Style-aware color grading tuned for footage that will be viewed on mobile screens. */
+export function getColorGradeFilter(
+  style: SequenceRenderStyle,
+  strength: "soft" | "balanced" | "strong" = "balanced",
+  progress = 0
+): string {
+  const scale = strength === "soft" ? 0.72 : strength === "strong" ? 1.18 : 1;
+  const breathing = 1 + Math.sin(Math.max(0, Math.min(1, progress)) * Math.PI) * 0.025;
+  const grade = style === "cinematic"
+    ? { contrast: 1.1, saturation: 0.96, brightness: 0.98, sepia: 0.1, hue: -4 }
+    : style === "anime"
+      ? { contrast: 1.16, saturation: 1.28, brightness: 1.025, sepia: 0, hue: 2 }
+      : style === "velocity"
+        ? { contrast: 1.15, saturation: 1.2, brightness: 1.015, sepia: 0, hue: -2 }
+        : style === "glitch"
+          ? { contrast: 1.18, saturation: 1.25, brightness: 1.01, sepia: 0, hue: 5 }
+          : { contrast: 1.035, saturation: 0.92, brightness: 1.025, sepia: 0.045, hue: 0 };
+  const contrast = 1 + (grade.contrast - 1) * scale;
+  const saturation = 1 + (grade.saturation - 1) * scale;
+  const brightness = 1 + (grade.brightness - 1) * scale;
+  const sepia = grade.sepia * scale;
+  return `contrast(${contrast.toFixed(3)}) saturate(${saturation.toFixed(3)}) brightness(${(brightness * breathing).toFixed(3)}) sepia(${sepia.toFixed(3)}) hue-rotate(${(grade.hue * scale).toFixed(1)}deg)`;
+}
+
+/** Velocity curve that eases in and out instead of changing speed abruptly at clip edges. */
+export function getSpeedRampRate(progress: number): number {
+  const p = Math.max(0, Math.min(1, progress));
+  const envelope = Math.sin(Math.PI * p);
+  const easedEnvelope = envelope * envelope;
+  const rate = 1 + 0.62 * Math.sin(2 * Math.PI * p) * easedEnvelope;
+  return Math.max(0.55, Math.min(1.65, rate));
+}
+
+
 /** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
 export function getCameraMotionProfile(
   style: SequenceRenderStyle,
@@ -591,7 +625,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
 
     context.save();
-    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
+    context.filter = suppressEffects ? "none" : getColorGradeFilter(style, effectStrength, progress);
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
@@ -824,7 +858,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         const clipProgress = Math.min(1, elapsedSeconds / duration);
         // Velocity edits get a smooth speed-ramp curve: ease into acceleration, then settle back before the cut.
         // The curve averages around 1x so the selected clip duration remains stable.
-        if (speedRamp) video.playbackRate = Math.max(0.45, Math.min(1.75, 1 + 0.62 * Math.sin(clipProgress * Math.PI * 2)));
+        if (speedRamp) video.playbackRate = getSpeedRampRate(clipProgress);
         else video.playbackRate = 1;
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
