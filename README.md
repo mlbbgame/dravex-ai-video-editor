@@ -75,3 +75,8 @@ The preview is still an evolving browser-based editor: semantic scene understand
 ## Preview interface redesign (2026-10-18)
 
 The preview editor now uses a responsive two-column workspace on wider screens, with a larger media canvas and style controls beside it. On Android, the editor stays single-column with improved touch targets and an easy-to-reach Auto Edit action. Changes are isolated to `feature/dravex-full-editor-upgrade`; the primary editor source remains unchanged.
+
+
+## Preview render engine update (2026-10-18)
+
+The isolated preview renderer now uses an eased Velocity speed curve and style-aware color grading across Cinematic, Anime, Velocity, Glitch, and Story looks. The existing camera motion, transition families, and beat-aware edit planning remain in place. Build/typecheck passed before merge; browser smoke tests are being checked. The primary site source branch remains unchanged.
