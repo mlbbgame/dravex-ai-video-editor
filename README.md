@@ -22,7 +22,11 @@ The first Evolution Engine layer records workflow counters and voluntary user ra
 
 ## Current prototype
 
-The current editor supports local import, preview, ordering/removal, and rendering of up to 12 videos and/or photos in a chosen sequence, an experimental automatic highlight director for single videos, five visual styles, three transition modes, adjustable motion strength, music import and volume control, optional local beat/onset estimation, saved projects in browser storage, and WebM rendering at 720p or 1080p in 9:16, 16:9, 1:1, or 4:5 formats. Mixed video/photo and multi-video sequences now use ordered local WebM rendering, but automatic beat-snapping is intentionally not applied to those multi-clip queues yet. The renderer uses canvas-based camera motion, style treatment, native-canvas transition families, and music fade-in/fade-out; source-video audio is retained where the browser audio pipeline permits it. These are heuristic/local-browser features, not a connected generative AI model or semantic understanding of the scene. Beat detection is an energy/onset estimate rather than guaranteed musical beat tracking. MP4 export, true speed-ramping, captions, and a cloud AI model are not currently provided. The browser must remain open during rendering; memory and encoder limits vary by Android device, so use 720p for long/heavy projects and verify every exported file by playing it back.
+The integrated test editor supports local import and ordering of up to 12 video/mixed-media clips or up to 80 photos, actual short WebM previews of multiple styles, a browser-side highlight scan with optional local object detection, Velocity speed ramps, camera motion, style-aware color grading, transition families, music controls, beat/onset-based timing when confidence is sufficient, and export in 720p or 1080p at 9:16, 16:9, 1:1, or 4:5. Export now uses centralized profiles for dimensions, frame rate, bitrate, and supported WebM codec selection. Before recording, the renderer validates the metadata-resolved timeline and audio bounds to catch invalid trims or timeline gaps. Large Android imports show warnings instead of being rejected solely for file size. Rendering remains local in the browser, and the tab must stay open while it runs.
+
+## Integrated QA candidate
+
+The isolated `feature/dravex-integrated-candidate` branch combines the preview-first editor with the accumulated timeline, media-intake, export-profile, and recognition-contract work. CI runs the TypeScript/Vite build, browser tests, and a render-evidence workflow that probes the generated WebM and stores reports/screenshots as temporary artifacts. These checks are regression gates, not proof of artistic quality or a substitute for playback on a real Android device. This branch is a test candidate only; it is not the production `main` branch.
 
 ## Run locally
 
@@ -52,7 +56,7 @@ npm run preview
 
 ## Current limitations
 
-This is an experimental browser-based editor, not yet a full desktop-class editor. It does not train its own model, provide unlimited free AI generation, or export MP4. Local rendering avoids sending imported media to a DRAVEX server, but browser storage can be cleared by the user/device and a tab may be terminated under memory pressure. Keep backup copies of important source files and test output playback before relying on it.
+DRAVEX is still an experimental browser editor, not a complete desktop-class editor. The current object detector runs locally in the browser and can fall back to visual/motion heuristics; it is not reliable semantic action recognition and is not connected to a cloud AI Director or cloud rendering backend. Export is WebM, not MP4. Beat/onset detection is an estimate rather than guaranteed beat tracking, and actual playback, audio routing, memory use, and encoder behavior vary by Android device. The UI exposes 720p/1080p export; a 4K profile in code is not a claim of stable 4K export on mobile. Always play the saved file back before relying on it.
 
 
 ## Self-introduction video studio
