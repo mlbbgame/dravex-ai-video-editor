@@ -145,6 +145,7 @@ export default function App() {
   const [cutCount, setCutCount] = useState(0);
   const renderedVariantUrls = useRef<string[]>([]);
   const previewGeneration = useRef(0);
+  const autoPreviewAttempt = useRef(-1);
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
@@ -814,9 +815,12 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab !== "editor" || !mediaFiles.length || busy || previewBusy) return;
-    const selected = selectedVariant;
-    if (renderedVariants.some((item) => item.id === selected.id)) return;
-    const timer = window.setTimeout(() => { void createSelectedPreview(); }, 250);
+    const generation = previewGeneration.current;
+    // The user should see all three real edit directions, not a single auto-selected sample.
+    // Remember one automatic attempt per media/settings generation to avoid retry loops on errors.
+    if (autoPreviewAttempt.current === generation) return;
+    autoPreviewAttempt.current = generation;
+    const timer = window.setTimeout(() => { void createStylePreviews(); }, 250);
     return () => window.clearTimeout(timer);
   }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
 
