@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - "feature/**"
+      - "rebuild/**"
   pull_request:
     branches:
       - main
       - "feature/**"
+      - "rebuild/**"
   workflow_dispatch:
 
 permissions:
