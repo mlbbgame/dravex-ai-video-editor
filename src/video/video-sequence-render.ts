@@ -302,14 +302,8 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
 }
 
 const dimensionsFor = (aspectRatio: string, quality = "720p") => {
-  const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
-  let base: { width: number; height: number };
-  if (quality === "preview") base = aspectRatio === "16:9" ? { width: 480, height: 270 } : aspectRatio === "1:1" ? { width: 360, height: 360 } : aspectRatio === "4:5" ? { width: 360, height: 450 } : { width: 360, height: 640 };
-  else if (aspectRatio === "16:9") base = { width: 1280, height: 720 };
-  else if (aspectRatio === "1:1") base = { width: 720, height: 720 };
-  else if (aspectRatio === "4:5") base = { width: 720, height: 900 };
-  else base = { width: 720, height: 1280 };
-  return { width: Math.round(base.width * multiplier), height: Math.round(base.height * multiplier) };
+  const profile = getExportProfile(aspectRatio, quality);
+  return { width: profile.width, height: profile.height };
 };
 
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
@@ -398,7 +392,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
-  const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/webm;codecs=vp9"].find((type) => MediaRecorder.isTypeSupported(type));
+  const mimeType = chooseSupportedWebmMimeType((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("This browser does not support WebM video export.");
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
@@ -494,7 +488,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
     throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
-  const bitrate = quality === "preview" ? 1_200_000 : quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 6_000_000;
+  const bitrate = getExportProfile(aspectRatio, quality).videoBitsPerSecond;
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
   const chunks: BlobPart[] = [];
   const result = new Promise<Blob>((resolve, reject) => {
