@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "feature/dravex-auto-qa"
+      - "feature/dravex-full-editor-upgrade"
   pull_request:
     branches:
       - "feature/**"
