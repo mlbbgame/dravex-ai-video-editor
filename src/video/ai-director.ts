@@ -31,8 +31,26 @@ type ObjectDetector = (input: string) => Promise<DetectedObject[]>;
 let detectorPromise: Promise<ObjectDetector> | null = null;
 
 const MODEL_ID = "Xenova/yolos-tiny";
-const MAX_MODEL_FRAMES = 8;
+const MAX_MODEL_FRAMES = 4;
 const MIN_OBJECT_CONFIDENCE = 0.35;
+const MODEL_LOAD_TIMEOUT_MS = 8_000;
+const MODEL_FRAME_TIMEOUT_MS = 2_500;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
 
 function getDetector(onProgress?: (progress: number) => void): Promise<ObjectDetector> {
   if (!detectorPromise) {
@@ -57,7 +75,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
     const timeout = window.setTimeout(() => {
       cleanup();
       reject(new Error("Истёк тайм-аут чтения кадра."));
-    }, 8000);
+    }, 2_500);
     const cleanup = () => {
       window.clearTimeout(timeout);
       video.removeEventListener("seeked", ready);
@@ -195,10 +213,26 @@ export async function analyzeWithAIDirector(
     return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
   }
 
+  // Browser-side object detection can monopolize the main thread on low-memory
+  // phones. For longer sources, preserve full-timeline visual ranking and skip
+  // model initialization; the cloud/job-backed long-video path is a later phase.
+  if (duration > 30) {
+    return {
+      candidates: emptyCandidates,
+      detectedLabels: [],
+      modelLoaded: false,
+      note: "Для длинного видео используем ограниченный анализ движения и контраста, чтобы не зависал телефон."
+    };
+  }
+
   let detector: ObjectDetector;
   try {
     onProgress?.({ current: 0, total: 100, phase: "loading-model" });
-    detector = await getDetector((progress) => onProgress?.({ current: progress, total: 100, phase: "loading-model" }));
+    detector = await withTimeout(
+      getDetector((progress) => onProgress?.({ current: progress, total: 100, phase: "loading-model" })),
+      MODEL_LOAD_TIMEOUT_MS,
+      "Загрузка AI-модели заняла слишком много времени."
+    );
   } catch {
     return {
       candidates: emptyCandidates,
@@ -240,7 +274,11 @@ export async function analyzeWithAIDirector(
       try {
         await seek(video, Math.min(candidate.time, Math.max(0, video.duration - 0.06)));
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const detected = (await detector(canvas.toDataURL("image/jpeg", 0.78)))
+        const detected = (await withTimeout(
+          detector(canvas.toDataURL("image/jpeg", 0.78)),
+          MODEL_FRAME_TIMEOUT_MS,
+          "Распознавание кадра заняло слишком много времени."
+        ))
           .filter((item) => item.score >= MIN_OBJECT_CONFIDENCE)
           .slice(0, 8);
         detectionsByCandidate.set(index, detected);

@@ -111,7 +111,7 @@ export async function getVideoDuration(url: string): Promise<number> {
   }
 }
 
-function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
+function seekTo(video: HTMLVideoElement, time: number, timeoutMs = 2_000): Promise<void> {
   const target = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
   // Some browsers do not fire "seeked" when asked to seek to the current frame.
   if (video.readyState >= 2 && Math.abs(video.currentTime - target) < 0.02) return Promise.resolve();
@@ -133,7 +133,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
     timeoutId = window.setTimeout(() => {
       cleanup();
       reject(new Error("Видео слишком долго обрабатывается. Попробуй более короткий файл."));
-    }, 12000);
+    }, timeoutMs);
     try {
       video.currentTime = target;
     } catch {
@@ -199,23 +199,23 @@ export async function analyzeVideoForHighlights(
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
-    // Keep frame analysis bounded for mobile browsers: at most about 60 samples.
-    // A wider interval on long clips reduces seeking overhead without scanning every frame.
-    const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
+    // Keep the coarse scan bounded to about 10 samples on mobile. The Director
+    // performs a smaller, denser pass over the strongest candidates afterwards.
+    const interval = Math.max(2, duration / 10, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
     // can fall back to evenly spaced cuts while still exporting a usable video.
-    const analysisBudgetMs = duration > 1800 ? 60_000 : 90_000;
+    const analysisBudgetMs = duration > 1800 ? 25_000 : 25_000;
 
     for (let index = 0; index < total; index += 1) {
       if (performance.now() - analysisStartedAt > analysisBudgetMs) {
         throw new Error("Анализ длинного видео занял слишком много времени — используем равномерный монтаж.");
       }
       const time = Math.min(duration - 0.08, index * interval + Math.min(0.12, interval * 0.08));
-      await seekTo(video, time);
+      await seekTo(video, time, 2_000);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       const features = frameFeatures(pixels);

@@ -364,7 +364,18 @@ for (const sourceDuration of [60, 300]) {
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
-  await expect(result.getByText("Видео готово!")).toBeVisible({ timeout: 60_000 });
+  // Surface the renderer's actual error instead of hiding it behind a generic 60-second timeout.
+  await expect.poll(async () => {
+    const hasResult = await result.count() > 0;
+    const alert = page.getByRole("alert").first();
+    const hasError = await alert.count() > 0 && await alert.isVisible();
+    return hasResult || hasError;
+  }, { timeout: 60_000 }).toBe(true);
+  const renderError = page.getByRole("alert").first();
+  if (await renderError.count() > 0 && await renderError.isVisible()) {
+    throw new Error(`Long-source montage failed: ${(await renderError.innerText()).trim()}`);
+  }
+  await expect(result.getByText("Видео готово!")).toBeVisible();
   const outputVideo = result.locator("video.dravex-output");
   await expect(outputVideo).toBeVisible();
   await outputVideo.evaluate((video: HTMLVideoElement) => {
