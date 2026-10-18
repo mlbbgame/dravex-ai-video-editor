@@ -80,3 +80,7 @@ The preview editor now uses a responsive two-column workspace on wider screens, 
 ## Preview render engine update (2026-10-18)
 
 The isolated preview renderer now uses an eased Velocity speed curve and style-aware color grading across Cinematic, Anime, Velocity, Glitch, and Story looks. The existing camera motion, transition families, and beat-aware edit planning remain in place. Build/typecheck passed before merge; browser smoke tests are being checked. The primary site source branch remains unchanged.
+
+## Preview AI Director update (2026-10-18)
+
+The isolated preview now includes an experimental object-aware AI Director: it can attempt browser-side object detection on sampled video frames, use detected labels alongside visual motion/contrast signals when ranking highlights, and analyze short clips instead of relying only on clip duration. Object detection uses a pretrained model loaded on demand; if the model cannot load, the editor falls back to its existing visual analysis. Motion-based action cues are heuristics, not full action recognition or deep scene understanding. This update is confined to `feature/dravex-full-editor-upgrade`; the primary editor source branch `feature/dravex-camera-audio-v2` remains unchanged. Automated build and mobile-browser smoke tests passed; real Android-device video analysis and export still need hands-on verification.
