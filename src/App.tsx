@@ -124,6 +124,7 @@ export default function App() {
   const videoUrl = firstVideoIndex >= 0 ? mediaUrls[firstVideoIndex] : "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
   const isMixedMode = mediaFiles.some((file) => getMediaKind(file) === "video") && mediaFiles.some((file) => getMediaKind(file) === "image");
+  const isSequenceMode = mediaFiles.length > 1 && !isImageMode;
   const busy = stage === "analyzing" || stage === "rendering";
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
@@ -430,7 +431,7 @@ export default function App() {
       let sourceVideoDuration = 0;
       let analysisFallback = false;
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
-      if (isMixedMode) {
+      if (isSequenceMode) {
         actualStyle = style === "auto" ? "cinematic" : actualStyle;
         const perItemTarget = renderDuration / mediaFiles.length;
         const shotLength = actualStyle === "velocity" ? 1.05
@@ -523,7 +524,7 @@ export default function App() {
         }
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
-      if (musicUrl && musicFile && beatSync && !isMixedMode) {
+      if (musicUrl && musicFile && beatSync && !isSequenceMode) {
         setMessage("Анализируем музыкальный ритм…");
         try {
           const beatAnalysis = await detectMusicBeats(musicUrl);
@@ -547,7 +548,7 @@ export default function App() {
         } catch {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
-      } else if (musicUrl && musicFile && beatSync && isMixedMode) {
+      } else if (musicUrl && musicFile && beatSync && isSequenceMode) {
         setMessage("Музыка будет добавлена. Автоматическая подгонка склеек под бит для смешанных видео и фото появится в следующем этапе.");
       }
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
@@ -727,7 +728,7 @@ export default function App() {
           </button>
         ) : (
           <div className="dravex-preview-card">
-            {isImageMode || isMixedMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={file.name + "-" + index}>
+            {isImageMode || isSequenceMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={file.name + "-" + index}>
               {getMediaKind(file) === "image" ? <img src={mediaUrls[index]} alt={file.name} /> : <video src={mediaUrls[index]} aria-label={file.name} muted playsInline preload="metadata" />}
               <div className="dravex-image-tools">
                 <span title={file.name}>{index + 1}</span>
@@ -736,7 +737,7 @@ export default function App() {
                 <button type="button" aria-label={`Удалить медиафайл ${index + 1}`} title="Удалить" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
               </div>
             </div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
-            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : isMixedMode ? `${mediaFiles.length} медиафайлов в монтажной последовательности` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
+            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : isMixedMode ? `${mediaFiles.length} медиафайлов в монтажной последовательности` : isSequenceMode ? `${mediaFiles.length} видеофрагментов в последовательности` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
           </div>
         )}
 
