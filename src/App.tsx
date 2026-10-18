@@ -130,6 +130,7 @@ export default function App() {
   const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
   const [projectMessage, setProjectMessage] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
+  const [projectHydrated, setProjectHydrated] = useState(false);
   const [scan, setScan] = useState<HighlightProgress>({ current: 0, total: 0, time: 0 });
   const [renderProgress, setRenderProgress] = useState(0);
   const [message, setMessage] = useState("");
@@ -159,6 +160,79 @@ export default function App() {
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => () => { renderedVariantUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+
+  // Restore the last project automatically so a refresh or returning from Music
+  // does not force the user to import media and configure the edit again.
+  useEffect(() => {
+    let cancelled = false;
+    void loadLocalProject().then((project) => {
+      if (cancelled) return;
+      if (project?.files?.length) {
+        setMediaFiles(project.files);
+        setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+        setMusicFile(project.musicFile ?? null);
+        setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
+        setStyle((project.style as EditStyle) || "auto");
+        setDuration(project.duration || 30);
+        setAspectRatio(project.aspectRatio ?? "9:16");
+        setQuality(project.quality || "720p");
+        setBeatSync(project.beatSync !== false);
+        setEffectStrength(project.effectStrength ?? "balanced");
+        setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+        setTransitionMode(project.transitionMode ?? "auto");
+        setStage("ready");
+        setProjectMessage("Последний проект восстановлен автоматически.");
+      }
+    }).catch(() => {
+      // Keep the editor usable even if this browser blocks local storage.
+    }).finally(() => {
+      if (!cancelled) setProjectHydrated(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Save changes quietly in the background. Empty media is also saved after the
+  // user clears the editor, preventing an older project from unexpectedly returning.
+  useEffect(() => {
+    if (!projectHydrated) return;
+    const timeout = window.setTimeout(() => {
+      void saveLocalProject({
+        files: mediaFiles,
+        musicFile,
+        style,
+        duration,
+        aspectRatio,
+        quality,
+        beatSync,
+        effectStrength,
+        musicVolume,
+        transitionMode,
+      }).catch(() => {
+        // Manual save still reports storage errors to the user.
+      });
+    }, 450);
+    return () => window.clearTimeout(timeout);
+  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode]);
+
+  // On Android, the system/browser Back action should leave the Music tab first,
+  // returning to the existing edit instead of navigating away and losing context.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  useEffect(() => {
+    window.history.pushState({ dravexTab: "editor" }, "", window.location.href);
+    const handlePopState = () => {
+      if (activeTabRef.current === "music") {
+        setActiveTab("editor");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+  useEffect(() => {
+    if (activeTab === "music") {
+      window.history.pushState({ dravexTab: "music" }, "", window.location.href);
+    }
+  }, [activeTab]);
 
   const clearEditor = () => {
     if (busy || previewBusy || projectBusy) return;
