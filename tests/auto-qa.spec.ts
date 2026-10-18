@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -75,6 +75,8 @@ test("DRAVEX Auto QA captures a real rendered output and a compact evidence repo
   expect(filePath).toBeTruthy();
   const fileInfo = await stat(filePath!);
   expect(fileInfo.size).toBeGreaterThan(10_000);
+  const retainedVideoPath = path.join(evidenceDir, "dravex-auto-qa-output.webm");
+  await copyFile(filePath!, retainedVideoPath);
 
   await writeFile(
     path.join(process.cwd(), "test-results", "dravex-visual-checks.json"),
@@ -84,7 +86,7 @@ test("DRAVEX Auto QA captures a real rendered output and a compact evidence repo
       status: "passed",
       output: outputMetrics,
       export: { filename: download.suggestedFilename(), bytes: fileInfo.size, nonEmpty: fileInfo.size > 10_000 },
-      evidence: ["visual/auto-qa-rendered-frame.png", "visual/auto-qa-render-result.png"],
+      evidence: ["visual/auto-qa-rendered-frame.png", "visual/auto-qa-render-result.png", "visual/dravex-auto-qa-output.webm"],
       limitations: [
         "This verifies browser rendering and basic export integrity, not subjective edit quality.",
         "Synthetic SVG fixture is used; no user media is uploaded.",
