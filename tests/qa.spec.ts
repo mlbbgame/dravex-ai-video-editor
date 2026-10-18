@@ -17,6 +17,7 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
 
 test("same-tab reload restores a project but a fresh tab session starts clean", async ({ page }) => {
   await page.goto("/");
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("dravex-active-editor-session-v1"))).toBe("active");
   await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
   await page.evaluate(async () => {
     const request = indexedDB.open("dravex-projects", 1);
