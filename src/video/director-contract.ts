@@ -118,6 +118,23 @@ export const directorProfiles: Record<DirectorProfileId, DirectorProfile> = {
   },
 };
 
+/**
+ * Suggest a profile from already-detected semantic event labels.
+ * This is routing logic only: it does not detect events from pixels itself.
+ * Ties and empty/unknown labels fall back to cinematic/travel for a restrained edit.
+ */
+export function suggestDirectorProfile(eventLabels: readonly string[]): DirectorProfileId {
+  const normalized = new Set(eventLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
+  const candidates = (Object.values(directorProfiles) as DirectorProfile[]).map((profile) => ({
+    id: profile.id,
+    score: profile.eventPriorities.reduce((score, event) => score + (normalized.has(event.toLowerCase()) ? 1 : 0), 0),
+  }));
+  candidates.sort((a, b) => b.score - a.score);
+  if (!candidates.length || candidates[0].score === 0) return "cinematic-travel";
+  if (candidates.length > 1 && candidates[0].score === candidates[1].score) return "cinematic-travel";
+  return candidates[0].id;
+}
+
 export type DirectorPlanValidation = {
   valid: boolean;
   errors: string[];
