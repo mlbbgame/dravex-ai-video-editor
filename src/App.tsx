@@ -113,6 +113,7 @@ async function alignPreviewSegmentsToMusic(
 export default function App() {
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const [musicUrl, setMusicUrl] = useState("");
   const [activeTab, setActiveTab] = useState<"editor" | "music">("editor");
@@ -186,6 +187,7 @@ export default function App() {
       if (project?.files?.length) {
         setMediaFiles(project.files);
         setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+        setActivePhotoIndex(0);
         setMusicFile(project.musicFile ?? null);
         setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
         setStyle((project.style as EditStyle) || "auto");
@@ -258,6 +260,7 @@ export default function App() {
     clearRenderedVariants();
     setMediaFiles([]);
     setMediaUrls([]);
+    setActivePhotoIndex(0);
     setMusicFile(null);
     setMusicUrl("");
     setStyle("auto");
@@ -312,6 +315,7 @@ export default function App() {
       clearRenderedVariants();
       setMediaFiles(project.files);
       setMediaUrls(project.files.map((file) => URL.createObjectURL(file)));
+      setActivePhotoIndex(0);
       setMusicFile(project.musicFile ?? null);
       setMusicUrl(project.musicFile ? URL.createObjectURL(project.musicFile) : "");
       setStyle((project.style as EditStyle) || "auto");
@@ -353,6 +357,7 @@ export default function App() {
     clearRenderedVariants();
     setMediaFiles(files);
     setMediaUrls(files.map((file) => URL.createObjectURL(file)));
+    setActivePhotoIndex(0);
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
@@ -373,6 +378,7 @@ export default function App() {
     clearRenderedVariants();
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    setActivePhotoIndex(target);
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
@@ -387,6 +393,7 @@ export default function App() {
     clearRenderedVariants();
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+    setActivePhotoIndex(0);
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
@@ -882,15 +889,35 @@ export default function App() {
           </button>
         ) : (
           <div className="dravex-preview-card">
-            {isImageMode ? <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className="dravex-image-thumb" key={file.name + "-" + index}>
-              <img src={mediaUrls[index]} alt={file.name} />
-              <div className="dravex-image-tools">
-                <span title={file.name}>{index + 1}</span>
-                <button type="button" aria-label={`Переместить фото ${index + 1} выше`} title="Выше" disabled={index === 0} onClick={() => reorderPhoto(index, -1)}><ArrowUp size={14} /></button>
-                <button type="button" aria-label={`Переместить фото ${index + 1} ниже`} title="Ниже" disabled={index === mediaFiles.length - 1} onClick={() => reorderPhoto(index, 1)}><ArrowDown size={14} /></button>
-                <button type="button" aria-label={`Удалить фото ${index + 1}`} title="Удалить фото" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
+            {isImageMode ? <>
+              <div className="dravex-photo-preview" aria-label="Предпросмотр выбранной фотографии">
+                <img src={mediaUrls[Math.min(activePhotoIndex, mediaUrls.length - 1)]} alt={mediaFiles[Math.min(activePhotoIndex, mediaFiles.length - 1)]?.name ?? "Выбранная фотография"} />
+                <span>Фото {Math.min(activePhotoIndex + 1, mediaFiles.length)} из {mediaFiles.length}</span>
               </div>
-            </div>)}</div> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
+              <div className="dravex-image-grid">{mediaFiles.map((file, index) => <div className={`dravex-image-thumb ${activePhotoIndex === index ? "is-active" : ""}`} key={file.name + "-" + index}>
+                <img
+                  src={mediaUrls[index]}
+                  alt={file.name}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Показать фото ${index + 1}`}
+                  aria-pressed={activePhotoIndex === index}
+                  onClick={() => setActivePhotoIndex(index)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setActivePhotoIndex(index);
+                    }
+                  }}
+                />
+                <div className="dravex-image-tools">
+                  <span title={file.name}>{index + 1}</span>
+                  <button type="button" aria-label={`Переместить фото ${index + 1} выше`} title="Выше" disabled={index === 0} onClick={() => reorderPhoto(index, -1)}><ArrowUp size={14} /></button>
+                  <button type="button" aria-label={`Переместить фото ${index + 1} ниже`} title="Ниже" disabled={index === mediaFiles.length - 1} onClick={() => reorderPhoto(index, 1)}><ArrowDown size={14} /></button>
+                  <button type="button" aria-label={`Удалить фото ${index + 1}`} title="Удалить фото" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
+                </div>
+              </div>)}</div>
+            </> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
             <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
           </div>
         )}
