@@ -431,5 +431,7 @@ body {
 /* Real decoded output frames: compact local contact sheet for visual QA on mobile. */
 .dravex-frame-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
 .dravex-frame-strip figure { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #ffffff18; border-radius: 7px; background: #050607; }
-.dravex-frame-strip img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #050607; }
-.dravex-frame-strip figcaption { padding: 5px 4px; color: #aab0b7; font-size: 9px; text-align: center; }
+.dravex-frame-jump { display: block; width: 100%; padding: 0; border: 0; color: #aab0b7; background: transparent; text-align: center; }
+.dravex-frame-jump img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #050607; }
+.dravex-frame-jump span { display: block; padding: 6px 3px; font-size: 10px; }
+.dravex-frame-jump:hover span, .dravex-frame-jump:focus-visible span { color: var(--accent); }
