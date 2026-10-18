@@ -437,6 +437,57 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     audio: await loadAudio(segment)
   })));
 
+  // Validate the actual, metadata-resolved edit before allocating the recording canvas.
+  // This catches impossible trims, timeline gaps and audio bounds before a blank export can start.
+  const timelineSources: TimelineSource[] = loaded.map((item, index) => ({
+    id: `visual-source-${index + 1}`,
+    kind: item.kind,
+    ...(item.kind === "video" ? { duration: item.video.duration } : {}),
+  }));
+  let timelineCursor = 0;
+  const timelineClips: EditTimeline["clips"] = loaded.map((item, index) => {
+    const timelineStart = timelineCursor;
+    timelineCursor += item.duration;
+    return {
+      id: `visual-clip-${index + 1}`,
+      sourceId: `visual-source-${index + 1}`,
+      kind: item.kind,
+      timelineStart,
+      timelineEnd: timelineCursor,
+      ...(item.kind === "video" ? { sourceRange: { start: item.start, end: item.end } } : {}),
+      playbackRate: 1,
+    };
+  });
+  const timelineAudioTracks: EditTimeline["audioTracks"] = loadedAudio.map(({ audio, segment }, index) => {
+    const sourceId = `audio-source-${index + 1}`;
+    timelineSources.push({ id: sourceId, kind: "audio", duration: audio.duration });
+    const fade = Math.min(0.2, totalDuration / 4);
+    return {
+      id: `audio-track-${index + 1}`,
+      sourceId,
+      timelineStart: 0,
+      timelineEnd: totalDuration,
+      sourceRange: { start: 0, end: audio.duration },
+      gain: segment.volume ?? 1,
+      fadeInSeconds: fade,
+      fadeOutSeconds: fade,
+      loop: true,
+    };
+  });
+  const timeline: EditTimeline = {
+    schemaVersion: 1,
+    targetDuration: totalDuration,
+    aspectRatio: aspectRatio as EditTimeline["aspectRatio"],
+    resolution: quality as EditTimeline["resolution"],
+    frameRate: 24,
+    clips: timelineClips,
+    audioTracks: timelineAudioTracks,
+  };
+  const timelineValidation = validateEditTimeline(timeline, timelineSources);
+  if (!timelineValidation.valid) {
+    throw new Error(`Не удалось проверить монтаж перед экспортом: ${timelineValidation.errors.slice(0, 3).join(" ")}`);
+  }
+
   const { width, height } = dimensionsFor(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -444,7 +495,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not initialize the video renderer.");
 
-  const videoStream = canvas.captureStream(24);
+  const videoStream = canvas.captureStream(getExportProfile(aspectRatio, quality).frameRate);
   // Do not create an AudioContext for a no-music export. On some Android
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
