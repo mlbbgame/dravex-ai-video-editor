@@ -132,13 +132,19 @@ export async function renderImageSlideshow({
       const current = sequence[imageIndex].image;
       const next = sequence[Math.min(imageIndex + 1, sequence.length - 1)].image;
       const progress = Math.max(0, Math.min(1, localFrame));
-      const motion = suppressEffects ? 0 : style === "velocity" ? 0.13 : style === "anime" ? 0.1 : style === "glitch" ? 0.09 : style === "story" ? 0.045 : 0.07;
-      const zoom = 1 + localFrame * motion;
+      // DRAVEX Camera V2: smoother easing and alternating motion paths for photo montages.
+      const motion = suppressEffects ? 0 : style === "velocity" ? 0.17 : style === "anime" ? 0.125 : style === "glitch" ? 0.115 : style === "story" ? 0.06 : 0.105;
+      const eased = localFrame * localFrame * (3 - 2 * localFrame);
+      const zoomIn = imageIndex % 2 === 0;
+      const zoom = 1.035 + (zoomIn ? eased : 1 - eased) * motion;
       const scale = Math.max(width / current.width, height / current.height) * zoom;
       const drawWidth = current.width * scale;
       const drawHeight = current.height * scale;
-      const driftX = (drawWidth - width) * (style === "anime" ? 0.22 : 0.5) * localFrame;
-      const driftY = (drawHeight - height) * 0.5 * localFrame;
+      const pan = suppressEffects ? 0 : style === "velocity" ? 0.09 : style === "anime" ? 0.06 : style === "glitch" ? 0.065 : style === "story" ? 0.025 : 0.06;
+      const pathX = [1, -1, 0.7, -0.7, 0.4, -0.4][imageIndex % 6];
+      const pathY = [0, 0, -0.65, 0.65, 1, -1][imageIndex % 6];
+      const driftX = (drawWidth - width) * 0.5 * eased * pathX + width * pan * Math.sin(eased * Math.PI / 2) * pathX;
+      const driftY = (drawHeight - height) * 0.5 * eased * pathY + height * pan * Math.sin(eased * Math.PI / 2) * pathY;
 
       context.fillStyle = "#090b12";
       context.fillRect(0, 0, width, height);
