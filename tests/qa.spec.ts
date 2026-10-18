@@ -63,7 +63,7 @@ test("choosing a montage style highlights exactly one matching variant", async (
 
   const variants = page.locator(".dravex-variant");
   const selected = page.locator(".dravex-variant[aria-pressed='true']");
-  await expect(variants).toHaveCount(8);
+  await expect(variants).toHaveCount(9);
   await expect(selected).toHaveCount(1);
 
   await variants.filter({ hasText: "Velocity" }).click();
@@ -75,6 +75,10 @@ test("choosing a montage style highlights exactly one matching variant", async (
   await expect(selected).toHaveCount(1);
   await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "true");
   await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "false");
+
+  await variants.filter({ hasText: "Travel Flow" }).click();
+  await expect(selected).toHaveCount(1);
+  await expect(variants.filter({ hasText: "Travel Flow" })).toHaveAttribute("aria-pressed", "true");
 
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -192,11 +196,17 @@ test("camera motion profiles provide visible but controlled movement", () => {
   const story = getCameraMotionProfile("story", "balanced");
   const strong = getCameraMotionProfile("cinematic", "strong");
   const soft = getCameraMotionProfile("cinematic", "soft");
+  const travel = getCameraMotionProfile("travel", "balanced");
+  const none = getCameraMotionProfile("cinematic", "none");
   expect(cinematic.zoom).toBeGreaterThan(0.1);
   expect(cinematic.pan).toBeGreaterThan(0.04);
   expect(story.zoom).toBeLessThan(cinematic.zoom);
   expect(strong.zoom).toBeGreaterThan(cinematic.zoom);
   expect(soft.zoom).toBeLessThan(cinematic.zoom);
+  expect(travel.zoom).toBeLessThan(cinematic.zoom);
+  expect(travel.pan).toBeLessThan(cinematic.pan);
+  expect(none.zoom).toBe(0);
+  expect(none.pan).toBe(0);
 });
 
 test("one-button photo auto-montage produces a playable WebM that can be downloaded", async ({ page }) => {
