@@ -35,8 +35,8 @@ test("main app opens and mixed media can be imported, reordered and removed", as
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page).toHaveTitle(/DRAVEX/i);
-  await expect(page.getByRole("button", { name: "AI Creator" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Manual Studio" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "AI Creator", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Manual Studio", exact: true })).toBeVisible();
 
   await importMixedMedia(page);
   const rows = page.locator(".clip-row");
