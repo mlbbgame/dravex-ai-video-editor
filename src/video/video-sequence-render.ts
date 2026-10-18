@@ -59,7 +59,7 @@ type SequenceOptions = {
   aspectRatio: string;
   quality?: string;
   style?: SequenceRenderStyle;
-  effectStrength?: "soft" | "balanced" | "strong";
+  effectStrength?: "none" | "soft" | "balanced" | "strong";
   transitionMode?: "auto" | "cinematic" | "action";
   suppressEffects?: boolean;
   suppressFlashes?: boolean;
@@ -543,9 +543,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
     // DRAVEX Camera V2: eased push/pull plus varied directional paths for stills.
-    const strengthScale = effectStrength === "soft" ? 0.72 : effectStrength === "strong" ? 1.28 : 1;
+    const strengthScale = effectStrength === "none" ? 0 : effectStrength === "soft" ? 0.42 : effectStrength === "strong" ? 1.28 : 1;
     const cameraMotion = getCameraMotionProfile(style, effectStrength);
-    const motion = suppressEffects ? 0 : cameraMotion.zoom;
+    const motion = suppressEffects || effectStrength === "none" ? 0 : cameraMotion.zoom;
     const isPhoto = source instanceof HTMLImageElement;
     const eased = progress * progress * (3 - 2 * progress);
     const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
@@ -559,7 +559,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : cameraMotion.pan;
+    const panAmount = suppressEffects || effectStrength === "none" ? 0 : cameraMotion.pan;
     // Travel across the frame instead of easing from a static center to one side.
     // The symmetric path makes movement perceptible at the start and end of each still.
     const panPhase = eased * Math.PI;
@@ -593,7 +593,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
 
     context.save();
-    context.filter = suppressEffects ? "none" : style === "travel" ? "contrast(1.02) saturate(1.02) brightness(1.01)" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
+    context.filter = suppressEffects || effectStrength === "none" ? "none" : style === "travel" ? "contrast(1.02) saturate(1.02) brightness(1.01)" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
@@ -682,7 +682,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       drawIncoming();
     }
     context.restore();
-    if (!suppressEffects) {
+    if (!suppressEffects && effectStrength !== "none") {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
       shade.addColorStop(0, "rgba(5,7,12,0)");
       shade.addColorStop(1, style === "travel" ? "rgba(5,7,12,0.07)" : "rgba(5,7,12,0.18)");
@@ -690,12 +690,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story" && style !== "travel") {
+    if (!suppressEffects && effectStrength !== "none" && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story" && style !== "travel") {
       const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
+    if (!suppressEffects && effectStrength !== "none" && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
       const glitchStrength = (1 - cutProgress / 0.16) * strengthScale;
       // Split short horizontal slices for a more readable digital-impact effect than a full-frame tint alone.
       context.save();
