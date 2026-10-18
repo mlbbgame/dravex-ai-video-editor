@@ -260,6 +260,14 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   expect(playback.width).toBeGreaterThan(0);
   expect(playback.height).toBeGreaterThan(0);
 
+  // The export inspector shows actual decoded frames. Tapping one must seek the
+  // playable output to that timestamp so users can inspect a bad moment in place.
+  const frameJump = page.getByRole("button", { name: /Перейти к .* секунде видео/ }).first();
+  await expect(frameJump).toBeVisible({ timeout: 20_000 });
+  await frameJump.click();
+  const inspectedTime = await outputVideo.evaluate((video: HTMLVideoElement) => video.currentTime);
+  expect(inspectedTime).toBeGreaterThan(0);
+
   const downloadPromise = page.waitForEvent("download");
   await result.getByRole("link", { name: "Сохранить видео" }).click();
   const download = await downloadPromise;
