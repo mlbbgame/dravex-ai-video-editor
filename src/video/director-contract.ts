@@ -135,6 +135,79 @@ export function suggestDirectorProfile(eventLabels: readonly string[]): Director
   return candidates[0].id;
 }
 
+export type DirectorSceneCandidate = {
+  sourceStart: number;
+  sourceEnd: number;
+  eventLabels: string[];
+  confidence: number;
+};
+
+export type DirectorGuidance = {
+  profile: DirectorProfileId;
+  title: string;
+  pacing: "aggressive" | "measured";
+  preferredMusic: string[];
+  preferredTransitions: DirectorTransition[];
+  preferredEffects: DirectorEffect[];
+  eventPriorities: string[];
+  preserveChronology: boolean;
+  avoidFlashyEffects: boolean;
+};
+
+/**
+ * Produce renderer/model guidance from a chosen or suggested profile.
+ * This is an instruction package, not semantic video analysis or rendering.
+ */
+export function getDirectorGuidance(profileId: DirectorProfileId): DirectorGuidance {
+  const profile = directorProfiles[profileId] ?? directorProfiles["cinematic-travel"];
+  const processProfiles: DirectorProfileId[] = ["food-cooking", "product-diy"];
+  return {
+    profile: profile.id,
+    title: profile.title,
+    pacing: profile.pacing,
+    preferredMusic: [...profile.preferredMusic],
+    preferredTransitions: [...profile.preferredTransitions],
+    preferredEffects: [...profile.preferredEffects],
+    eventPriorities: [...profile.eventPriorities],
+    preserveChronology: processProfiles.includes(profile.id),
+    avoidFlashyEffects: profile.id !== "aggressive-car",
+  };
+}
+
+/**
+ * Rank already-detected scenes using category-specific labels and confidence.
+ * Keep timestamps intact; food/tutorial process order is preserved by sorting
+ * chronologically after ranking rather than pretending semantic stages are known.
+ */
+export function rankDirectorCandidates(
+  profileId: DirectorProfileId,
+  candidates: readonly DirectorSceneCandidate[],
+  sourceDuration: number,
+): DirectorSceneCandidate[] {
+  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return [];
+  const guidance = getDirectorGuidance(profileId);
+  const priorities = new Map(guidance.eventPriorities.map((label, index) => [label.toLowerCase(), guidance.eventPriorities.length - index]));
+  const valid = candidates.filter((candidate) =>
+    Number.isFinite(candidate.sourceStart) &&
+    Number.isFinite(candidate.sourceEnd) &&
+    candidate.sourceStart >= 0 &&
+    candidate.sourceEnd > candidate.sourceStart &&
+    candidate.sourceEnd <= sourceDuration &&
+    Number.isFinite(candidate.confidence) &&
+    candidate.confidence >= 0 &&
+    candidate.confidence <= 1 &&
+    Array.isArray(candidate.eventLabels) &&
+    candidate.eventLabels.every((label) => typeof label === "string"),
+  );
+  const score = (candidate: DirectorSceneCandidate) =>
+    candidate.confidence * 2 +
+    candidate.eventLabels.reduce((sum, label) => sum + (priorities.get(label.toLowerCase()) ?? 0), 0);
+  return [...valid].sort((a, b) => {
+    if (guidance.preserveChronology) return a.sourceStart - b.sourceStart;
+    return score(b) - score(a) || a.sourceStart - b.sourceStart;
+  });
+}
+
 export type DirectorPlanValidation = {
   valid: boolean;
   errors: string[];
@@ -142,7 +215,7 @@ export type DirectorPlanValidation = {
 
 const transitions = new Set<DirectorTransition>(["cut", "short-impact", "smooth", "match-motion"]);
 const effects = new Set<DirectorEffect>(["speed-ramp", "motion-blur", "flash", "camera-motion", "color-grade"]);
-const profiles = new Set<DirectorProfileId>(["aggressive-car", "cinematic-travel"]);
+const profiles = new Set<DirectorProfileId>(Object.keys(directorProfiles) as DirectorProfileId[]);
 const variants = new Set<DirectorVariantId>(["hype", "cinematic", "emotion", "signature"]);
 const musicSources = new Set<MusicSource>(["licensed-library", "user-upload"]);
 const aspectRatios = new Set<DirectorEditPlan["aspectRatio"]>(["9:16", "16:9", "1:1", "4:5"]);
