@@ -1,0 +1,68 @@
+name: DRAVEX Auto QA — render evidence and report
+
+on:
+  push:
+    branches:
+      - "feature/dravex-auto-qa"
+  pull_request:
+    branches:
+      - "feature/**"
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dravex-auto-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auto-qa:
+    name: Build, browser tests, render evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out preview source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build and type-check
+        run: npm run build
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Install ffmpeg for media QA
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Run full browser QA suite
+        run: npm run test:qa
+
+      - name: Generate compact QA report
+        if: always()
+        run: node scripts/generate-qa-report.mjs
+
+      - name: Upload QA report, screenshots, traces, and render measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dravex-auto-qa-${{ github.run_number }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
