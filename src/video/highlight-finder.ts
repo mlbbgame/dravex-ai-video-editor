@@ -141,7 +141,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-function normalizeMotionScore(motion: number, contrast: number, saturation: number, semantic: number): number {\n  // Real object confidence now contributes to ranking when the optional model is available.\n  return motion * (semantic > 0 ? 0.48 : 0.62) + contrast * 0.22 + saturation * 0.10 + semantic * 0.20;\n}\n\nfunction frameFeatures(data: Uint8ClampedArray) {
+function frameFeatures(data: Uint8ClampedArray) {
   let sum = 0;
   let saturation = 0;
   const lumas: number[] = [];
