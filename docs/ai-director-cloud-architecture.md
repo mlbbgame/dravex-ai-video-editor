@@ -1,6 +1,6 @@
 # DRAVEX AI Director — Cloud Architecture Proposal
 
-**Status:** design proposal; not implemented.  
+**Status:** architecture proposal; profile contracts and deterministic helper functions are implemented on this feature branch, while semantic video analysis, cloud orchestration, and rendering integration remain unimplemented.  
 **Scope:** architecture and acceptance criteria for the next DRAVEX AI Director milestone.  
 **Safety boundary:** work on a feature branch only. Do not merge to `main`, publish to production, or change the existing live site without explicit approval.
 
@@ -20,6 +20,15 @@
   - **People, Pets & Everyday Life:** prioritize visible faces, expressions, interactions, pet behavior, and meaningful moments; protect face/action framing and avoid abrupt crops, excessive effects, or cuts that remove the key moment.
   - **Products, Tutorials & DIY:** build a comprehensible sequence from overview and materials to detail shots, ordered steps, before/after where available, and the final result.
 - These are target behaviors. The current browser prototype uses local heuristics and is not a semantic cloud AI editor.
+
+## Current branch implementation boundary
+
+- The provider-neutral TypeScript contract defines six profiles and validates plans for all six.
+- `suggestDirectorProfile` routes already-detected event labels to a profile; it does not inspect video pixels or generate labels.
+- `getDirectorGuidance` exposes profile-specific music, transition, effect, pacing, chronology, and restraint preferences for a future analyzer/planner integration.
+- `rankDirectorCandidates` filters invalid timestamps/confidence and ranks non-process scenes by label priority; food and DIY candidates remain in source chronology.
+- Unit tests were added for all-profile validation, profile routing, guidance, and candidate ranking. CI/build status must be checked before treating these changes as verified.
+- The current browser prototype still does not provide semantic cloud AI, and these helpers are not yet wired into the renderer.
 
 ## Proposed system
 
