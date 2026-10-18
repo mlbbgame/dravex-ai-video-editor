@@ -46,7 +46,19 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
-  const ranked = [...candidates].sort((a, b) => b.score - a.score);
+  const styleScore = (moment: HighlightMoment) => {
+    const motion = Math.max(0, Math.min(1, moment.motion));
+    const semantic = moment.semanticScore ?? 0;
+    const hasActionCue = Boolean(moment.actionCue);
+    if (style === "velocity" || style === "glitch" || style === "anime") {
+      return moment.score + motion * 0.16 + semantic * 0.08 + (hasActionCue ? 0.14 : 0);
+    }
+    if (style === "cinematic") {
+      return moment.score + (moment.contrast ?? 0) * 0.14 + semantic * 0.04 - motion * 0.035;
+    }
+    return moment.score + semantic * 0.06 - motion * 0.08;
+  };
+  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
   const selected: HighlightMoment[] = [];
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
@@ -496,10 +508,17 @@ export default function App() {
           const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
           sourceVideoDuration = analysis.duration;
           renderDuration = Math.min(duration, analysis.duration);
+          const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
+          const actionCueCount = analysis.samples.filter((sample) => sample.actionCue).length;
+          const detectedObjects = [...new Set(analysis.samples.flatMap((sample) => sample.objectLabels ?? []))];
           if (style === "auto") {
-            const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
-            actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+            actualStyle = averageMotion > 0.075 || actionCueCount >= 2 ? "velocity" : "cinematic";
           }
+          directorSummary = analysis.semanticAvailable
+            ? (detectedObjects.length
+              ? `AI Director: распознаны объекты — ${detectedObjects.slice(0, 5).join(", ")}; найдено активных эпизодов: ${actionCueCount}.`
+              : "AI Director: модель объектов загружена; стиль выбран по анализу движения и структуры сцен.")
+            : "AI Director: семантическая модель недоступна — выбор кадров основан на движении и визуальных признаках.";
           segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
@@ -597,7 +616,9 @@ export default function App() {
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
       setStage("done");
-      setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : "Готово! Посмотри результат и сохрани видео.");
+      setMessage(analysisFallback
+        ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео."
+        : [directorSummary, "Готово! Посмотри результат и сохрани видео."].filter(Boolean).join(" "));
     } catch (caught) {
       setStage("error");
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
