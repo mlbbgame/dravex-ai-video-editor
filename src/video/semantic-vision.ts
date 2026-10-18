@@ -1,5 +1,5 @@
 export type DetectedObject = { class: string; score: number; bbox: [number, number, number, number] };
-type CocoModel = { detect: (input: HTMLVideoElement, maxNumBoxes?: number, minScore?: number) => Promise<DetectedObject[]> };
+type CocoModel = { detect: (input: HTMLVideoElement | HTMLCanvasElement, maxNumBoxes?: number, minScore?: number) => Promise<DetectedObject[]> };
 type CocoApi = { load: (config?: { base?: string }) => Promise<CocoModel> };
 type BrowserVisionGlobals = { tf?: unknown; cocoSsd?: CocoApi };
 const globals = () => window as unknown as BrowserVisionGlobals;
@@ -74,7 +74,7 @@ export function loadSemanticObjectModel(): Promise<CocoModel | null> {
   return modelPromise;
 }
 
-export async function detectFrameObjects(model: CocoModel, video: HTMLVideoElement): Promise<DetectedObject[]> {
+export async function detectFrameObjects(model: CocoModel, video: HTMLVideoElement | HTMLCanvasElement): Promise<DetectedObject[]> {
   try {
     const predictions = await model.detect(video, 8, 0.38);
     return predictions
