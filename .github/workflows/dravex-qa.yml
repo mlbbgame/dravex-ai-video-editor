@@ -51,6 +51,15 @@ jobs:
       - name: Run DRAVEX browser smoke tests
         run: npm run test:qa
 
+      - name: Upload actual montage exports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dravex-exported-video-samples
+          path: test-results/exported-videos/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload browser traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
