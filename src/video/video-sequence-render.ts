@@ -530,7 +530,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         ? (cutIndex % 2 === 0 ? 8 : 0)
       : transitionMode === "action"
         ? actionTransitions[transitionIndex % actionTransitions.length]
-        : style === "cinematic" || style === "story" || style === "travel"
+        : style === "cinematic" || style === "story"
           ? calmTransitions[transitionIndex % calmTransitions.length]
           : style === "glitch"
             ? glitchTransitions[transitionIndex % glitchTransitions.length]
