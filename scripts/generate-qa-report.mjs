@@ -61,11 +61,11 @@ const lines = [
   "",
   ...(tests.filter((test) => test.errors.length).flatMap((test) => [
     `### ${test.title}`,
-    ...test.errors.map((error) => `- ${String(error).split("\\n")[0]}`),
+    ...test.errors.map((error) => `- ${String(error).split("\n")[0]}`),
     "",
   ]).length ? tests.filter((test) => test.errors.length).flatMap((test) => [
     `### ${test.title}`,
-    ...test.errors.map((error) => `- ${String(error).split("\\n")[0]}`),
+    ...test.errors.map((error) => `- ${String(error).split("\n")[0]}`),
     "",
   ]) : ["No test errors were recorded.", ""]),
   "## Render evidence",
