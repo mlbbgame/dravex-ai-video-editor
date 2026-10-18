@@ -460,9 +460,9 @@ export default function App() {
       if (isImageMode) {
         const photoCount = mediaFiles.length;
         // Auto-director treats the selected duration as a ceiling: it avoids holding a small photo set on screen for 6–10 seconds per image.
-        actualStyle = style === "auto"
-          ? (photoCount >= 4 || (musicFile !== null && beatSync) ? "velocity" : "cinematic")
-          : actualStyle;
+        // Auto mode must not assume that many photos or a music track means an action edit.
+        // Without reliable scene understanding, choose a restrained cinematic baseline.
+        actualStyle = style === "auto" ? "cinematic" : actualStyle;
         const shotSeconds = actualStyle === "velocity" ? (musicFile && beatSync ? 1.25 : 1.55)
           : actualStyle === "glitch" ? 1.35
           : actualStyle === "anime" ? 1.65
@@ -490,8 +490,9 @@ export default function App() {
           sourceVideoDuration = analysis.duration;
           renderDuration = Math.min(duration, analysis.duration);
           if (style === "auto") {
-            const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
-            actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+            // Camera movement alone cannot tell action footage from a moving road, river or landscape.
+            // Prefer clean cinematic pacing until semantic scene analysis is available.
+            actualStyle = "cinematic";
           }
           segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
         } catch (analysisError) {
