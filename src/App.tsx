@@ -9,7 +9,7 @@ import { getMediaKind } from "./video/media-kind";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 
-type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
+type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "travel" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
 type TransitionPreset = "auto" | "cinematic" | "action";
@@ -38,13 +38,14 @@ const montageVariants: MontageVariant[] = [
   { id: "anime", title: "Anime Impact", note: "Ярко и контрастно", style: "anime", transition: "action", strength: "strong", previewClass: "anime", icon: Sparkles },
   { id: "glitch", title: "Glitch Rush", note: "Цифровые вспышки", style: "glitch", transition: "action", strength: "strong", previewClass: "glitch", icon: ScanLine },
   { id: "story", title: "Soft Story", note: "Спокойная история", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Play },
+  { id: "travel", title: "Travel Flow", note: "Плавно · природа · дороги", style: "travel", transition: "cinematic", strength: "soft", previewClass: "travel", icon: Film },
   { id: "pulse", title: "Beat Pulse", note: "Ритмичные склейки", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
   { id: "neon", title: "Neon Action", note: "Неон и резкий темп", style: "glitch", transition: "auto", strength: "balanced", previewClass: "neon", icon: ScanLine },
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
   // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
-  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
+  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
   const ranked = [...candidates].sort((a, b) => b.score - a.score);
@@ -465,11 +466,13 @@ export default function App() {
         const shotSeconds = actualStyle === "velocity" ? (musicFile && beatSync ? 1.25 : 1.55)
           : actualStyle === "glitch" ? 1.35
           : actualStyle === "anime" ? 1.65
-          : actualStyle === "story" ? 3.1
+          : actualStyle === "travel" ? 4.2
+          : actualStyle === "story" ? 3.6
           : 2.35;
         renderDuration = Math.min(duration, Math.max(4, photoCount * shotSeconds));
         const rhythm = actualStyle === "velocity" ? [0.72, 1.04, 1.2, 0.84, 1.1]
           : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
+          : actualStyle === "travel" ? [1.08, 0.96, 1.12, 0.94, 1.04]
           : actualStyle === "story" ? [1.12, 0.92, 1.08, 1, 0.9]
           : [0.9, 1.08, 1, 1.12, 0.9];
         const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length]);
@@ -499,7 +502,8 @@ export default function App() {
           const shotLength = actualStyle === "velocity" ? 1.05
             : actualStyle === "glitch" ? 1.35
             : actualStyle === "anime" ? 1.65
-            : actualStyle === "story" ? 3.2
+            : actualStyle === "travel" ? 4.2
+            : actualStyle === "story" ? 3.6
             : 2.2;
           const fallbackCuts = buildFallbackVideoCuts(sourceVideoDuration, renderDuration, shotLength);
           segments = fallbackCuts.map((cut) => ({
@@ -514,13 +518,13 @@ export default function App() {
         }
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
-      if (musicUrl && musicFile && beatSync) {
+      if (musicUrl && musicFile && beatSync && actualStyle !== "travel" && actualStyle !== "story") {
         setMessage("Анализируем музыкальный ритм…");
         try {
           const beatAnalysis = await detectMusicBeats(musicUrl);
           const usableBeats = beatAnalysis.beats.filter((beat) => beat > 0.05 && beat < renderDuration - 0.05);
           if (usableBeats.length >= 3 && beatAnalysis.confidence !== "weak") {
-            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "glitch" ? 1.35 : actualStyle === "anime" ? 1.65 : actualStyle === "story" ? 3.2 : 2.2;
+            const preferredShot = actualStyle === "velocity" ? 1.05 : actualStyle === "glitch" ? 1.35 : actualStyle === "anime" ? 1.65 : actualStyle === "travel" ? 4.2 : actualStyle === "story" ? 3.6 : 2.2;
             const boundaries = snapCutBoundariesToBeats(usableBeats, renderDuration, segments.length, preferredShot);
             segments = segments.map((segment, index) => {
               const nextDuration = Math.max(0.2, boundaries[index + 1] - boundaries[index]);
@@ -539,7 +543,7 @@ export default function App() {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
       }
-      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
+      setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "travel" ? "Travel Flow" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
       setStage("rendering");
       setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
