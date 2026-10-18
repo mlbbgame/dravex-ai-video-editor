@@ -1,0 +1,65 @@
+name: DRAVEX automatic quality gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dravex-auto-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-browser-qa:
+    name: Build and browser QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check and production build
+        run: npm run build
+
+      - name: Install Chromium when browser tests exist
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['test:qa'] ? 0 : 1)"; then
+            npx playwright install --with-deps chromium
+          else
+            echo "No test:qa script on this revision; browser QA is skipped."
+          fi
+
+      - name: Run browser QA when available
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['test:qa'] ? 0 : 1)"; then
+            if ! command -v ffmpeg >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y ffmpeg
+            fi
+            npm run test:qa
+          else
+            echo "No test:qa script on this revision; build check completed."
+          fi
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dravex-browser-qa-traces
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
