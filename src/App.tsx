@@ -8,6 +8,7 @@ import { loadLocalProject, saveLocalProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
+import { analyzeImageSequence } from "./video/image-analysis";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "travel" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -474,13 +475,20 @@ export default function App() {
           : actualStyle === "story" ? 3.6
           : 2.35;
         renderDuration = Math.min(duration, Math.max(4, photoCount * shotSeconds));
+        setMessage("Проверяем визуальные повторы, не меняя порядок фотографий…");
+        const imageAnalysis = await analyzeImageSequence(mediaUrls);
         const rhythm = actualStyle === "velocity" ? [0.72, 1.04, 1.2, 0.84, 1.1]
           : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
           : actualStyle === "travel" ? [1.08, 0.96, 1.12, 0.94, 1.04]
           : actualStyle === "story" ? [1.12, 0.92, 1.08, 1, 0.9]
           : [0.9, 1.08, 1, 1.12, 0.9];
-        const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length]);
+        const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length] * (imageAnalysis.durationWeights[index] ?? 1));
         const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        if (imageAnalysis.similarAdjacentPairs.length) {
+          setMessage(`Нашли ${imageAnalysis.similarAdjacentPairs.length} похожих соседних фото: порядок сохранён, повторяющиеся кадры будут короче.`);
+        } else if (imageAnalysis.analyzedCount) {
+          setMessage(`Проверено ${imageAnalysis.analyzedCount} фото. Порядок кадров сохранён.`);
+        }
         segments = mediaFiles.map((file, index) => ({
           kind: "image" as const,
           name: file.name,
