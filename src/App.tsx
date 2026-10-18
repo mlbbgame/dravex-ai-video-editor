@@ -360,14 +360,17 @@ export default function App() {
         const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
           ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
           : variant.style;
-        const previewSegments: Array<VideoSegment | ImageSegment> = isImageMode
-          ? mediaFiles.slice(0, 6).map((file, segmentIndex) => ({
-              kind: "image" as const,
-              name: file.name,
-              url: mediaUrls[segmentIndex],
-              duration: previewDuration / Math.min(mediaFiles.length, 6)
-            }))
-          : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+        const previewCount = Math.min(mediaFiles.length, 6);
+        const previewIndices = Array.from({ length: previewCount }, (_, index) =>
+          previewCount === 1 ? 0 : Math.round(index * (mediaFiles.length - 1) / (previewCount - 1))
+        );
+        const previewSegments: Array<VideoSegment | ImageSegment> = previewIndices.map((sourceIndex) => {
+          const file = mediaFiles[sourceIndex];
+          const url = mediaUrls[sourceIndex];
+          return getMediaKind(file) === "image"
+            ? { kind: "image" as const, name: file.name, url, duration: previewDuration / previewCount }
+            : { name: file.name, url, trimStart: 0, trimEnd: previewDuration / previewCount };
+        });
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
@@ -612,21 +615,17 @@ export default function App() {
       const previewStyle: Exclude<EditStyle, "auto"> = variant.style === "auto"
         ? (isImageMode && (mediaFiles.length >= 4 || (musicFile !== null && beatSync)) ? "velocity" : "cinematic")
         : variant.style;
-      let previewSegments: Array<VideoSegment | ImageSegment>;
-      if (isImageMode) {
-        const count = Math.min(mediaFiles.length, 6);
-        const indices = Array.from({ length: count }, (_, index) =>
-          count === 1 ? 0 : Math.round(index * (mediaFiles.length - 1) / (count - 1))
-        );
-        previewSegments = indices.map((sourceIndex) => ({
-          kind: "image" as const,
-          name: mediaFiles[sourceIndex].name,
-          url: mediaUrls[sourceIndex],
-          duration: previewDuration / count
-        }));
-      } else {
-        previewSegments = [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
-      }
+      const previewCount = Math.min(mediaFiles.length, 6);
+      const previewIndices = Array.from({ length: previewCount }, (_, index) =>
+        previewCount === 1 ? 0 : Math.round(index * (mediaFiles.length - 1) / (previewCount - 1))
+      );
+      const previewSegments: Array<VideoSegment | ImageSegment> = previewIndices.map((sourceIndex) => {
+        const file = mediaFiles[sourceIndex];
+        const url = mediaUrls[sourceIndex];
+        return getMediaKind(file) === "image"
+          ? { kind: "image" as const, name: file.name, url, duration: previewDuration / previewCount }
+          : { name: file.name, url, trimStart: 0, trimEnd: previewDuration / previewCount };
+      });
       const audioTracks: AudioSegment[] = musicUrl && musicFile
         ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
         : [];
