@@ -40,9 +40,9 @@ export type CameraMotionProfile = { zoom: number; pan: number };
 /** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
 export function getCameraMotionProfile(
   style: SequenceRenderStyle,
-  strength: "soft" | "balanced" | "strong" = "balanced"
+  strength: "none" | "soft" | "balanced" | "strong" = "balanced"
 ): CameraMotionProfile {
-  const scale = strength === "soft" ? 0.72 : strength === "strong" ? 1.28 : 1;
+  const scale = strength === "none" ? 0 : strength === "soft" ? 0.42 : strength === "strong" ? 1.28 : 1;
   const base = style === "velocity" ? { zoom: 0.145, pan: 0.072 }
     : style === "anime" ? { zoom: 0.12, pan: 0.055 }
       : style === "glitch" ? { zoom: 0.125, pan: 0.058 }
