@@ -760,7 +760,7 @@ export default function App() {
         <div className="dravex-intro"><h1>Создай видео<br /><span>автоматически</span></h1><p>Добавь материал — мы подберём монтаж под него.</p></div>
         <div className="dravex-workflow-steps" role="group" aria-label="Этапы создания видео">
           <span className={!mediaFiles.length ? "is-active" : "is-done"}><b>1</b> Материал</span>
-          <span className={mediaFiles.length && stage === "empty" ? "is-active" : stage !== "empty" ? "is-done" : ""}><b>2</b> Монтаж</span>
+          <span className={stage === "done" || stage === "analyzing" || stage === "rendering" ? "is-done" : mediaFiles.length ? "is-active" : ""}><b>2</b> Монтаж</span>
           <span className={stage === "done" ? "is-done" : stage === "analyzing" || stage === "rendering" ? "is-active" : ""}><b>3</b> Результат</span>
         </div>
         <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
