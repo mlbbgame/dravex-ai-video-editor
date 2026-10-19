@@ -118,7 +118,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-music-actions > button:first-child { flex: 1; min-width: 0; }
 .dravex-music-actions .dravex-clear-music { width: 40px; flex: 0 0 40px; display: grid; place-items: center; padding: 0; color: #ffaaaa; }
 @media (max-width: 420px) {
-  .dravex-app { padding: 0 12px 22px; }
+  .dravex-app { padding: 0 12px calc(22px + env(safe-area-inset-bottom, 0px)); }
   .dravex-header { height: 60px; }
   .dravex-brand { font-size: 16px; }
   .dravex-brand-mark { width: 33px; height: 33px; }
@@ -410,7 +410,7 @@ body {
 /* DRAVEX Studio interface overhaul: preview-first workspace with touch-friendly controls. */
 :root { --bg:#080a0d; --panel:#11151a; --line:#252b32; --muted:#98a2ad; --accent:#b8f45b; }
 body { background:#080a0d; }
-.dravex-app { padding:0 22px 30px; background:radial-gradient(ellipse at 18% -18%,#1d2b18 0,transparent 34rem),radial-gradient(ellipse at 100% 12%,#101b20 0,transparent 34rem),#080a0d; }
+.dravex-app { padding:0 22px calc(30px + env(safe-area-inset-bottom, 0px)); background:radial-gradient(ellipse at 18% -18%,#1d2b18 0,transparent 34rem),radial-gradient(ellipse at 100% 12%,#101b20 0,transparent 34rem),#080a0d; }
 .dravex-header { width:min(100%,1440px); height:72px; }
 .dravex-brand { font-size:19px; letter-spacing:2.4px; }
 .dravex-brand-mark { width:39px; height:39px; border-radius:12px; }
@@ -477,7 +477,7 @@ body { background:#080a0d; }
  .dravex-variant { flex-basis:150px; }
 }
 @media (max-width:760px) {
- .dravex-app { padding:0 13px 24px; }
+ .dravex-app { padding:0 13px calc(24px + env(safe-area-inset-bottom, 0px)); }
  .dravex-header { height:62px; }
  .dravex-tabs { grid-template-columns:1fr 1fr; margin:10px auto 18px; }
  .dravex-main { width:100%; }

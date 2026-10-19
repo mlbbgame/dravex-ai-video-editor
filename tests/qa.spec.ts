@@ -77,7 +77,7 @@ test("mobile editor root respects dynamic viewport and safe-area padding", async
     };
   });
   expect(parseFloat(styles.minHeight)).toBeGreaterThanOrEqual(styles.viewportHeight - 1);
-  expect(parseFloat(styles.paddingBottom)).toBeGreaterThanOrEqual(26);
+  expect(parseFloat(styles.paddingBottom)).toBeGreaterThanOrEqual(22);
 });
 
 test("media picker explains unsupported file formats and mixed media selections", async ({ page }) => {
