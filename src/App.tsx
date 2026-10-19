@@ -389,7 +389,8 @@ export default function App() {
     clearRenderedVariants();
     if (appendPhotos) {
       setMediaFiles(nextFiles);
-      setMediaUrls([...mediaUrls, ...newFiles.map((file) => URL.createObjectURL(file))]);
+      // The previous URL list is revoked by the mediaUrls effect cleanup, so recreate URLs for all retained photos.
+      setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
       setActivePhotoIndex(mediaFiles.length);
     } else {
       mediaUrls.forEach((url) => URL.revokeObjectURL(url));
