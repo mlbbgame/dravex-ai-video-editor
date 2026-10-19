@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
+  analyzeWithAIDirector,
   findNearestDetectedObjects,
+  getDirectorFrameBudget,
   inferMotionCues,
   inferSceneCategory,
   inferTrackedObjectCues,
@@ -100,4 +102,46 @@ test("sampled subject detections inform nearby moments without leaking across di
     .toEqual([personRight]);
   expect(findNearestDetectedObjects(7.5, [2, 5, 10], [[personLeft], [personRight], [personNear]], 2))
     .toEqual([]);
+});
+
+
+test("director frame budget rejects zero, negative, and non-finite durations", () => {
+  const emptyBudget = { maxFrames: 0, inferenceBudgetMs: 0, includeEdges: false };
+  expect(getDirectorFrameBudget(0)).toEqual(emptyBudget);
+  expect(getDirectorFrameBudget(-1)).toEqual(emptyBudget);
+  expect(getDirectorFrameBudget(Number.NaN)).toEqual(emptyBudget);
+  expect(getDirectorFrameBudget(Number.POSITIVE_INFINITY)).toEqual(emptyBudget);
+});
+
+test("AI Director safely falls back for unknown or too-short source duration", async () => {
+  const sample = [{ time: 0.2, score: 0.7, motion: 0.1, contrast: 0.2 }];
+  const candidate = [{ time: 0.2, start: 0, end: 0.4, score: 0.7, motion: 0.1, contrast: 0.2 }];
+
+  for (const duration of [Number.NaN, Number.POSITIVE_INFINITY, 0.1]) {
+    const result = await analyzeWithAIDirector(
+      "blob:test-video",
+      duration,
+      sample,
+      candidate,
+      "cinematic"
+    );
+
+    expect(result.modelLoaded).toBe(false);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.note).toContain("корректную длительность");
+  }
+});
+
+test("AI Director reports missing samples separately from invalid duration", async () => {
+  const candidate = [{ time: 0.2, start: 0, end: 0.4, score: 0.7, motion: 0.1, contrast: 0.2 }];
+  const result = await analyzeWithAIDirector(
+    "blob:test-video",
+    2,
+    [],
+    candidate,
+    "cinematic"
+  );
+
+  expect(result.modelLoaded).toBe(false);
+  expect(result.note).toContain("Недостаточно кадров");
 });
