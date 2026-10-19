@@ -328,7 +328,10 @@ export async function analyzeWithAIDirector(
       })
     ]);
   } catch {
-    if (detectorPromise === pendingDetector) detectorPromise = null;
+    // A timeout only stops this analysis attempt; it does not cancel the underlying
+    // download. Keep the in-flight promise so a later attempt can reuse it instead of
+    // starting a second copy of the model download. Actual load failures clear the
+    // shared promise inside getDetector().
     return {
       candidates: emptyCandidates,
       detectedLabels: [],
