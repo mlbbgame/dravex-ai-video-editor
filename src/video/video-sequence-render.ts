@@ -423,7 +423,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const segment = segments[index];
       try {
         if (segment.kind === "image") {
-          const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
+          const image = await loadImage(segment, quality === "4K" ? 3840 : quality === "1080p" ? 1920 : 1280);
           loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
           continue;
         }
