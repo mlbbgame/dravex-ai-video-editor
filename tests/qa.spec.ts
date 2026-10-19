@@ -74,19 +74,6 @@ test("same-tab reload restores the session draft while a fresh session keeps man
         transitionMode: "auto",
         savedAt: new Date().toISOString()
       }, "session-project");
-      transaction.objectStore("projects").put({
-        files: [savedFile],
-        musicFile: null,
-        style: "auto",
-        duration: 30,
-        aspectRatio: "9:16",
-        quality: "720p",
-        beatSync: true,
-        effectStrength: "balanced",
-        musicVolume: 0.72,
-        transitionMode: "auto",
-        savedAt: new Date().toISOString()
-      }, "saved-project");
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);
@@ -98,6 +85,11 @@ test("same-tab reload restores the session draft while a fresh session keeps man
   await page.reload();
   await expect(page.locator(".dravex-image-grid")).toHaveCount(1);
   await expect(page.getByText(/1 фотографий добавлено/)).toBeVisible();
+
+  // Exercise the actual UI save action rather than pre-seeding the manual-save record.
+  await page.locator("details.dravex-more > summary").click();
+  await page.getByRole("button", { name: "Сохранить проект" }).click();
+  await expect(page.getByText("Проект сохранён на этом устройстве вместе с исходными файлами.")).toBeVisible();
 
   // Clearing sessionStorage simulates opening the site in a genuinely fresh tab.
   await page.evaluate(() => window.sessionStorage.clear());
