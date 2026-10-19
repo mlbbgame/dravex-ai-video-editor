@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 import { buildHighlightVariants, type HighlightMoment } from "../src/video/highlight-finder";
 
 function makeCandidates(): HighlightMoment[] {
-  return Array.from({ length: 24 }, (_, index) => {
-    const time = 1 + index * 2;
+  return Array.from({ length: 40 }, (_, index) => {
+    const time = 0.5 + index * 1.2;
     const motion = index % 4 === 0 ? 0.95 : index % 4 === 1 ? 0.65 : index % 4 === 2 ? 0.2 : 0.05;
     const contrast = index % 4 === 0 ? 0.25 : index % 4 === 1 ? 0.45 : index % 4 === 2 ? 0.95 : 0.75;
     return {
@@ -18,7 +18,7 @@ function makeCandidates(): HighlightMoment[] {
 }
 
 test("montage profiles rank motion and contrast differently instead of scaling every score equally", () => {
-  const variants = buildHighlightVariants(makeCandidates(), 60);
+  const variants = buildHighlightVariants(makeCandidates(), 50);
   const aggressive = variants.find((variant) => variant.id === "aggressive");
   const cinematic = variants.find((variant) => variant.id === "cinematic");
   const atmospheric = variants.find((variant) => variant.id === "slow");
@@ -46,7 +46,7 @@ test("every montage variant returns valid source-bounded moments in chronologica
     );
     for (const moment of variant.moments) {
       expect(moment.start).toBeGreaterThanOrEqual(0);
-      expect(moment.end).toBeLessThanOrEqual(60);
+      expect(moment.end).toBeLessThanOrEqual(50);
       expect(moment.end).toBeGreaterThan(moment.start);
     }
   }
