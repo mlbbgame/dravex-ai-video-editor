@@ -23,6 +23,8 @@ type MontageVariant = {
   transition: TransitionPreset;
   strength: EffectPreset;
   previewClass: string;
+  quality?: "720p" | "1080p" | "4K";
+  beatSync?: boolean;
   icon: typeof Sparkles;
 };
 
@@ -33,15 +35,11 @@ type RenderedVariant = {
 };
 
 const montageVariants: MontageVariant[] = [
-  { id: "auto", title: "Умный авто", note: "Подберём по материалу", style: "auto", transition: "auto", strength: "balanced", previewClass: "auto", icon: Sparkles },
-  { id: "velocity", title: "Velocity", note: "Резко и динамично", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
-  { id: "cinema", title: "Cinematic", note: "Мягкое движение", style: "cinematic", transition: "cinematic", strength: "soft", previewClass: "cinema", icon: Film },
-  { id: "anime", title: "Anime Impact", note: "Ярко и контрастно", style: "anime", transition: "action", strength: "strong", previewClass: "anime", icon: Sparkles },
-  { id: "glitch", title: "Glitch Rush", note: "Цифровые вспышки", style: "glitch", transition: "action", strength: "strong", previewClass: "glitch", icon: ScanLine },
-  { id: "story", title: "Soft Story", note: "Спокойная история", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Play },
-  { id: "travel", title: "Travel Flow", note: "Плавно · природа · дороги", style: "travel", transition: "cinematic", strength: "soft", previewClass: "travel", icon: Film },
-  { id: "pulse", title: "Beat Pulse", note: "Ритмичные склейки", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
-  { id: "neon", title: "Neon Action", note: "Неон и резкий темп", style: "glitch", transition: "auto", strength: "balanced", previewClass: "neon", icon: ScanLine },
+  { id: "aggressive", title: "Aggressive Edit", note: "Быстрые склейки и speed ramp", style: "velocity", transition: "action", strength: "strong", beatSync: false, previewClass: "velocity", icon: WandSparkles },
+  { id: "cinematic", title: "Cinematic", note: "Плавный киношный монтаж", style: "cinematic", transition: "cinematic", strength: "soft", beatSync: false, previewClass: "cinema", icon: Film },
+  { id: "music-sync", title: "Music Sync", note: "Смена кадров в ритм музыки", style: "velocity", transition: "auto", strength: "balanced", beatSync: true, previewClass: "pulse", icon: Music2 },
+  { id: "atmosphere", title: "Atmosphere", note: "Природа, еда и путешествия", style: "travel", transition: "cinematic", strength: "soft", beatSync: false, previewClass: "travel", icon: Sparkles },
+  { id: "4k-quality", title: "4K Quality", note: "Детализация и экспорт 2160p", style: "story", transition: "cinematic", strength: "soft", quality: "4K", beatSync: false, previewClass: "story", icon: Clapperboard },
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
@@ -103,7 +101,7 @@ export default function App() {
   const [duration, setDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
   const [style, setStyle] = useState<EditStyle>("auto");
-  const [quality, setQuality] = useState<"720p" | "1080p">("720p");
+  const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<EffectPreset>("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
@@ -337,6 +335,8 @@ export default function App() {
     setStyle(variant.style);
     setTransitionMode(variant.transition);
     setEffectStrength(variant.strength);
+    if (variant.quality) setQuality(variant.quality);
+    if (variant.beatSync !== undefined) setBeatSync(variant.beatSync);
     setOutputUrl("");
     setError("");
     setMessage("");
@@ -621,6 +621,8 @@ export default function App() {
 
   const activeVariant = montageVariants.find((variant) =>
     style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength
+      && (variant.quality === undefined || quality === variant.quality)
+      && (variant.beatSync === undefined || beatSync === variant.beatSync)
   );
   const styleBase = montageVariants.find((variant) => variant.style === style) ?? montageVariants[0];
   const selectedVariant: MontageVariant = activeVariant ?? {
@@ -787,7 +789,9 @@ export default function App() {
         <div className="dravex-variant-rail" aria-label="Варианты автоматического монтажа">
           {montageVariants.map((variant) => {
             const Icon = variant.icon;
-            const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
+            const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength
+              && (variant.quality === undefined || quality === variant.quality)
+              && (variant.beatSync === undefined || beatSync === variant.beatSync);
             const rendered = renderedVariants.find((item) => item.id === variant.id);
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass} ${rendered ? "has-rendered" : ""}`}>
@@ -823,7 +827,7 @@ export default function App() {
           <div className="dravex-more-content">
             <label className="dravex-duration dravex-duration-slider"><span>Длительность ролика <strong>{duration} сек.</strong></span><input aria-label="Длительность ролика в секундах" type="range" min={5} max={60} step={1} value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }} /><span className="dravex-range-limits"><span>5 сек.</span><span>60 сек.</span></span></label>
             <label className="dravex-duration"><span>Формат кадра</span><select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as "9:16" | "16:9" | "1:1" | "4:5"); invalidateOutput(); }}><option value="9:16">9:16 · TikTok / Shorts</option><option value="16:9">16:9 · YouTube</option><option value="1:1">1:1 · квадрат</option><option value="4:5">4:5 · лента</option></select></label>
-            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
+            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p" | "4K"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option><option value="4K">4K · 2160p · максимальное качество</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><div className="dravex-music-actions"><button type="button" onClick={() => setActiveTab("music")}><Music2 size={16} />{musicFile ? musicFile.name : "Открыть музыкальную библиотеку"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
