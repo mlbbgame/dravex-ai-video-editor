@@ -44,6 +44,23 @@ export function inferSceneCategory(labels: string[]): SceneCategoryInference {
   };
 }
 
+/** Choose a conservative automatic edit profile from detected subjects. Manual styles remain untouched. */
+export function suggestDirectorStyle(category: DetectedSceneCategory, fallback: DirectorStyle): DirectorStyle {
+  switch (category) {
+    case "vehicles":
+    case "sports":
+      return "velocity";
+    case "people":
+    case "indoor":
+      return "story";
+    case "food":
+    case "animals":
+      return "cinematic";
+    default:
+      return fallback;
+  }
+}
+
 export type DetectedObject = {
   label: string;
   score: number;
@@ -66,6 +83,7 @@ export type AIDirectorResult = {
   candidates: DirectedMoment[];
   detectedLabels: string[];
   modelLoaded: boolean;
+  selectedStyle: DirectorStyle;
   note: string;
 };
 
@@ -237,7 +255,8 @@ export async function analyzeWithAIDirector(
   samples: HighlightSample[],
   candidates: HighlightMoment[],
   style: DirectorStyle,
-  onProgress?: (progress: DirectorProgress) => void
+  onProgress?: (progress: DirectorProgress) => void,
+  allowCategoryStyleAdjustment = false
 ): Promise<AIDirectorResult> {
   const emptyCandidates: DirectedMoment[] = candidates.map((candidate) => ({
     ...candidate,
@@ -246,7 +265,7 @@ export async function analyzeWithAIDirector(
     directorScore: candidate.score
   }));
   if (!candidates.length || !samples.length || duration < 0.25) {
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
   }
 
   // Local WASM object detection may stall the UI on memory-constrained phones.
@@ -257,6 +276,7 @@ export async function analyzeWithAIDirector(
       candidates: emptyCandidates,
       detectedLabels: [],
       modelLoaded: false,
+      selectedStyle: style,
       note: "Для длинного видео использован ограниченный анализ движения и контраста, чтобы не перегружать телефон."
     };
   }
@@ -283,6 +303,7 @@ export async function analyzeWithAIDirector(
       candidates: emptyCandidates,
       detectedLabels: [],
       modelLoaded: false,
+      selectedStyle: style,
       note: "Модель объектов не загрузилась вовремя или недоступна офлайн. Использован резервный анализ движения и контраста."
     };
   } finally {
@@ -300,7 +321,7 @@ export async function analyzeWithAIDirector(
   canvas.height = 180;
   const context = canvas.getContext("2d", { willReadFrequently: false });
   if (!context) {
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, note: "Canvas недоступен; использован резервный анализ." };
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, selectedStyle: style, note: "Canvas недоступен; использован резервный анализ." };
   }
 
   const selectedIndices = chooseSampleIndices(candidates.length, MAX_MODEL_FRAMES);
@@ -351,6 +372,7 @@ export async function analyzeWithAIDirector(
       candidates: emptyCandidates,
       detectedLabels: [...allLabels],
       modelLoaded: true,
+      selectedStyle: style,
       note: "Модель загрузилась, но браузер не смог прочитать часть кадров. Сохраняем резервный анализ."
     };
   } finally {
@@ -361,6 +383,11 @@ export async function analyzeWithAIDirector(
 
   const motionValues = samples.map((sample) => sample.motion);
   const referenceMotion = motionValues.reduce((sum, value) => sum + value, 0) / Math.max(1, motionValues.length);
+  const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
+  const sceneInference = inferSceneCategory(detectedLabels);
+  const selectedStyle = allowCategoryStyleAdjustment
+    ? suggestDirectorStyle(sceneInference.category, style)
+    : style;
   const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
   const indexed = candidates.map((candidate, index) => {
     const isModelSample = sampledPosition.has(index);
@@ -378,7 +405,7 @@ export async function analyzeWithAIDirector(
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
       ...(isModelSample ? inferTrackedObjectCues(previousObjects, objects) : [])
     ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
-    const directorScore = scoreDirectorMoment(candidate, objects, style, referenceMotion, novelty);
+    const directorScore = scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty);
     return {
       ...candidate,
       score: directorScore,
@@ -391,8 +418,6 @@ export async function analyzeWithAIDirector(
   });
 
   onProgress?.({ current: 1, total: 1, phase: "ranking" });
-  const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
-  const sceneInference = inferSceneCategory(detectedLabels);
   const movementCues = [...new Set(indexed.flatMap((moment) => moment.actionCues))]
     .filter((cue) => cue !== "Стабильный кадр")
     .slice(0, 3);
@@ -400,8 +425,9 @@ export async function analyzeWithAIDirector(
     candidates: indexed,
     detectedLabels,
     modelLoaded: true,
+    selectedStyle,
     note: detectedLabels.length
-      ? `YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${({ food: "еда", vehicles: "транспорт", people: "люди", animals: "животные", sports: "спорт", indoor: "предметы и интерьер" } as Record<Exclude<DetectedSceneCategory, "general">, string>)[sceneInference.category]} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${style}».`
+      ? `YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${({ food: "еда", vehicles: "транспорт", people: "люди", animals: "животные", sports: "спорт", indoor: "предметы и интерьер" } as Record<Exclude<DetectedSceneCategory, "general">, string>)[sceneInference.category]} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
       : "Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён."
   };
 }
