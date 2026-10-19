@@ -51,12 +51,46 @@ jobs:
       - name: Run DRAVEX browser smoke tests
         run: npm run test:qa
 
+      - name: Extract review frames from actual montage exports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/exported-videos test-results/exported-video-frames
+          shopt -s nullglob
+          for video in test-results/exported-videos/*.webm; do
+            name="$(basename "${video%.webm}")"
+            duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video" 2>/dev/null || true)"
+            if [[ -z "$duration" ]]; then
+              echo "Could not read duration for $video" >&2
+              continue
+            fi
+            for point in 0 0.5 0.9; do
+              timestamp="$(awk -v d="$duration" -v p="$point" 'BEGIN { t=d*p; if (t<0) t=0; if (t>d-0.1) t=(d>0.1 ? d-0.1 : 0); printf "%.3f", t }')"
+              ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/exported-video-frames/${name}-${point}.png" || echo "Frame extraction failed: $video at $timestamp" >&2
+            done
+          done
+          find test-results/exported-video-frames -maxdepth 1 -type f -print
+          video_count="$(find test-results/exported-videos -maxdepth 1 -type f -name '*.webm' | wc -l)"
+          frame_count="$(find test-results/exported-video-frames -maxdepth 1 -type f -name '*.png' | wc -l)"
+          {
+            echo "## DRAVEX visual export review"
+            echo "- Exported WebM files found: $video_count"
+            echo "- Review PNG frames extracted: $frame_count"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$video_count" -gt 0 && "$frame_count" -lt "$video_count" ]]; then
+            echo "Expected at least one review frame per exported video, but found $frame_count frames for $video_count videos." >&2
+            exit 1
+          fi
+
       - name: Upload actual montage exports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dravex-exported-video-samples
-          path: test-results/exported-videos/
+          path: |
+            test-results/exported-videos/
+            test-results/exported-video-frames/
           if-no-files-found: warn
           retention-days: 14
 
