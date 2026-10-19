@@ -14,6 +14,36 @@ export type HighlightMoment = {
   contrast: number;
 };
 
+export type HighlightRankingStyle = "velocity" | "cinematic" | "story" | "anime" | "glitch";
+
+/** Rank moments with style-specific motion/contrast weights, including when AI object detection is unavailable. */
+export function rankHighlightMomentsForStyle(
+  candidates: HighlightMoment[],
+  style: HighlightRankingStyle,
+): HighlightMoment[] {
+  const motions = candidates.map((item) => item.motion);
+  const contrasts = candidates.map((item) => item.contrast);
+  const feature = (value: number, values: number[]) => {
+    if (!values.length) return 0.5;
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
+  };
+  const score = (item: HighlightMoment) => {
+    const motion = feature(item.motion, motions);
+    const contrast = feature(item.contrast, contrasts);
+    const visual = Math.max(0, Math.min(1, item.score));
+    switch (style) {
+      case "velocity": return visual * 0.55 + motion * 0.45;
+      case "anime": return visual * 0.42 + motion * 0.38 + contrast * 0.2;
+      case "glitch": return visual * 0.38 + motion * 0.38 + contrast * 0.24;
+      case "cinematic": return visual * 0.7 + contrast * 0.2 + (1 - motion) * 0.1;
+      case "story": return visual * 0.4 + contrast * 0.1 + (1 - motion) * 0.5;
+    }
+  };
+  return [...candidates].sort((a, b) => score(b) - score(a));
+}
+
 export type HighlightVariant = {
   id: "aggressive" | "cinematic" | "slow";
   title: string;
