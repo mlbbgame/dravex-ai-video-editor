@@ -172,7 +172,7 @@ function seekTo(video: HTMLVideoElement, time: number, timeoutMs = 12000): Promi
   });
 }
 
-function frameFeatures(data: Uint8ClampedArray) {
+function frameFeatures(data: Uint8ClampedArray, width: number, height: number) {
   let sum = 0;
   let saturation = 0;
   const lumas: number[] = [];
@@ -187,10 +187,50 @@ function frameFeatures(data: Uint8ClampedArray) {
     saturation += max > 0 ? (max - min) / max : 0;
     lumas.push(luma);
   }
-  const mean = sum / lumas.length;
+  const mean = sum / Math.max(1, lumas.length);
   let variance = 0;
   for (const luma of lumas) variance += Math.abs(luma - mean);
-  return { contrast: variance / lumas.length, saturation: saturation / lumas.length };
+
+  // Estimate fine detail from neighboring luminance changes. This is a cheap
+  // blur/detail proxy, not a claim of semantic or professional sharpness detection.
+  let edgeSum = 0;
+  let edgeCount = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (x + 1 < width) {
+        edgeSum += Math.abs(lumas[index] - lumas[index + 1]);
+        edgeCount += 1;
+      }
+      if (y + 1 < height) {
+        edgeSum += Math.abs(lumas[index] - lumas[index + width]);
+        edgeCount += 1;
+      }
+    }
+  }
+  return {
+    brightness: mean,
+    contrast: variance / Math.max(1, lumas.length),
+    saturation: saturation / Math.max(1, lumas.length),
+    detail: edgeSum / Math.max(1, edgeCount),
+  };
+}
+
+/** Combine inexpensive frame measurements into a bounded quality-aware highlight score. */
+export function scoreFrameQuality(features: {
+  motion: number;
+  contrast: number;
+  saturation: number;
+  brightness: number;
+  detail: number;
+}): number {
+  const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  const exposure = clamp(1 - Math.abs(features.brightness - 0.48) / 0.48);
+  return clamp(features.motion) * 0.45
+    + clamp(features.contrast) * 0.18
+    + exposure * 0.15
+    + clamp(features.detail) * 0.14
+    + clamp(features.saturation) * 0.08;
 }
 
 /**
@@ -301,7 +341,7 @@ export async function analyzeVideoForHighlights(
     const sampleLimit = isLongSource ? 12 : 60;
     const interval = Math.max(2, duration / sampleLimit);
     const total = Math.max(2, Math.min(sampleLimit, Math.ceil(duration / interval)));
-    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
+    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; brightness: number; detail: number }> = [];
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -316,7 +356,7 @@ export async function analyzeVideoForHighlights(
       await seekTo(video, time, isLongSource ? 2200 : 12000);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-      const features = frameFeatures(pixels);
+      const features = frameFeatures(pixels, canvas.width, canvas.height);
       let motion = 0;
       if (previous) {
         for (let i = 0; i < pixels.length; i += 4) {
@@ -324,7 +364,14 @@ export async function analyzeVideoForHighlights(
         }
         motion /= pixels.length / 4;
       }
-      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation });
+      raw.push({
+        time,
+        motion,
+        contrast: features.contrast,
+        saturation: features.saturation,
+        brightness: features.brightness,
+        detail: features.detail,
+      });
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -338,13 +385,18 @@ export async function analyzeVideoForHighlights(
     };
     const motionValues = raw.map((item) => item.motion);
     const contrastValues = raw.map((item) => item.contrast);
+    const detailValues = raw.map((item) => item.detail);
     const samples: HighlightSample[] = raw.map((item) => ({
       time: item.time,
       motion: item.motion,
       contrast: item.contrast,
-      score: normalize(item.motion, motionValues) * 0.62
-        + normalize(item.contrast, contrastValues) * 0.25
-        + item.saturation * 0.13
+      score: scoreFrameQuality({
+        motion: normalize(item.motion, motionValues),
+        contrast: normalize(item.contrast, contrastValues),
+        saturation: item.saturation,
+        brightness: item.brightness,
+        detail: normalize(item.detail, detailValues),
+      })
     }));
 
     const peaks = samples.filter((sample, index) => {
