@@ -160,6 +160,27 @@ export function inferMotionCues(
   return cues;
 }
 
+export function findNearestDetectedObjects(
+  time: number,
+  sampleTimes: number[],
+  detections: DetectedObject[][],
+  maxDistance: number
+): DetectedObject[] {
+  if (!Number.isFinite(time) || !Number.isFinite(maxDistance) || maxDistance < 0) return [];
+  let nearestIndex = -1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  sampleTimes.forEach((sampleTime, index) => {
+    const distance = Math.abs(sampleTime - time);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+  return nearestIndex >= 0 && nearestDistance <= maxDistance
+    ? detections[nearestIndex] ?? []
+    : [];
+}
+
 export function inferTrackedObjectCues(previousObjects: DetectedObject[], currentObjects: DetectedObject[]): string[] {
   const cues: string[] = [];
   const matchedPrevious = new Set<number>();
@@ -389,9 +410,14 @@ export async function analyzeWithAIDirector(
     ? suggestDirectorStyle(sceneInference.category, style)
     : style;
   const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
+  const sampleTimes = selectedIndices.map((candidateIndex) => candidates[candidateIndex].time);
+  const sampledDetections = selectedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
+  const nearbyDetectionRadius = Math.max(1.25, duration / Math.max(2, selectedIndices.length * 2));
   const indexed = candidates.map((candidate, index) => {
     const isModelSample = sampledPosition.has(index);
-    const objects = isModelSample ? detectionsByCandidate.get(index) ?? [] : [];
+    const objects = isModelSample
+      ? detectionsByCandidate.get(index) ?? []
+      : findNearestDetectedObjects(candidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius);
     const position = sampledPosition.get(index) ?? -1;
     const previousIndex = isModelSample && position > 0 ? selectedIndices[position - 1] : -1;
     const previousObjects = previousIndex >= 0 ? detectionsByCandidate.get(previousIndex) ?? [] : [];
