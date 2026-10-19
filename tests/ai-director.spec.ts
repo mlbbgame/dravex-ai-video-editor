@@ -4,6 +4,7 @@ import {
   inferSceneCategory,
   inferTrackedObjectCues,
   scoreDirectorMoment,
+  suggestDirectorStyle,
   type DetectedObject,
 } from "../src/video/ai-director";
 
@@ -83,4 +84,12 @@ test("style-aware ranking favors relevant detected subjects instead of any objec
     .toBeGreaterThan(scoreDirectorMoment(moment, cake, "velocity", 0.1, 0.2));
   expect(scoreDirectorMoment(moment, cake, "story", 0.1, 0.2))
     .toBeGreaterThan(scoreDirectorMoment(moment, car, "story", 0.1, 0.2));
+});
+
+test("automatic style adapts to detected subjects while unknown scenes keep the fallback", () => {
+  expect(suggestDirectorStyle("vehicles", "cinematic")).toBe("velocity");
+  expect(suggestDirectorStyle("sports", "story")).toBe("velocity");
+  expect(suggestDirectorStyle("food", "velocity")).toBe("cinematic");
+  expect(suggestDirectorStyle("people", "velocity")).toBe("story");
+  expect(suggestDirectorStyle("general", "cinematic")).toBe("cinematic");
 });
