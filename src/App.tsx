@@ -5,7 +5,7 @@ import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type
 import { analyzeWithAIDirector } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
-import { clearLocalProject, loadLocalProject, saveLocalProject } from "./video/project-storage";
+import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
@@ -178,13 +178,13 @@ export default function App() {
     }
 
     const projectPromise = isFreshSession
-      ? clearLocalProject().then(() => {
+      ? clearSessionProject().then(() => {
           // Mark the tab active only after stale project data is definitely cleared.
           // If the page reloads while clearing, the next load will safely clear again.
           try { window.sessionStorage.setItem(sessionKey, "active"); } catch { /* best effort */ }
           return null;
         })
-      : loadLocalProject();
+      : loadSessionProject();
 
     void projectPromise.then((project) => {
       if (cancelled) return;
@@ -217,7 +217,7 @@ export default function App() {
   useEffect(() => {
     if (!projectHydrated) return;
     const timeout = window.setTimeout(() => {
-      void saveLocalProject({
+      void saveSessionProject({
         files: mediaFiles,
         musicFile,
         style,

@@ -43,7 +43,7 @@ test("editor and music studio avoid horizontal overflow on narrow Android screen
   }
 });
 
-test("same-tab reload restores a project but a fresh tab session starts clean", async ({ page }) => {
+test("same-tab reload restores the session draft while a fresh session keeps manual saves", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("dravex-active-editor-session-v1"))).toBe("active");
   await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
@@ -73,7 +73,20 @@ test("same-tab reload restores a project but a fresh tab session starts clean", 
         musicVolume: 0.72,
         transitionMode: "auto",
         savedAt: new Date().toISOString()
-      }, "last-project");
+      }, "session-project");
+      transaction.objectStore("projects").put({
+        files: [savedFile],
+        musicFile: null,
+        style: "auto",
+        duration: 30,
+        aspectRatio: "9:16",
+        quality: "720p",
+        beatSync: true,
+        effectStrength: "balanced",
+        musicVolume: 0.72,
+        transitionMode: "auto",
+        savedAt: new Date().toISOString()
+      }, "saved-project");
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);
@@ -99,14 +112,21 @@ test("same-tab reload restores a project but a fresh tab session starts clean", 
     });
     const project = await new Promise<{ files?: File[] } | undefined>((resolve, reject) => {
       const transaction = database.transaction("projects", "readonly");
-      const getRequest = transaction.objectStore("projects").get("last-project");
+      const getRequest = transaction.objectStore("projects").get("session-project");
+      getRequest.onsuccess = () => resolve(getRequest.result);
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+    const manualProject = await new Promise<{ files?: File[] } | undefined>((resolve, reject) => {
+      const transaction = database.transaction("projects", "readonly");
+      const getRequest = transaction.objectStore("projects").get("saved-project");
       getRequest.onsuccess = () => resolve(getRequest.result);
       getRequest.onerror = () => reject(getRequest.error);
     });
     database.close();
-    return project?.files?.length ?? 0;
+    return { sessionFiles: project?.files?.length ?? 0, manualFiles: manualProject?.files?.length ?? 0 };
   });
-  expect(storedFileCount).toBe(0);
+  expect(storedFileCount.sessionFiles).toBe(0);
+  expect(storedFileCount.manualFiles).toBe(1);
 });
 
 test("browser Back from Music returns to the current editor without losing media", async ({ page }) => {

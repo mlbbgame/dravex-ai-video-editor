@@ -14,7 +14,8 @@ export type SavedDravexProject = {
 
 const DATABASE_NAME = "dravex-projects";
 const DATABASE_VERSION = 1;
-const PROJECT_KEY = "last-project";
+const SESSION_PROJECT_KEY = "session-project";
+const SAVED_PROJECT_KEY = "saved-project";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -33,12 +34,15 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveLocalProject(project: Omit<SavedDravexProject, "savedAt">): Promise<string> {
+async function saveProjectAtKey(
+  project: Omit<SavedDravexProject, "savedAt">,
+  key: string
+): Promise<string> {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction("projects", "readwrite");
-      transaction.objectStore("projects").put({ ...project, savedAt: new Date().toISOString() }, PROJECT_KEY);
+      transaction.objectStore("projects").put({ ...project, savedAt: new Date().toISOString() }, key);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Не удалось сохранить проект."));
       transaction.onabort = () => reject(transaction.error ?? new Error("Сохранение проекта отменено."));
@@ -49,12 +53,12 @@ export async function saveLocalProject(project: Omit<SavedDravexProject, "savedA
   }
 }
 
-export async function loadLocalProject(): Promise<SavedDravexProject | null> {
+async function loadProjectAtKey(key: string): Promise<SavedDravexProject | null> {
   const database = await openDatabase();
   try {
     return await new Promise((resolve, reject) => {
       const transaction = database.transaction("projects", "readonly");
-      const request = transaction.objectStore("projects").get(PROJECT_KEY);
+      const request = transaction.objectStore("projects").get(key);
       request.onsuccess = () => resolve((request.result as SavedDravexProject | undefined) ?? null);
       request.onerror = () => reject(request.error ?? new Error("Не удалось загрузить сохранённый проект."));
     });
@@ -63,14 +67,12 @@ export async function loadLocalProject(): Promise<SavedDravexProject | null> {
   }
 }
 
-
-/** Remove the autosaved project when a fresh browser-tab session starts. */
-export async function clearLocalProject(): Promise<void> {
+async function clearProjectAtKey(key: string): Promise<void> {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction("projects", "readwrite");
-      transaction.objectStore("projects").delete(PROJECT_KEY);
+      transaction.objectStore("projects").delete(key);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Не удалось очистить сохранённый проект."));
       transaction.onabort = () => reject(transaction.error ?? new Error("Очистка проекта отменена."));
@@ -78,4 +80,27 @@ export async function clearLocalProject(): Promise<void> {
   } finally {
     database.close();
   }
+}
+
+/** Manual save survives a fresh tab/browser session until the user replaces it. */
+export function saveLocalProject(project: Omit<SavedDravexProject, "savedAt">): Promise<string> {
+  return saveProjectAtKey(project, SAVED_PROJECT_KEY);
+}
+
+export function loadLocalProject(): Promise<SavedDravexProject | null> {
+  return loadProjectAtKey(SAVED_PROJECT_KEY);
+}
+
+/** Session autosave is restored on reloads in the same tab and cleared in a new session. */
+export function saveSessionProject(project: Omit<SavedDravexProject, "savedAt">): Promise<string> {
+  return saveProjectAtKey(project, SESSION_PROJECT_KEY);
+}
+
+export function loadSessionProject(): Promise<SavedDravexProject | null> {
+  return loadProjectAtKey(SESSION_PROJECT_KEY);
+}
+
+/** Remove only the session draft; never delete the user's explicit manual save. */
+export function clearSessionProject(): Promise<void> {
+  return clearProjectAtKey(SESSION_PROJECT_KEY);
 }
