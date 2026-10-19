@@ -2,6 +2,48 @@ import type { HighlightMoment, HighlightSample } from "./highlight-finder";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
+export type DetectedSceneCategory = "food" | "vehicles" | "people" | "animals" | "sports" | "indoor" | "general";
+
+export type SceneCategoryInference = {
+  category: DetectedSceneCategory;
+  confidence: number;
+  matchedLabels: string[];
+};
+
+const SCENE_LABELS: Record<Exclude<DetectedSceneCategory, "general">, Set<string>> = {
+  food: new Set(["apple", "banana", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake"]),
+  vehicles: new Set(["bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat"]),
+  people: new Set(["person"]),
+  animals: new Set(["bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe"]),
+  sports: new Set(["sports ball", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "frisbee", "skis", "snowboard"]),
+  indoor: new Set(["chair", "couch", "bed", "dining table", "tv", "laptop", "keyboard", "mouse", "cell phone", "book", "clock", "vase", "bottle", "cup", "bowl", "fork", "knife", "spoon", "refrigerator", "oven", "toaster", "sink"])
+};
+
+/**
+ * Infer a broad subject category from object-detector labels only.
+ * This is a lightweight editing hint, not full scene/action recognition:
+ * landscape-only nature, emotions, recipes, and actions need a semantic vision model.
+ */
+export function inferSceneCategory(labels: string[]): SceneCategoryInference {
+  const normalizedLabels = [...new Set(labels.map((label) => label.trim().toLowerCase()).filter(Boolean))];
+  const ranked = (Object.entries(SCENE_LABELS) as Array<[Exclude<DetectedSceneCategory, "general">, Set<string>]>)
+    .map(([category, known]) => ({
+      category,
+      matchedLabels: normalizedLabels.filter((label) => known.has(label))
+    }))
+    .filter((entry) => entry.matchedLabels.length > 0)
+    .sort((a, b) => b.matchedLabels.length - a.matchedLabels.length);
+  const best = ranked[0];
+  if (!best) return { category: "general", confidence: 0, matchedLabels: [] };
+  // Confidence describes the consistency of detected labels with this simple taxonomy,
+  // not a calibrated probability that the whole video belongs to this category.
+  return {
+    category: best.category,
+    confidence: Math.min(0.9, 0.55 + (best.matchedLabels.length - 1) * 0.12),
+    matchedLabels: best.matchedLabels
+  };
+}
+
 export type DetectedObject = {
   label: string;
   score: number;
@@ -143,7 +185,19 @@ export function scoreDirectorMoment(
   const objectConfidence = objects.length
     ? objects.reduce((sum, item) => sum + item.score, 0) / objects.length
     : 0;
+  const objectLabels = objects.map((item) => item.label.trim().toLowerCase());
   const objectPresence = Math.min(1, objects.length / 3) * objectConfidence;
+  const subjectRelevance: Record<DirectorStyle, Set<string>> = {
+    velocity: new Set(["car", "motorcycle", "bicycle", "bus", "train", "truck", "boat", "airplane", "sports ball", "skateboard", "surfboard", "person"]),
+    anime: new Set(["person", "sports ball", "skateboard", "surfboard", "car", "motorcycle"]),
+    cinematic: new Set(["person", "bird", "cat", "dog", "horse", "cake", "pizza", "sandwich", "apple", "orange"]),
+    glitch: new Set(["car", "motorcycle", "bicycle", "sports ball", "skateboard", "surfboard", "person"]),
+    story: new Set(["person", "bird", "cat", "dog", "horse", "cake", "pizza", "sandwich", "apple", "orange", "cup", "bowl"])
+  };
+  const relevantCount = objectLabels.filter((label) => subjectRelevance[style].has(label)).length;
+  const relevance = objectLabels.length ? relevantCount / objectLabels.length : 0;
+  // Object detections help most when they match the chosen editing language.
+  const styleAwareObjectPresence = objectPresence * (0.65 + 0.35 * relevance);
   const motion = normalized(moment.motion, [0, referenceMotion, referenceMotion * 2, 1]);
   const contrast = Math.max(0, Math.min(1, moment.contrast / 0.35));
   const visual = Math.max(0, Math.min(1, moment.score));
@@ -160,7 +214,7 @@ export function scoreDirectorMoment(
   const motionFit = style === "cinematic" || style === "story" ? 1 - motion : motion;
   return visual * visualWeight
     + motionFit * motionWeight
-    + objectPresence * objectWeight
+    + styleAwareObjectPresence * objectWeight
     + contrast * contrastWeight
     + change * changeWeight;
 }
@@ -338,6 +392,7 @@ export async function analyzeWithAIDirector(
 
   onProgress?.({ current: 1, total: 1, phase: "ranking" });
   const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
+  const sceneInference = inferSceneCategory(detectedLabels);
   const movementCues = [...new Set(indexed.flatMap((moment) => moment.actionCues))]
     .filter((cue) => cue !== "Стабильный кадр")
     .slice(0, 3);
@@ -346,7 +401,7 @@ export async function analyzeWithAIDirector(
     detectedLabels,
     modelLoaded: true,
     note: detectedLabels.length
-      ? `YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${style}».`
-      : "Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение, контраст и смену сцен."
+      ? `YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${({ food: "еда", vehicles: "транспорт", people: "люди", animals: "животные", sports: "спорт", indoor: "предметы и интерьер" } as Record<Exclude<DetectedSceneCategory, "general">, string>)[sceneInference.category]} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${style}».`
+      : "Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён."
   };
 }
