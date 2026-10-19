@@ -63,22 +63,33 @@ test("choosing a montage style highlights exactly one matching variant", async (
 
   const variants = page.locator(".dravex-variant");
   const selected = page.locator(".dravex-variant[aria-pressed='true']");
-  await expect(variants).toHaveCount(9);
+  await expect(variants).toHaveCount(5);
   await expect(selected).toHaveCount(1);
 
-  await variants.filter({ hasText: "Velocity" }).click();
-  await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "true");
-  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "false");
+  const aggressive = variants.filter({ hasText: "Aggressive Edit" });
+  const cinematic = variants.filter({ hasText: "Cinematic" });
+  const musicSync = variants.filter({ hasText: "Music Sync" });
+  const atmosphere = variants.filter({ hasText: "Atmosphere" });
+  const quality4k = variants.filter({ hasText: "4K Quality" });
 
-  await variants.filter({ hasText: "Beat Pulse" }).click();
+  await expect(aggressive).toHaveAttribute("aria-pressed", "true");
+  await musicSync.click();
   await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "true");
-  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "false");
+  await expect(musicSync).toHaveAttribute("aria-pressed", "true");
+  await expect(aggressive).toHaveAttribute("aria-pressed", "false");
 
-  await variants.filter({ hasText: "Travel Flow" }).click();
+  await atmosphere.click();
   await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Travel Flow" })).toHaveAttribute("aria-pressed", "true");
+  await expect(atmosphere).toHaveAttribute("aria-pressed", "true");
+
+  await quality4k.click();
+  await expect(selected).toHaveCount(1);
+  await expect(quality4k).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Качество экспорта")).toHaveValue("4K");
+
+  await cinematic.click();
+  await expect(selected).toHaveCount(1);
+  await expect(cinematic).toHaveAttribute("aria-pressed", "true");
 
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
