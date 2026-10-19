@@ -313,8 +313,24 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
 function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Could not read image: ${segment.name}`));
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      finish();
+      image.onload = null;
+      image.onerror = null;
+      image.src = "";
+      reject(new Error(`Фото «${segment.name}» не загрузилось за 20 секунд. Попробуй уменьшить размер файла или выбрать другое фото.`));
+    }, 20_000);
+    const finish = () => {
+      if (settled) return false;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      return true;
+    };
+    image.onload = () => { if (finish()) resolve(image); };
+    image.onerror = () => {
+      if (finish()) reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
+    };
     image.src = segment.url;
   });
 }
@@ -322,10 +338,30 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
 function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
   return new Promise((resolve, reject) => {
     const audio = document.createElement("audio");
-    audio.preload = "auto";
+    audio.preload = "metadata";
+    let settled = false;
+    const finish = () => {
+      if (settled) return false;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      audio.removeEventListener("loadedmetadata", loaded);
+      audio.removeEventListener("error", failed);
+      return true;
+    };
+    const loaded = () => { if (finish()) resolve(audio); };
+    const failed = () => {
+      if (finish()) reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
+    };
+    const timeoutId = window.setTimeout(() => {
+      if (!finish()) return;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      reject(new Error(`Аудио «${segment.name}» не загрузилось за 20 секунд. Попробуй другой аудиофайл.`));
+    }, 20_000);
+    audio.addEventListener("loadedmetadata", loaded, { once: true });
+    audio.addEventListener("error", failed, { once: true });
     audio.src = segment.url;
-    audio.onloadedmetadata = () => resolve(audio);
-    audio.onerror = () => reject(new Error(`Could not read audio file: ${segment.name}`));
     audio.load();
   });
 }
