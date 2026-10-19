@@ -22,7 +22,7 @@ test("beat snapping ignores non-finite and out-of-range beat markers", () => {
   );
 
   expect(boundaries[0]).toBe(0);
-  expect(boundaries.at(-1)).toBe(4);
+  expect(boundaries[boundaries.length - 1]).toBe(4);
   expect(boundaries.every(Number.isFinite)).toBe(true);
   expect(boundaries.every((value, index) => index === 0 || value > boundaries[index - 1])).toBe(true);
 });
