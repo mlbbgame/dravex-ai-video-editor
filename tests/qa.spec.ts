@@ -1,11 +1,31 @@
 import { expect, test } from "@playwright/test";
 import { copyFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
+import { getCameraMotionProfile, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates, ensureCandidateCoverage } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 import { assessMediaSelection } from "../src/video/media-intake";
+
+test("source-video trim ranges always stay inside valid media duration", () => {
+  for (const duration of [0.1, 0.25, 0.5, 2, 9, 60]) {
+    const full = resolveVideoTrimRange(duration, 0, 0);
+    expect(full.start).toBe(0);
+    expect(full.end).toBeLessThanOrEqual(duration);
+    expect(full.duration).toBeGreaterThanOrEqual(0.1);
+    expect(full.duration).toBeCloseTo(duration, 6);
+
+    const lateTrim = resolveVideoTrimRange(duration, duration + 10, duration + 20);
+    expect(lateTrim.start).toBeGreaterThanOrEqual(0);
+    expect(lateTrim.end).toBeLessThanOrEqual(duration);
+    expect(lateTrim.duration).toBeGreaterThanOrEqual(0.1);
+  }
+
+  expect(resolveVideoTrimRange(9, 2, 4)).toEqual({ start: 2, end: 4, duration: 2 });
+  expect(resolveVideoTrimRange(9, 5, 3).end).toBeLessThanOrEqual(9);
+  expect(() => resolveVideoTrimRange(0.05, 0, 0)).toThrow(/слишком короткое/i);
+  expect(() => resolveVideoTrimRange(Number.NaN, 0, 0)).toThrow(/слишком короткое/i);
+});
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
   await page.goto("/");

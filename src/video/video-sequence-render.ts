@@ -276,6 +276,24 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
   }
 }
 
+export type VideoTrimRange = { start: number; end: number; duration: number };
+
+/**
+ * Clamp a requested source-video trim to the real media duration. Tiny or
+ * invalid sources cannot produce a meaningful frame sequence and are rejected
+ * rather than creating a trim whose end extends past the file.
+ */
+export function resolveVideoTrimRange(sourceDuration: number, trimStart: number, trimEnd: number): VideoTrimRange {
+  if (!Number.isFinite(sourceDuration) || sourceDuration < 0.1) {
+    throw new Error("Видео слишком короткое или повреждено. Выбери исходник длительностью не менее 0,1 секунды.");
+  }
+  const startCandidate = Number.isFinite(trimStart) ? trimStart : 0;
+  const start = Math.max(0, Math.min(startCandidate, sourceDuration - 0.1));
+  const requestedEnd = Number.isFinite(trimEnd) && trimEnd > 0 ? trimEnd : sourceDuration;
+  const end = Math.min(sourceDuration, Math.max(start + 0.1, Math.min(requestedEnd, sourceDuration)));
+  return { start, end, duration: end - start };
+}
+
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -438,10 +456,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     const video = await pendingVideo;
     if (suppressAudio) video.muted = true;
-    const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
-    const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
-    const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
-    return { kind: "video", name: segment.name, video, start, end, duration: end - start };
+    const { start, end, duration } = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
+    return { kind: "video", name: segment.name, video, start, end, duration };
   }));
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
