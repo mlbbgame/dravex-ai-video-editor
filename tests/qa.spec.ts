@@ -13,6 +13,8 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Разделы DRAVEX" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
   await expect(page.getByText("Работает в браузере")).toBeVisible();
+  await expect(page.locator(".dravex-editor-sync")).toBeVisible();
+  await expect(page.locator(".dravex-music-sync input[type='checkbox']")).toHaveCount(1);
 });
 
 
