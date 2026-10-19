@@ -360,15 +360,28 @@ export async function analyzeVideoForHighlights(
   }
 }
 
+function normalizedFeature(value: number, values: number[]): number {
+  if (!values.length) return 0.5;
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
+}
+
 function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
-  const ranked = [...candidates].sort((a, b) => {
-    const scoreA = a.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
-    const scoreB = b.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
-    return scoreB - scoreA;
-  });
+  const motionValues = candidates.map((item) => item.motion);
+  const contrastValues = candidates.map((item) => item.contrast);
+  const styleScore = (item: HighlightMoment) => {
+    const motion = normalizedFeature(item.motion, motionValues);
+    const contrast = normalizedFeature(item.contrast, contrastValues);
+    const visual = Math.max(0, Math.min(1, item.score));
+    if (mode === "aggressive") return visual * 0.55 + motion * 0.45;
+    if (mode === "cinematic") return visual * 0.7 + contrast * 0.2 + (1 - motion) * 0.1;
+    return visual * 0.45 + contrast * 0.1 + (1 - motion) * 0.45;
+  };
+  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
   const selected: HighlightMoment[] = [];
-  // Seed the cut with the strongest moment from evenly spaced time buckets so a long source
-  // does not accidentally become an edit from one short action-heavy stretch.
+  // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
+  // This prevents long sources from collapsing into one action-heavy stretch.
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
