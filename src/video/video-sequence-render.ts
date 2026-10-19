@@ -19,7 +19,7 @@ export type AudioSegment = {
   volume?: number;
 };
 
-export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
+export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story" | "travel";
 
 export type SequenceSegment = VideoSegment | ImageSegment;
 
@@ -40,14 +40,15 @@ export type CameraMotionProfile = { zoom: number; pan: number };
 /** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
 export function getCameraMotionProfile(
   style: SequenceRenderStyle,
-  strength: "soft" | "balanced" | "strong" = "balanced"
+  strength: "none" | "soft" | "balanced" | "strong" = "balanced"
 ): CameraMotionProfile {
-  const scale = strength === "soft" ? 0.72 : strength === "strong" ? 1.28 : 1;
+  const scale = strength === "none" ? 0 : strength === "soft" ? 0.42 : strength === "strong" ? 1.28 : 1;
   const base = style === "velocity" ? { zoom: 0.145, pan: 0.072 }
     : style === "anime" ? { zoom: 0.12, pan: 0.055 }
       : style === "glitch" ? { zoom: 0.125, pan: 0.058 }
-        : style === "story" ? { zoom: 0.072, pan: 0.032 }
-          : { zoom: 0.115, pan: 0.052 };
+        : style === "travel" ? { zoom: 0.045, pan: 0.018 }
+          : style === "story" ? { zoom: 0.072, pan: 0.032 }
+            : { zoom: 0.115, pan: 0.052 };
   return { zoom: base.zoom * scale, pan: base.pan * scale };
 }
 
@@ -58,7 +59,7 @@ type SequenceOptions = {
   aspectRatio: string;
   quality?: string;
   style?: SequenceRenderStyle;
-  effectStrength?: "soft" | "balanced" | "strong";
+  effectStrength?: "none" | "soft" | "balanced" | "strong";
   transitionMode?: "auto" | "cinematic" | "action";
   suppressEffects?: boolean;
   suppressFlashes?: boolean;
@@ -82,7 +83,9 @@ type LoadedVideo = {
 type LoadedImage = {
   kind: "image";
   name: string;
-  image: HTMLImageElement;
+  // Store a bounded-resolution canvas rather than keeping a full camera-resolution
+  // decoded bitmap alive for every photo in the montage.
+  image: HTMLCanvasElement;
   duration: number;
 };
 
@@ -311,11 +314,49 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   });
 }
 
-function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
+function loadImage(segment: ImageSegment, maxEdge: number): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Could not read image: ${segment.name}`));
+    image.decoding = "async";
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      image.onload = null;
+      image.onerror = null;
+    };
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      image.src = "";
+      reject(new Error(`Фото «${segment.name}» не открылось за 15 секунд. Попробуй другой файл или уменьши размер изображения.`));
+    }, 15_000);
+    image.onload = () => {
+      try {
+        // Phone photos can be 12–50 megapixels. Decode at most two originals
+        // at once, then retain only bounded canvases for the montage on Android.
+        const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) {
+          cleanup();
+          reject(new Error(`Could not prepare image for mobile rendering: ${segment.name}`));
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        cleanup();
+        image.src = "";
+        resolve(canvas);
+      } catch {
+        cleanup();
+        image.src = "";
+        reject(new Error(`Could not prepare image for mobile rendering: ${segment.name}`));
+      }
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error(`Could not read image: ${segment.name}`));
+    };
     image.src = segment.url;
   });
 }
@@ -368,24 +409,55 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
 
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
-  const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
-    if (segment.kind === "image") {
-      const image = await loadImage(segment);
-      return { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+  // Do not decode every high-resolution phone photo (or initialize every source
+  // video) at once. A two-worker pool caps peak memory on Android while keeping
+  // segment order stable in the resulting timeline.
+  const loaded: LoadedSegment[] = new Array(segments.length);
+  let nextSegmentIndex = 0;
+  let loadError: unknown = null;
+  const loaderCount = Math.min(2, segments.length);
+  await Promise.all(Array.from({ length: loaderCount }, async () => {
+    while (nextSegmentIndex < segments.length && !loadError) {
+      const index = nextSegmentIndex;
+      nextSegmentIndex += 1;
+      const segment = segments[index];
+      try {
+        if (segment.kind === "image") {
+          const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
+          loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+          continue;
+        }
+        const videoSegment = segment as VideoSegment;
+        let pendingVideo = videoCache.get(videoSegment.url);
+        if (!pendingVideo) {
+          pendingVideo = loadVideo(videoSegment);
+          videoCache.set(videoSegment.url, pendingVideo);
+        }
+        const video = await pendingVideo;
+        if (suppressAudio) video.muted = true;
+        const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
+        const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
+        const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
+        loaded[index] = { kind: "video", name: segment.name, video, start, end, duration: end - start };
+      } catch (error) {
+        loadError ??= error;
+      }
     }
-    const videoSegment = segment as VideoSegment;
-    let pendingVideo = videoCache.get(videoSegment.url);
-    if (!pendingVideo) {
-      pendingVideo = loadVideo(videoSegment);
-      videoCache.set(videoSegment.url, pendingVideo);
-    }
-    const video = await pendingVideo;
-    if (suppressAudio) video.muted = true;
-    const start = Math.max(0, Math.min(videoSegment.trimStart || 0, Math.max(0, video.duration - 0.1)));
-    const requestedEnd = videoSegment.trimEnd > 0 ? videoSegment.trimEnd : video.duration;
-    const end = Math.max(start + 0.1, Math.min(requestedEnd, video.duration));
-    return { kind: "video", name: segment.name, video, start, end, duration: end - start };
   }));
+  if (loadError) {
+    // A failed file must not leave already-decoded source media alive in the
+    // background after the UI has reported the export error.
+    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
+      image.width = 1;
+      image.height = 1;
+    });
+    throw loadError instanceof Error ? loadError : new Error("Не удалось подготовить исходные файлы для монтажа.");
+  }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
   // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
@@ -508,11 +580,13 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     hasPreviousFrame = true;
   };
 
-  const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
-    const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
-    const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+  const draw = (source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
+    const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth
+      : source instanceof HTMLCanvasElement ? source.width : source.naturalWidth;
+    const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight
+      : source instanceof HTMLCanvasElement ? source.height : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionDuration = style === "travel" ? 0.82 : transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
@@ -523,8 +597,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const animeTransitions = [0, 3, 4, 7];
     const glitchTransitions = [0, 3, 5, 7];
     const transitionIndex = Math.max(0, cutIndex - 1);
-    const transitionType = transitionMode === "cinematic"
-      ? (cutIndex % 2 === 0 ? 8 : 0)
+    const transitionType = style === "travel" || effectStrength === "none"
+      ? 8
+      : transitionMode === "cinematic"
+        ? (cutIndex % 2 === 0 ? 8 : 0)
       : transitionMode === "action"
         ? actionTransitions[transitionIndex % actionTransitions.length]
         : style === "cinematic" || style === "story"
@@ -540,10 +616,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (transitionWindow) context.drawImage(previousFrameCanvas, 0, 0, width, height);
 
     // DRAVEX Camera V2: eased push/pull plus varied directional paths for stills.
-    const strengthScale = effectStrength === "soft" ? 0.72 : effectStrength === "strong" ? 1.28 : 1;
+    const strengthScale = effectStrength === "none" ? 0 : effectStrength === "soft" ? 0.42 : effectStrength === "strong" ? 1.28 : 1;
     const cameraMotion = getCameraMotionProfile(style, effectStrength);
-    const motion = suppressEffects ? 0 : cameraMotion.zoom;
-    const isPhoto = source instanceof HTMLImageElement;
+    const motion = suppressEffects || effectStrength === "none" ? 0 : cameraMotion.zoom;
+    const isPhoto = !(source instanceof HTMLVideoElement);
     const eased = progress * progress * (3 - 2 * progress);
     const zoomDirection = cutIndex % 2 === 0 ? 1 : -1;
     const zoomBase = isPhoto ? 1.035 : 1.04;
@@ -556,7 +632,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
-    const panAmount = suppressEffects ? 0 : cameraMotion.pan;
+    const panAmount = suppressEffects || effectStrength === "none" ? 0 : cameraMotion.pan;
     // Travel across the frame instead of easing from a static center to one side.
     // The symmetric path makes movement perceptible at the start and end of each still.
     const panPhase = eased * Math.PI;
@@ -564,7 +640,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const pathY = [0, 0, -0.65, 0.65, 1, -1][cutIndex % 6];
     const panX = Math.cos(panPhase) * width * panAmount * pathX;
     const panY = Math.cos(panPhase) * height * panAmount * pathY;
-    const shake = !suppressEffects && !suppressShake && cutProgress < 0.22 && style !== "story" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
+    const shake = !suppressEffects && effectStrength !== "none" && !suppressShake && cutProgress < 0.22 && style !== "story" && style !== "travel" ? (1 - cutProgress / 0.22) * (style === "velocity" ? 0.018 : 0.006) * strengthScale : 0;
     const offsetX = panX + Math.sin(progress * 71) * width * shake;
     const offsetY = panY + Math.cos(progress * 83) * height * shake;
     const drawX = (width - drawWidth) / 2 + offsetX;
@@ -590,7 +666,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
 
     context.save();
-    context.filter = suppressEffects ? "none" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
+    context.filter = suppressEffects || effectStrength === "none" ? "none" : style === "travel" ? "contrast(1.02) saturate(1.02) brightness(1.01)" : style === "cinematic" ? "contrast(1.08) saturate(1.08)" : style === "anime" ? "contrast(1.1) saturate(1.2)" : style === "velocity" ? "contrast(1.12) saturate(1.16)" : style === "glitch" ? "contrast(1.15) saturate(1.22)" : "contrast(1.03) saturate(1.03)";
     if (transitionWindow && transitionType === 0) {
       // Fast punch zoom; preserve the full-photo treatment on still images.
       const punch = 1 + (1 - transitionProgress) * (style === "velocity" ? 0.24 : 0.14) * strengthScale;
@@ -679,20 +755,20 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       drawIncoming();
     }
     context.restore();
-    if (!suppressEffects) {
+    if (!suppressEffects && effectStrength !== "none") {
       const shade = context.createLinearGradient(0, height * 0.6, 0, height);
       shade.addColorStop(0, "rgba(5,7,12,0)");
-      shade.addColorStop(1, "rgba(5,7,12,0.18)");
+      shade.addColorStop(1, style === "travel" ? "rgba(5,7,12,0.07)" : "rgba(5,7,12,0.18)");
       context.fillStyle = shade;
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
+    if (!suppressEffects && effectStrength !== "none" && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story" && style !== "travel") {
       const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
+    if (!suppressEffects && effectStrength !== "none" && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
       const glitchStrength = (1 - cutProgress / 0.16) * strengthScale;
       // Split short horizontal slices for a more readable digital-impact effect than a full-frame tint alone.
       context.save();
@@ -719,7 +795,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
-    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
+    if (!suppressEffects && effectStrength !== "none" && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
       const streakAlpha = (1 - cutProgress / 0.28) * 0.27 * strengthScale;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
@@ -733,10 +809,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       }
       context.restore();
     }
-    if (!suppressEffects) {
+    if (!suppressEffects && effectStrength !== "none") {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
-      vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
+      vignette.addColorStop(1, style === "travel" ? "rgba(0,0,0,0.04)" : style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
     }

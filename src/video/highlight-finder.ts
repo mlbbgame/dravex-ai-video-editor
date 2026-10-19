@@ -174,16 +174,9 @@ export async function analyzeVideoForHighlights(
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
-    // Short clips do not need expensive frame-by-frame seeking. On Android this
-    // avoids flaky seek events while still producing a clean, evenly spaced edit.
-    if (duration <= 15) {
-      const candidates = buildQuickVideoCandidates(duration);
-      const samples: HighlightSample[] = candidates.map(({ time, score, motion, contrast }) => ({
-        time, score, motion, contrast
-      }));
-      onProgress?.({ current: candidates.length, total: candidates.length, time: duration });
-      return { duration, samples, candidates };
-    }
+    // Short clips are still decoded and sampled: duration alone cannot tell a road
+    // pan from an action peak. Sampling remains sparse (at most ~8 frames for 15 s)
+    // to keep seek overhead bounded on Android; failures still use the safe fallback.
     const canvas = document.createElement("canvas");
     canvas.width = 80;
     canvas.height = 45;

@@ -14,6 +14,79 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
   await expect(page.getByText("Работает в браузере")).toBeVisible();
 });
 
+
+test("saved local projects are not restored automatically on page startup", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const request = indexedDB.open("dravex-projects", 1);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("projects")) {
+          request.result.createObjectStore("projects");
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const savedFile = new File(["fake-image-data"], "remembered-photo.jpg", { type: "image/jpeg" });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("projects", "readwrite");
+      transaction.objectStore("projects").put({
+        files: [savedFile],
+        musicFile: null,
+        style: "auto",
+        duration: 30,
+        aspectRatio: "9:16",
+        quality: "720p",
+        beatSync: true,
+        effectStrength: "balanced",
+        musicVolume: 0.72,
+        transitionMode: "auto",
+        savedAt: new Date().toISOString()
+      }, "last-project");
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
+  await expect(page.locator(".dravex-image-grid")).toHaveCount(0);
+  await expect(page.getByText("Найден сохранённый проект на этом устройстве.")).toHaveCount(0);
+});
+
+test("choosing a montage style highlights exactly one matching variant", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const variants = page.locator(".dravex-variant");
+  const selected = page.locator(".dravex-variant[aria-pressed='true']");
+  await expect(variants).toHaveCount(9);
+  await expect(selected).toHaveCount(1);
+
+  await variants.filter({ hasText: "Velocity" }).click();
+  await expect(selected).toHaveCount(1);
+  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "false");
+
+  await variants.filter({ hasText: "Beat Pulse" }).click();
+  await expect(selected).toHaveCount(1);
+  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "false");
+
+  await variants.filter({ hasText: "Travel Flow" }).click();
+  await expect(selected).toHaveCount(1);
+  await expect(variants.filter({ hasText: "Travel Flow" })).toHaveAttribute("aria-pressed", "true");
+
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    page: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
+});
+
 test("Music Studio lists ready-to-use tracks and working search filters", async ({ page }) => {
   await page.goto("/");
   const tabs = page.getByRole("navigation", { name: "Разделы DRAVEX" });
@@ -123,11 +196,44 @@ test("camera motion profiles provide visible but controlled movement", () => {
   const story = getCameraMotionProfile("story", "balanced");
   const strong = getCameraMotionProfile("cinematic", "strong");
   const soft = getCameraMotionProfile("cinematic", "soft");
+  const travel = getCameraMotionProfile("travel", "balanced");
+  const none = getCameraMotionProfile("cinematic", "none");
   expect(cinematic.zoom).toBeGreaterThan(0.1);
   expect(cinematic.pan).toBeGreaterThan(0.04);
   expect(story.zoom).toBeLessThan(cinematic.zoom);
   expect(strong.zoom).toBeGreaterThan(cinematic.zoom);
   expect(soft.zoom).toBeLessThan(cinematic.zoom);
+  expect(travel.zoom).toBeLessThan(cinematic.zoom);
+  expect(travel.pan).toBeLessThan(cinematic.pan);
+  expect(none.zoom).toBe(0);
+  expect(none.pan).toBe(0);
+});
+
+test("reordering and removing photos reuses the correct local object URLs", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const makeSvg = (fill: string) => Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="200"><rect width="120" height="200" fill="${fill}"/></svg>`,
+    "utf8",
+  );
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles([
+    { name: "dravex-red.svg", mimeType: "image/svg+xml", buffer: makeSvg("#ff0000") },
+    { name: "dravex-blue.svg", mimeType: "image/svg+xml", buffer: makeSvg("#0000ff") },
+  ]);
+  const thumbnails = page.locator(".dravex-image-thumb img");
+  await expect(thumbnails).toHaveCount(2);
+  await expect.poll(async () => thumbnails.nth(0).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(async () => thumbnails.nth(1).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  const originalUrls = await thumbnails.evaluateAll((imgs: HTMLImageElement[]) => imgs.map((img) => img.src));
+
+  await page.getByRole("button", { name: "Переместить фото 2 выше" }).click();
+  await expect(thumbnails.nth(0)).toHaveAttribute("src", originalUrls[1]);
+  await expect(thumbnails.nth(1)).toHaveAttribute("src", originalUrls[0]);
+
+  await page.getByRole("button", { name: "Удалить фото 1" }).click();
+  await expect(thumbnails).toHaveCount(1);
+  await expect(thumbnails.nth(0)).toHaveAttribute("src", originalUrls[0]);
+  await expect.poll(async () => thumbnails.nth(0).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
 });
 
 test("one-button photo auto-montage produces a playable WebM that can be downloaded", async ({ page }) => {
@@ -180,6 +286,14 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   expect(playback.duration).toBeGreaterThan(2);
   expect(playback.width).toBeGreaterThan(0);
   expect(playback.height).toBeGreaterThan(0);
+
+  // The export inspector shows actual decoded frames. Tapping one must seek the
+  // playable output to that timestamp so users can inspect a bad moment in place.
+  const frameJump = page.getByRole("button", { name: /Перейти к .* секунде видео/ }).first();
+  await expect(frameJump).toBeVisible({ timeout: 20_000 });
+  await frameJump.click();
+  const inspectedTime = await outputVideo.evaluate((video: HTMLVideoElement) => video.currentTime);
+  expect(inspectedTime).toBeGreaterThan(0);
 
   const downloadPromise = page.waitForEvent("download");
   await result.getByRole("link", { name: "Сохранить видео" }).click();
@@ -258,7 +372,8 @@ test("one-button source-video montage renders and downloads a playable WebM", as
 });
 
 
-test("long source-video montage handles 60-second input and exports the requested short edit", async ({ page }) => {
+for (const sourceDuration of [60, 300]) {
+  test(`long source-video montage handles ${sourceDuration}-second input and exports the requested short edit`, async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -270,13 +385,13 @@ test("long source-video montage handles 60-second input and exports the requeste
   await durationSlider.press("Home");
   await expect(durationSlider).toHaveValue("5");
 
-  // A tiny 60-second VP8/WebM clip exercises the long-video frame-sampling path.
+  // Tiny 1-minute and 5-minute VP8/WebM clips exercise sampling across the full source timeline.
   const fixturePath = `/tmp/dravex-test-long-source-${process.pid}.webm`;
   execFileSync("ffmpeg", [
     "-hide_banner", "-loglevel", "error",
     "-f", "lavfi", "-i", "color=c=red:s=64x64:r=2",
     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-    "-t", "60", "-c:v", "libvpx", "-deadline", "realtime",
+    "-t", String(sourceDuration), "-c:v", "libvpx", "-deadline", "realtime",
     "-cpu-used", "8", "-b:v", "20k", "-g", "2", "-pix_fmt", "yuv420p",
     "-c:a", "libopus", "-b:a", "32k", "-shortest", "-f", "webm", fixturePath, "-y"
   ], { stdio: "pipe" });
@@ -326,10 +441,38 @@ test("long source-video montage handles 60-second input and exports the requeste
   expect(await download.failure()).toBeNull();
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
-  const audioCodec = execFileSync("ffprobe", [
-    "-v", "error", "-select_streams", "a:0",
-    "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
+  expect(download.suggestedFilename()).toMatch(/\.webm$/);
+  const probeOutput = execFileSync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height",
+    "-of", "json",
     downloadedFile!
-  ], { encoding: "utf8" }).trim();
-  expect(audioCodec).not.toBe("");
+  ], { encoding: "utf8" });
+  const probe = JSON.parse(probeOutput) as {
+    format?: { duration?: string; format_name?: string };
+    streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+  };
+  const videoStream = probe.streams?.find((stream) => stream.codec_type === "video");
+  const audioStream = probe.streams?.find((stream) => stream.codec_type === "audio");
+  expect(probe.format?.format_name).toContain("webm");
+  expect(Number(probe.format?.duration)).toBeGreaterThan(3.5);
+  expect(Number(probe.format?.duration)).toBeLessThanOrEqual(5.5);
+  expect(videoStream?.codec_name).toMatch(/^(vp8|vp9|av1)$/);
+  expect(videoStream?.width).toBeGreaterThan(0);
+  expect(videoStream?.height).toBeGreaterThan(0);
+  expect(audioStream?.codec_name).toBe("opus");
+  });
+}
+
+
+test("mobile editor exposes clear material, montage, and result steps", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  const steps = page.getByRole("group", { name: "Этапы создания видео" });
+  await expect(steps).toBeVisible();
+  await expect(steps.getByText("Материал")).toBeVisible();
+  await expect(steps.getByText("Монтаж")).toBeVisible();
+  await expect(steps.getByText("Результат")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы DRAVEX" })).toBeVisible();
 });

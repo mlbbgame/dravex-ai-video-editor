@@ -6,7 +6,7 @@ export type SavedDravexProject = {
   aspectRatio?: "9:16" | "16:9" | "1:1" | "4:5";
   quality: "720p" | "1080p";
   beatSync: boolean;
-  effectStrength?: "soft" | "balanced" | "strong";
+  effectStrength?: "none" | "soft" | "balanced" | "strong";
   musicVolume?: number;
   transitionMode?: "auto" | "cinematic" | "action";
   savedAt: string;
