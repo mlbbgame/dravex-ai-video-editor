@@ -14,14 +14,14 @@
 }
 * { box-sizing: border-box; }
 html { min-width: 320px; background: var(--bg); }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+body { margin: 0; min-width: 320px; min-height: 100vh; min-height: 100dvh; }
 button, input, select { font: inherit; }
 button, a, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 button:disabled { cursor: wait; opacity: .58; }
 #root { min-height: 100vh; }
-.dravex-app { min-height: 100vh; padding: 0 16px 26px; background: radial-gradient(ellipse at 50% -20%, #202a17 0, #111316 33rem, #0b0c0e 75%); }
+.dravex-app { min-height: 100vh; min-height: 100dvh; padding: 0 16px calc(26px + env(safe-area-inset-bottom, 0px)); background: radial-gradient(ellipse at 50% -20%, #202a17 0, #111316 33rem, #0b0c0e 75%); }
 .dravex-header { width: min(100%, 680px); height: 66px; display: flex; align-items: center; justify-content: space-between; margin: 0 auto; border-bottom: 1px solid #ffffff10; }
 .dravex-brand { display: inline-flex; align-items: center; gap: 10px; color: #f7f8f5; text-decoration: none; font-size: 18px; font-weight: 900; letter-spacing: 1.8px; }
 .dravex-brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; color: #10140c; background: var(--accent); }

@@ -60,6 +60,22 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
 });
 
 
+test("mobile editor root respects dynamic viewport and safe-area padding", async ({ page }) => {
+  await page.goto("/");
+  const root = page.locator(".dravex-app");
+  await expect(root).toBeVisible();
+  const styles = await root.evaluate((element) => {
+    const computed = getComputedStyle(element);
+    return {
+      minHeight: computed.minHeight,
+      paddingBottom: computed.paddingBottom,
+      viewportHeight: window.innerHeight
+    };
+  });
+  expect(parseFloat(styles.minHeight)).toBeGreaterThanOrEqual(styles.viewportHeight - 1);
+  expect(parseFloat(styles.paddingBottom)).toBeGreaterThanOrEqual(26);
+});
+
 test("media picker explains unsupported file formats and mixed media selections", async ({ page }) => {
   await page.goto("/");
   const input = page.locator('input[accept="video/*,image/*"]');
