@@ -468,7 +468,7 @@ for (const sourceDuration of [60, 300]) {
 test("mobile editor exposes clear material, montage, and result steps", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/");
-  const steps = page.getByRole("generic", { name: "Этапы создания видео" });
+  const steps = page.getByRole("group", { name: "Этапы создания видео" });
   await expect(steps).toBeVisible();
   await expect(steps.getByText("Материал")).toBeVisible();
   await expect(steps.getByText("Монтаж")).toBeVisible();
