@@ -861,11 +861,11 @@ export default function App() {
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass} ${rendered ? "has-rendered" : ""}`}>
                 {rendered
-                  ? <video src={rendered.url} muted playsInline preload="metadata" />
+                  ? <video src={rendered.url} muted playsInline preload="none" />
                   : mediaFiles.length > 0 && isImageMode
                     ? <img src={mediaUrls[0]} alt="" loading="lazy" />
                     : mediaFiles.length > 0 && selected
-                      ? <video src={videoUrl} muted playsInline loop autoPlay preload="metadata" />
+                      ? <span className="dravex-variant-placeholder"><Icon size={30} /><small>Нажми «Создать варианты», чтобы посмотреть видео</small></span>
                       : <span className="dravex-variant-placeholder"><Icon size={30} /><small>{mediaFiles.length ? "Создай реальный вариант" : "Твой материал"}</small></span>}
                 <span className="dravex-variant-overlay" />
                 <span className="dravex-variant-tag">{rendered ? "REAL VIDEO" : "STYLE IDEA"}</span>
@@ -877,7 +877,7 @@ export default function App() {
         </div>
         {activeRenderedVariant && <section className="dravex-real-preview dravex-variant-player" aria-live="polite">
           <div><strong>Сейчас выбран: {activeRenderedVariant.title}</strong><span>Реальный предпросмотр выбранного варианта монтажа.</span></div>
-          <video key={activeRenderedVariant.id} src={activeRenderedVariant.url} controls autoPlay muted loop playsInline preload="auto" />
+          <video key={activeRenderedVariant.id} src={activeRenderedVariant.url} controls muted playsInline preload="metadata" />
         </section>}
           </section>
           <aside className="dravex-control-column" aria-label="Управление монтажом">
