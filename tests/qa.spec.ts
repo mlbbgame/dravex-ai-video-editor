@@ -140,7 +140,7 @@ test("Add appends new photos instead of replacing the existing photo selection",
   await input.setInputFiles({ name: "first-photo.svg", mimeType: "image/svg+xml", buffer: makeSvg("#243b53") });
   await expect(page.locator(".dravex-image-grid .dravex-image-thumb")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Добавить", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить фото", exact: true }).click();
   await input.setInputFiles({ name: "second-photo.svg", mimeType: "image/svg+xml", buffer: makeSvg("#b8f45b") });
   await expect(page.locator(".dravex-image-grid .dravex-image-thumb")).toHaveCount(2);
   await expect(page.getByText(/2 фотографий добавлено/)).toBeVisible();

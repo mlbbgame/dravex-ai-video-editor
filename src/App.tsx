@@ -848,7 +848,7 @@ export default function App() {
               <span className={stage === "done" ? "is-done" : stage === "analyzing" || stage === "rendering" ? "is-active" : ""}><b>3</b> Результат</span>
             </div>
             <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
-            <div className="dravex-media-heading"><div><h2>Медиатека</h2><p>{mediaFiles.length ? `${mediaFiles.length} ${isImageMode ? "фото" : "видеофайл"} · ${(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ` : "Добавь видео или фотографии для начала"}</p></div>{mediaFiles.length > 0 && <button type="button" onClick={() => { mediaSelectionMode.current = "add"; videoInput.current?.click(); }}><Upload size={15} />Добавить</button>}</div>
+            <div className="dravex-media-heading"><div><h2>Медиатека</h2><p>{mediaFiles.length ? `${mediaFiles.length} ${isImageMode ? "фото" : "видеофайл"} · ${(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ` : "Добавь видео или фотографии для начала"}</p></div>{mediaFiles.length > 0 && isImageMode && <button type="button" onClick={() => { mediaSelectionMode.current = "add"; videoInput.current?.click(); }}><Upload size={15} />Добавить фото</button>}</div>
         {!mediaFiles.length ? (
           <button className="dravex-upload" onClick={() => videoInput.current?.click()} type="button">
             <span className="dravex-upload-icon"><Upload size={25} /></span><strong>Добавить видео или фото</strong><span>Выбери материал из галереи телефона</span><small>Одно видео или несколько фотографий</small>
