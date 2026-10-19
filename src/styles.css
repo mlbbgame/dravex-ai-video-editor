@@ -624,3 +624,28 @@ body { background:#080a0d; }
 @media (prefers-reduced-motion: reduce) {
   .dravex-workflow-steps { scroll-behavior: auto; transition: none; }
 }
+
+
+/* Keep narrow Android viewports inside the device width; internal galleries
+   retain their own horizontal scrolling without widening the whole page. */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+.dravex-app,
+.dravex-main,
+.dravex-editor-layout,
+.dravex-stage-column,
+.dravex-control-column,
+.dravex-music-studio {
+  min-width: 0;
+  max-width: 100%;
+}
+.dravex-app img,
+.dravex-app video,
+.dravex-app canvas {
+  max-width: 100%;
+}

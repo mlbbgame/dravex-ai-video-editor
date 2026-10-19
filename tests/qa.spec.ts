@@ -523,3 +523,23 @@ test("media intake limits photo count without rejecting a video plus a full phot
   expect(tooManyPhotos.valid).toBe(false);
   expect(tooManyPhotos.errors[0]).toContain("80 фотографий");
 });
+
+
+test("mobile viewport never creates page-level horizontal overflow in editor or music", async ({ page }) => {
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const editorDimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+    }));
+    expect(editorDimensions.page, `editor overflow at ${width}px`).toBeLessThanOrEqual(editorDimensions.viewport + 1);
+
+    await page.getByRole("navigation", { name: "Разделы DRAVEX" }).getByRole("button", { name: "Музыка" }).click();
+    const musicDimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+    }));
+    expect(musicDimensions.page, `music overflow at ${width}px`).toBeLessThanOrEqual(musicDimensions.viewport + 1);
+  }
+});
