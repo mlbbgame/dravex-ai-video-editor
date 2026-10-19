@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { buildHighlightVariants, rankHighlightMomentsForStyle, type HighlightMoment } from "../src/video/highlight-finder";
+import { buildHighlightVariants, rankHighlightMomentsForStyle, scoreFrameQuality, type HighlightMoment } from "../src/video/highlight-finder";
 
 const candidate = (time: number): HighlightMoment => ({
   time,
@@ -91,4 +91,32 @@ test("active montage ranking prioritizes motion, cinematic contrast, and calm st
   expect(rankHighlightMomentsForStyle(moments, "velocity")[0].time).toBe(1);
   expect(rankHighlightMomentsForStyle(moments, "cinematic")[0].time).toBe(5);
   expect(rankHighlightMomentsForStyle(moments, "story")[0].time).toBe(9);
+});
+
+
+test("frame quality scoring prefers usable exposure over very dark or blown-out frames", () => {
+  const base = { motion: 0.5, contrast: 0.5, saturation: 0.4, detail: 0.5 };
+  const balanced = scoreFrameQuality({ ...base, brightness: 0.48 });
+  const dark = scoreFrameQuality({ ...base, brightness: 0.02 });
+  const overexposed = scoreFrameQuality({ ...base, brightness: 0.99 });
+
+  expect(balanced).toBeGreaterThan(dark);
+  expect(balanced).toBeGreaterThan(overexposed);
+  expect(balanced).toBeLessThanOrEqual(1);
+  expect(balanced).toBeGreaterThanOrEqual(0);
+});
+
+test("frame quality scoring rewards detail without allowing invalid measurements to produce NaN", () => {
+  const base = { motion: 0.5, contrast: 0.5, saturation: 0.4, brightness: 0.48 };
+  const detailed = scoreFrameQuality({ ...base, detail: 0.9 });
+  const soft = scoreFrameQuality({ ...base, detail: 0.1 });
+
+  expect(detailed).toBeGreaterThan(soft);
+  expect(Number.isFinite(scoreFrameQuality({
+    motion: Number.NaN,
+    contrast: Number.POSITIVE_INFINITY,
+    saturation: -1,
+    brightness: Number.NaN,
+    detail: Number.NaN,
+  }))).toBe(true);
 });
