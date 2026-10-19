@@ -16,6 +16,28 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
 });
 
 
+test("editor and music studio avoid horizontal overflow on narrow Android screens", async ({ page }) => {
+  await page.goto("/");
+  const tabs = page.getByRole("navigation", { name: "Разделы DRAVEX" });
+
+  for (const width of [320, 360, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    const editorWidth = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+    }));
+    expect(editorWidth.content, `editor overflows at ${width}px`).toBeLessThanOrEqual(editorWidth.viewport + 1);
+
+    await tabs.getByRole("button", { name: "Музыка" }).click();
+    const musicWidth = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+    }));
+    expect(musicWidth.content, `music studio overflows at ${width}px`).toBeLessThanOrEqual(musicWidth.viewport + 1);
+    await tabs.getByRole("button", { name: "Монтаж" }).click();
+  }
+});
+
 test("same-tab reload restores a project but a fresh tab session starts clean", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("dravex-active-editor-session-v1"))).toBe("active");
