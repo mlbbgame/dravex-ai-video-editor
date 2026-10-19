@@ -12,6 +12,7 @@ const CUT_CENTERS: Record<string, number[]> = {
   velocity: [0.1, 0.34, 0.62, 0.88],
   cinema: [0.3, 0.72],
   pulse: [0.07, 0.3, 0.56, 0.82],
+  story: [0.18, 0.43, 0.68, 0.88],
 };
 
 /** Plan a short preview from different parts of the source, not only its opening. */

@@ -37,6 +37,7 @@ const montageVariants: MontageVariant[] = [
   { id: "velocity", title: "Агрессивный", note: "Быстрые склейки и сильный импакт", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
   { id: "cinema", title: "Кинематографичный", note: "Плавный темп и мягкие переходы", style: "cinematic", transition: "cinematic", strength: "soft", previewClass: "cinema", icon: Film },
   { id: "pulse", title: "Динамичный под музыку", note: "Ритмичный монтаж с выбранным треком", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
+  { id: "story", title: "История / атмосферный", note: "Спокойный ритм для природы, еды и путешествий", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Clapperboard },
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
@@ -524,7 +525,7 @@ export default function App() {
     const generation = previewGeneration.current;
     const pendingVariants = montageVariants.filter((variant) => !renderedVariants.some((rendered) => rendered.id === variant.id));
     if (!pendingVariants.length) {
-      setPreviewStatus("Все три варианта готовы. Выбери лучший и запусти полный монтаж.");
+      setPreviewStatus("Все четыре варианта готовы. Выбери лучший и запусти полный монтаж.");
       return;
     }
     setPreviewBusy(true);
@@ -591,7 +592,7 @@ export default function App() {
       }
       if (generation === previewGeneration.current) {
         setPreviewProgress(100);
-        setPreviewStatus("Готово! Сравни три коротких реальных видео: агрессивное, кинематографичное и динамичное под музыку. Выбери карточку для просмотра.");
+        setPreviewStatus("Готово! Сравни четыре коротких видео: агрессивное, кинематографичное, динамичное под музыку и атмосферное. Выбери карточку для просмотра.");
       }
     } catch (caught) {
       if (generation === previewGeneration.current) {

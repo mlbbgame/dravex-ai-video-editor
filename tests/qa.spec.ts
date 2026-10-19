@@ -176,8 +176,8 @@ test("choosing a montage style highlights exactly one matching variant", async (
 
   const variants = page.locator(".dravex-variant");
   const selected = page.locator(".dravex-variant[aria-pressed='true']");
-  await expect(variants).toHaveCount(3);
-  // Auto mode stays neutral until the user chooses one of the three edit directions.
+  await expect(variants).toHaveCount(4);
+  // Auto mode stays neutral until the user chooses one of the four edit directions.
   await expect(selected).toHaveCount(0);
 
   await variants.filter({ hasText: "Агрессивный" }).click();
