@@ -639,8 +639,10 @@ export default function App() {
               } else {
                 setMessage("AI Director: ранжируем фрагменты под выбранный стиль…");
               }
-            }
+            },
+            style === "auto"
           );
+          actualStyle = directorResult.selectedStyle;
           directorNote = directorResult.note;
           segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
           setMessage(directorNote);
