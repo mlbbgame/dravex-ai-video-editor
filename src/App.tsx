@@ -354,8 +354,12 @@ export default function App() {
     const hasInvalid = files.some((file) => getMediaKind(file) === "unknown");
     const videos = files.filter((file) => getMediaKind(file) === "video");
     const images = files.filter((file) => getMediaKind(file) === "image");
-    if (hasInvalid || (videos.length && (videos.length !== 1 || images.length))) {
-      setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
+    if (hasInvalid) {
+      setError("Не удалось определить формат одного из файлов. Выбери видео MP4, WebM или MOV либо фотографии JPG, PNG или WebP.");
+      return;
+    }
+    if (videos.length && (videos.length !== 1 || images.length)) {
+      setError("Сейчас можно добавить одно видео за раз или подборку фотографий. Смешивание видео с фото и несколько видео в одном проекте пока не поддерживаются.");
       return;
     }
 
