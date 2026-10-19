@@ -56,11 +56,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p test-results/exported-video-frames
+          mkdir -p test-results/exported-videos test-results/exported-video-frames
           shopt -s nullglob
           for video in test-results/exported-videos/*.webm; do
             name="$(basename "${video%.webm}")"
-            duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video")"
+            duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video" 2>/dev/null || true)"
             if [[ -z "$duration" ]]; then
               echo "Could not read duration for $video" >&2
               continue
