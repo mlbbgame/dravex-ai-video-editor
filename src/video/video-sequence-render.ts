@@ -289,6 +289,25 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
       video.removeEventListener("error", failed);
     };
     const loaded = () => {
+      // A metadata event alone is not enough: malformed/unsupported files can
+      // report loadedmetadata with unusable dimensions or a non-finite duration.
+      // Reject them here so the montage planner never receives NaN/Infinity.
+      if (!Number.isFinite(video.duration) || video.duration <= 0) {
+        cleanup();
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        reject(new Error(`У видео «${segment.name}» не удалось определить длительность. Попробуй MP4 (H.264) или другой файл.`));
+        return;
+      }
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        cleanup();
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        reject(new Error(`У видео «${segment.name}» не удалось определить размер кадра. Попробуй MP4 (H.264) или другой файл.`));
+        return;
+      }
       cleanup();
       resolve(video);
     };
