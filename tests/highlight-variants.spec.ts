@@ -60,3 +60,22 @@ test("empty candidate input produces valid empty variant descriptions", () => {
   expect(variants.map((variant) => variant.id)).toEqual(["aggressive", "cinematic", "slow"]);
   expect(variants.every((variant) => variant.duration === 0 && variant.moments.length === 0)).toBe(true);
 });
+
+test("variant rankings prefer different motion profiles instead of applying a constant score multiplier", () => {
+  const candidates: HighlightMoment[] = [];
+  for (let bucket = 0; bucket < 12; bucket += 1) {
+    const base = bucket * 5;
+    candidates.push(
+      { time: base + 0.4, start: base, end: base + 1, score: 0.72, motion: 0.92, contrast: 0.25 },
+      { time: base + 1.6, start: base + 1, end: base + 2, score: 0.9, motion: 0.12, contrast: 0.82 },
+      { time: base + 3.1, start: base + 2.5, end: base + 3.8, score: 0.78, motion: 0.3, contrast: 0.55 },
+    );
+  }
+
+  const variants = buildHighlightVariants(candidates, 60);
+  const selectedTimes = variants.map((variant) => variant.moments.map((moment) => moment.time));
+
+  expect(selectedTimes[0]).not.toEqual(selectedTimes[1]);
+  expect(selectedTimes[0]).not.toEqual(selectedTimes[2]);
+  expect(selectedTimes[1]).not.toEqual(selectedTimes[2]);
+});
