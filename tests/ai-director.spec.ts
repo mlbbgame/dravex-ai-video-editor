@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  analyzeWithAIDirector,
   inferMotionCues,
   inferTrackedObjectCues,
   scoreDirectorMoment,
@@ -58,4 +59,34 @@ test("object matching does not confuse two same-class objects when detector orde
     { label: "person", score: 0.9, box: { xmin: 25, ymin: 20, xmax: 85, ymax: 140 } },
   ];
   expect(inferTrackedObjectCues(previous, current)).not.toContain("Объект перемещается по кадру");
+});
+
+
+test("long videos skip heavyweight local detection and preserve visual candidates", async () => {
+  const candidate = {
+    time: 12,
+    start: 10.8,
+    end: 13.2,
+    score: 0.82,
+    motion: 0.24,
+    contrast: 0.21,
+  };
+
+  const result = await analyzeWithAIDirector(
+    "blob:long-video-fixture",
+    300,
+    [{ time: candidate.time, score: candidate.score, motion: candidate.motion, contrast: candidate.contrast }],
+    [candidate],
+    "velocity",
+  );
+
+  expect(result.modelLoaded).toBe(false);
+  expect(result.candidates).toHaveLength(1);
+  expect(result.candidates[0]).toMatchObject({
+    time: candidate.time,
+    score: candidate.score,
+    directorScore: candidate.score,
+    actionCues: ["Резкое движение"],
+  });
+  expect(result.note).toContain("длинного видео");
 });
