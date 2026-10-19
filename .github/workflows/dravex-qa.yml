@@ -78,8 +78,8 @@ jobs:
             echo "- Exported WebM files found: $video_count"
             echo "- Review PNG frames extracted: $frame_count"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$video_count" -gt 0 && "$frame_count" -eq 0 ]]; then
-            echo "Exported videos exist, but no review frames could be extracted." >&2
+          if [[ "$video_count" -gt 0 && "$frame_count" -lt "$video_count" ]]; then
+            echo "Expected at least one review frame per exported video, but found $frame_count frames for $video_count videos." >&2
             exit 1
           fi
 
