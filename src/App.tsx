@@ -806,6 +806,11 @@ export default function App() {
         <div className="dravex-editor-layout">
           <section className="dravex-stage-column" aria-label="Медиатека и предпросмотр">
             <div className="dravex-intro"><div><span className="dravex-eyebrow">DRAVEX STUDIO</span><h1>Твоя история.<br /><span>Твой монтаж.</span></h1><p>Добавь материал, выбери стиль и собери ролик.</p></div><span className="dravex-editor-badge"><span />Локальный монтаж</span></div>
+            <div className="dravex-workflow-steps" role="group" aria-label="Этапы создания видео">
+              <span className={!mediaFiles.length ? "is-active" : "is-done"}><b>1</b> Материал</span>
+              <span className={stage === "done" || stage === "analyzing" || stage === "rendering" ? "is-done" : mediaFiles.length ? "is-active" : ""}><b>2</b> Монтаж</span>
+              <span className={stage === "done" ? "is-done" : stage === "analyzing" || stage === "rendering" ? "is-active" : ""}><b>3</b> Результат</span>
+            </div>
             <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
             <div className="dravex-media-heading"><div><h2>Медиатека</h2><p>{mediaFiles.length ? `${mediaFiles.length} ${isImageMode ? "фото" : "видеофайл"} · ${(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ` : "Добавь видео или фотографии для начала"}</p></div>{mediaFiles.length > 0 && <button type="button" onClick={() => videoInput.current?.click()}><Upload size={15} />Добавить</button>}</div>
         {!mediaFiles.length ? (

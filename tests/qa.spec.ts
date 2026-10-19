@@ -483,3 +483,16 @@ for (const sourceDuration of [60, 300]) {
   expect(audioStream?.codec_name).toBe("opus");
   });
 }
+
+
+test("mobile editor exposes clear material, montage, and result steps", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  const steps = page.getByRole("group", { name: "Этапы создания видео" });
+  await expect(steps).toBeVisible();
+  await expect(steps.getByText("Материал")).toBeVisible();
+  await expect(steps.getByText("Монтаж")).toBeVisible();
+  await expect(steps.getByText("Результат")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы DRAVEX" })).toBeVisible();
+});
