@@ -77,7 +77,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dravex-exported-video-samples
-          path: test-results/exported-videos/
+          path: |
+            test-results/exported-videos/
+            test-results/exported-video-frames/
           if-no-files-found: warn
           retention-days: 14
 
