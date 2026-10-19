@@ -6,7 +6,16 @@ import { buildQuickVideoCandidates, ensureCandidateCoverage } from "../src/video
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 import { assessMediaSelection } from "../src/video/media-intake";
-import { inferSceneCategory, suggestDirectorStyle } from "../src/video/ai-director";
+import { getDirectorFrameBudget, getSceneCategoryLabel, inferSceneCategory, suggestDirectorStyle } from "../src/video/ai-director";
+
+test("AI Director bounds long-clip object detection without skipping semantic samples", () => {
+  expect(getDirectorFrameBudget(9)).toEqual({ maxFrames: 4, inferenceBudgetMs: 10_000, includeEdges: true });
+  expect(getDirectorFrameBudget(60)).toEqual({ maxFrames: 2, inferenceBudgetMs: 5_000, includeEdges: false });
+  expect(getDirectorFrameBudget(300)).toEqual({ maxFrames: 2, inferenceBudgetMs: 5_000, includeEdges: false });
+  expect(getDirectorFrameBudget(Number.NaN).maxFrames).toBe(0);
+  expect(getSceneCategoryLabel("nature")).toBe("природа и растения");
+  expect(getSceneCategoryLabel("general")).toBeNull();
+});
 
 test("AI Director identifies detected potted plants as a nature subject without overclaiming landscapes", () => {
   expect(inferSceneCategory(["potted plant", "potted plant"])).toMatchObject({

@@ -22,6 +22,20 @@ const SCENE_LABELS: Record<Exclude<DetectedSceneCategory, "general">, Set<string
   nature: new Set(["potted plant"])
 };
 
+const SCENE_CATEGORY_LABELS: Record<Exclude<DetectedSceneCategory, "general">, string> = {
+  food: "еда",
+  vehicles: "транспорт",
+  people: "люди",
+  animals: "животные",
+  sports: "спорт",
+  indoor: "предметы и интерьер",
+  nature: "природа и растения"
+};
+
+export function getSceneCategoryLabel(category: DetectedSceneCategory): string | null {
+  return category === "general" ? null : SCENE_CATEGORY_LABELS[category];
+}
+
 /**
  * Infer a broad subject category from object-detector labels only.
  * This is a lightweight editing hint, not full scene/action recognition:
@@ -267,9 +281,28 @@ export function scoreDirectorMoment(
     + change * changeWeight;
 }
 
-function chooseSampleIndices(count: number, limit: number): number[] {
+function chooseSampleIndices(count: number, limit: number, includeEdges = true): number[] {
   if (count <= limit) return Array.from({ length: count }, (_, index) => index);
-  return Array.from({ length: limit }, (_, index) => Math.round(index * (count - 1) / (limit - 1)));
+  if (limit <= 1) return [Math.round((count - 1) / 2)];
+  return Array.from({ length: limit }, (_, index) => includeEdges
+    ? Math.round(index * (count - 1) / (limit - 1))
+    : Math.round((index + 1) * (count - 1) / (limit + 1)));
+}
+
+export type DirectorFrameBudget = {
+  maxFrames: number;
+  inferenceBudgetMs: number;
+  includeEdges: boolean;
+};
+
+/** Bound local object detection on Android while still sampling long clips semantically. */
+export function getDirectorFrameBudget(duration: number): DirectorFrameBudget {
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return { maxFrames: 0, inferenceBudgetMs: 0, includeEdges: false };
+  }
+  return duration >= 30
+    ? { maxFrames: 2, inferenceBudgetMs: 5_000, includeEdges: false }
+    : { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
 }
 
 /**
@@ -296,19 +329,6 @@ export async function analyzeWithAIDirector(
   }));
   if (!candidates.length || !samples.length || duration < 0.25) {
     return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
-  }
-
-  // Local WASM object detection may stall the UI on memory-constrained phones.
-  // Long clips already have a bounded full-timeline visual scan; keep them exportable
-  // by ranking those candidates without loading the heavier local model.
-  if (duration >= 30) {
-    return {
-      candidates: emptyCandidates,
-      detectedLabels: [],
-      modelLoaded: false,
-      selectedStyle: style,
-      note: "Для длинного видео использован ограниченный анализ движения и контраста, чтобы не перегружать телефон."
-    };
   }
 
   let detector: ObjectDetector;
@@ -357,11 +377,12 @@ export async function analyzeWithAIDirector(
     return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, selectedStyle: style, note: "Canvas недоступен; использован резервный анализ." };
   }
 
-  const selectedIndices = chooseSampleIndices(candidates.length, MAX_MODEL_FRAMES);
+  const frameBudget = getDirectorFrameBudget(duration);
+  const selectedIndices = chooseSampleIndices(candidates.length, frameBudget.maxFrames, frameBudget.includeEdges);
   const detectionsByCandidate = new Map<number, DetectedObject[]>();
   const allLabels = new Set<string>();
   const inferenceStartedAt = performance.now();
-  const inferenceBudgetMs = 10_000;
+  const inferenceBudgetMs = frameBudget.inferenceBudgetMs;
   try {
     await new Promise<void>((resolve, reject) => {
       if (video.readyState >= 1 && Number.isFinite(video.duration)) return resolve();
@@ -465,7 +486,7 @@ export async function analyzeWithAIDirector(
     modelLoaded: true,
     selectedStyle,
     note: detectedLabels.length
-      ? `YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${({ food: "еда", vehicles: "транспорт", people: "люди", animals: "животные", sports: "спорт", indoor: "предметы и интерьер" } as Record<Exclude<DetectedSceneCategory, "general">, string>)[sceneInference.category]} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
-      : "Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён."
+      ? `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${getSceneCategoryLabel(sceneInference.category)} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
+      : `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён.`
   };
 }
