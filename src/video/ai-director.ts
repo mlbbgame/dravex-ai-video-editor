@@ -2,7 +2,7 @@ import type { HighlightMoment, HighlightSample } from "./highlight-finder";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
-export type DetectedSceneCategory = "food" | "vehicles" | "people" | "animals" | "sports" | "indoor" | "general";
+export type DetectedSceneCategory = "food" | "vehicles" | "people" | "animals" | "sports" | "indoor" | "nature" | "general";
 
 export type SceneCategoryInference = {
   category: DetectedSceneCategory;
@@ -16,7 +16,10 @@ const SCENE_LABELS: Record<Exclude<DetectedSceneCategory, "general">, Set<string
   people: new Set(["person"]),
   animals: new Set(["bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe"]),
   sports: new Set(["sports ball", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "frisbee", "skis", "snowboard"]),
-  indoor: new Set(["chair", "couch", "bed", "dining table", "tv", "laptop", "keyboard", "mouse", "cell phone", "book", "clock", "vase", "bottle", "cup", "bowl", "fork", "knife", "spoon", "refrigerator", "oven", "toaster", "sink"])
+  indoor: new Set(["chair", "couch", "bed", "dining table", "tv", "laptop", "keyboard", "mouse", "cell phone", "book", "clock", "vase", "bottle", "cup", "bowl", "fork", "knife", "spoon", "refrigerator", "oven", "toaster", "sink"]),
+  // YOLOS Tiny follows COCO labels and only detects potted plants, not landscapes.
+  // Keep this category deliberately narrow rather than pretending it understands scenery.
+  nature: new Set(["potted plant"])
 };
 
 /**
@@ -55,6 +58,7 @@ export function suggestDirectorStyle(category: DetectedSceneCategory, fallback: 
       return "story";
     case "food":
     case "animals":
+    case "nature":
       return "cinematic";
     default:
       return fallback;
@@ -229,9 +233,9 @@ export function scoreDirectorMoment(
   const subjectRelevance: Record<DirectorStyle, Set<string>> = {
     velocity: new Set(["car", "motorcycle", "bicycle", "bus", "train", "truck", "boat", "airplane", "sports ball", "skateboard", "surfboard", "person"]),
     anime: new Set(["person", "sports ball", "skateboard", "surfboard", "car", "motorcycle"]),
-    cinematic: new Set(["person", "bird", "cat", "dog", "horse", "cake", "pizza", "sandwich", "apple", "orange"]),
+    cinematic: new Set(["person", "bird", "cat", "dog", "horse", "potted plant", "cake", "pizza", "sandwich", "apple", "orange"]),
     glitch: new Set(["car", "motorcycle", "bicycle", "sports ball", "skateboard", "surfboard", "person"]),
-    story: new Set(["person", "bird", "cat", "dog", "horse", "cake", "pizza", "sandwich", "apple", "orange", "cup", "bowl"])
+    story: new Set(["person", "bird", "cat", "dog", "horse", "potted plant", "cake", "pizza", "sandwich", "apple", "orange", "cup", "bowl"])
   };
   const relevantCount = objectLabels.filter((label) => subjectRelevance[style].has(label)).length;
   const relevance = objectLabels.length ? relevantCount / objectLabels.length : 0;

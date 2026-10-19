@@ -6,6 +6,17 @@ import { buildQuickVideoCandidates, ensureCandidateCoverage } from "../src/video
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 import { assessMediaSelection } from "../src/video/media-intake";
+import { inferSceneCategory, suggestDirectorStyle } from "../src/video/ai-director";
+
+test("AI Director identifies detected potted plants as a nature subject without overclaiming landscapes", () => {
+  expect(inferSceneCategory(["potted plant", "potted plant"])).toMatchObject({
+    category: "nature",
+    matchedLabels: ["potted plant"]
+  });
+  expect(suggestDirectorStyle("nature", "velocity")).toBe("cinematic");
+  // COCO object labels do not contain general landscape classes, so unknown scenery stays general.
+  expect(inferSceneCategory(["mountain", "forest", "sky"]).category).toBe("general");
+});
 
 test("source-video trim ranges always stay inside valid media duration", () => {
   for (const duration of [0.1, 0.25, 0.5, 2, 9, 60]) {
