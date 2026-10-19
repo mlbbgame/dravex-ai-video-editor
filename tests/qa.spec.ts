@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { copyFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
-import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
+import { buildQuickVideoCandidates, ensureCandidateCoverage } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 import { assessMediaSelection } from "../src/video/media-intake";
@@ -203,6 +203,36 @@ test("media type falls back to filename extension when a picker omits MIME metad
   expect(getMediaKind({ name: "photo.jpg", type: "video/mp4" })).toBe("image");
   expect(getMediaKind({ name: "clip-without-extension", type: "video/mp4" })).toBe("video");
   expect(getMediaKind({ name: "photo-without-extension", type: "image/jpeg" })).toBe("image");
+});
+
+test("highlight selection fills sparse peak results with spaced usable frames", () => {
+  const samples = Array.from({ length: 5 }, (_, index) => ({
+    time: 0.5 + index * 1.7,
+    score: index === 2 ? 1 : 0.2 + index * 0.05,
+    motion: index * 0.1,
+    contrast: 0.3,
+  }));
+  const sparsePeak = [{
+    time: samples[2].time,
+    start: samples[2].time - 0.4,
+    end: samples[2].time + 0.4,
+    score: samples[2].score,
+    motion: samples[2].motion,
+    contrast: samples[2].contrast,
+  }];
+
+  const candidates = ensureCandidateCoverage(samples, sparsePeak, 9);
+
+  expect(candidates.length).toBeGreaterThanOrEqual(4);
+  expect(candidates.length).toBeLessThanOrEqual(5);
+  expect(candidates.map((item) => item.time)).toEqual(
+    [...candidates].map((item) => item.time).sort((a, b) => a - b)
+  );
+  for (const candidate of candidates) {
+    expect(candidate.start).toBeGreaterThanOrEqual(0);
+    expect(candidate.end).toBeLessThanOrEqual(9);
+    expect(candidate.end).toBeGreaterThan(candidate.start);
+  }
 });
 
 test("quick video cut points stay valid across the full duration range", () => {
