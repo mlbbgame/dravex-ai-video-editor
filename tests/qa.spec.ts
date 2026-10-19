@@ -435,6 +435,7 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   await unlink(sourceFixturePath);
 
   await expect(page.locator("video.dravex-preview")).toBeVisible();
+  await expect(page.locator(".dravex-video-status")).toContainText("Видео загружено", { timeout: 10_000 });
   await expect(page.locator(".dravex-variant video")).toHaveCount(4, { timeout: 60_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
