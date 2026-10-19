@@ -327,7 +327,7 @@ export async function analyzeWithAIDirector(
     actionCues: inferMotionCues(candidate.motion, candidate.contrast),
     directorScore: candidate.score
   }));
-  if (!candidates.length || !samples.length || duration < 0.25) {
+  if (!candidates.length || !samples.length || !Number.isFinite(duration) || duration < 0.25) {
     return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
   }
 
