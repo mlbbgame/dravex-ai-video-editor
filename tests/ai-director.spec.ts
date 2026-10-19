@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   inferMotionCues,
+  inferSceneCategory,
   inferTrackedObjectCues,
   scoreDirectorMoment,
   type DetectedObject,
@@ -58,4 +59,28 @@ test("object matching does not confuse two same-class objects when detector orde
     { label: "person", score: 0.9, box: { xmin: 25, ymin: 20, xmax: 85, ymax: 140 } },
   ];
   expect(inferTrackedObjectCues(previous, current)).not.toContain("Объект перемещается по кадру");
+});
+
+test("scene category inference identifies food, vehicles, and wildlife from object labels", () => {
+  expect(inferSceneCategory(["pizza", "bottle", "cake"]).category).toBe("food");
+  expect(inferSceneCategory(["car", "truck", "person"]).category).toBe("vehicles");
+  expect(inferSceneCategory(["bird", "dog"]).category).toBe("animals");
+});
+
+test("scene category inference stays unknown when no supported objects are detected", () => {
+  expect(inferSceneCategory(["tree", "sky", "mountain"])).toEqual({
+    category: "general",
+    confidence: 0,
+    matchedLabels: [],
+  });
+});
+
+test("style-aware ranking favors relevant detected subjects instead of any object equally", () => {
+  const moment = { score: 0.6, motion: 0.2, contrast: 0.18 };
+  const car = [{ label: "car", score: 0.9, box: { xmin: 20, ymin: 20, xmax: 180, ymax: 140 } }];
+  const cake = [{ label: "cake", score: 0.9, box: { xmin: 20, ymin: 20, xmax: 180, ymax: 140 } }];
+  expect(scoreDirectorMoment(moment, car, "velocity", 0.1, 0.2))
+    .toBeGreaterThan(scoreDirectorMoment(moment, cake, "velocity", 0.1, 0.2));
+  expect(scoreDirectorMoment(moment, cake, "story", 0.1, 0.2))
+    .toBeGreaterThan(scoreDirectorMoment(moment, car, "story", 0.1, 0.2));
 });
