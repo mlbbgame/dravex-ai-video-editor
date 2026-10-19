@@ -257,6 +257,7 @@ export default function App() {
 
   const clearEditor = () => {
     if (busy || previewBusy || projectBusy) return;
+    if (!window.confirm("Очистить текущий проект? Исходные файлы и настройки редактора будут убраны из рабочего пространства.")) return;
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
     if (musicUrl) URL.revokeObjectURL(musicUrl);
     if (outputUrl) URL.revokeObjectURL(outputUrl);
@@ -785,7 +786,6 @@ export default function App() {
               <div><span className="dravex-eyebrow">DRAVEX AUDIO LAB</span><h1>Твоя музыка.<br /><span>Твой монтаж.</span></h1><p>Phonk, dark slowed, anime/gaming и динамичные биты для эдитов — добавляй трек в один тап.</p></div>
             </div>
             <div className="dravex-music-safety"><CheckCircle2 size={16} /><span>Готовые треки можно прослушать и добавить в монтаж одним нажатием. Подборка оформлена под популярные стили эдитов; все встроенные записи отмечены как CC0. Это не оригинальные коммерческие хиты из TikTok.</span></div>
-            <label className="dravex-music-sync"><input type="checkbox" checked={beatSync} onChange={(event) => { setBeatSync(event.target.checked); invalidateOutput(); }} /><span><strong>Синхронизировать монтаж с битом</strong><small>DRAVEX попробует подстроить смену кадров под ритм выбранной музыки.</small></span></label>
             {musicFile && musicUrl ? <section className="dravex-current-track">
               <div className="dravex-current-track-top"><span className="dravex-track-icon"><Headphones size={19} /></span><div><strong>Выбранный трек</strong><small>{musicFile.name}</small></div><button type="button" aria-label="Убрать выбранную музыку" onClick={clearMusic}><X size={17} /></button></div>
               <audio controls preload="metadata" src={musicUrl}>Твой браузер не поддерживает аудиоплеер.</audio>
@@ -885,6 +885,7 @@ export default function App() {
           <aside className="dravex-control-column" aria-label="Управление монтажом">
             <div className="dravex-control-heading"><span className="dravex-control-icon"><Settings2 size={17} /></span><div><h2>Монтаж</h2><p>Настрой результат под себя</p></div></div>
             <p className="dravex-variant-hint">Нажми на одну из трёх карточек, чтобы увидеть реальный фрагмент. Кнопка ниже создаст остальные варианты для сравнения.</p>
+        <label className="dravex-music-sync dravex-editor-sync"><input type="checkbox" checked={beatSync} onChange={(event) => { setBeatSync(event.target.checked); invalidateOutput(); }} /><span><strong>Синхронизировать с музыкой</strong><small>{musicFile ? "DRAVEX попробует подстроить смену кадров под ритм выбранного трека." : "Выбери трек во вкладке «Музыка», чтобы монтаж мог учитывать ритм."}</small></span></label>
         <button className="dravex-preview-action" type="button" disabled={!mediaFiles.length || busy || previewBusy || renderedVariants.length === montageVariants.length} onClick={createStylePreviews}>
           {previewBusy ? <LoaderCircle className="dravex-spin" size={17} /> : <Play size={17} />}
           {previewBusy ? `Подготовка автопросмотра… ${previewProgress}%` : renderedVariants.length === montageVariants.length ? "Все варианты готовы" : `Сравнить варианты (${renderedVariants.length}/${montageVariants.length})`}
@@ -902,7 +903,6 @@ export default function App() {
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
             <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
-            <label className="dravex-duration"><span>Синхронизация ритма</span><select value={beatSync ? "on" : "off"} onChange={(event) => { setBeatSync(event.target.value === "on"); invalidateOutput(); }}><option value="on">Включена</option><option value="off">Выключена</option></select></label>
           </div>
           <div className="dravex-project-actions">
             <button type="button" onClick={clearEditor} disabled={!mediaFiles.length || busy || previewBusy || projectBusy}><Trash2 size={15} />Очистить редактор</button>
@@ -913,7 +913,7 @@ export default function App() {
         </details>
 
         <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy || previewBusy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Автомонтаж"}</button>
-        <p className="dravex-privacy">Обработка происходит в браузере: файлы не отправляются на сервер. Проект сохраняется автоматически в текущем сеансе и очищается при новом открытии сайта.</p>
+        <p className="dravex-privacy">Файлы обрабатываются в браузере и не отправляются на сервер. Черновик автоматически сохраняется для восстановления в этой вкладке; при новом сеансе редактор начинает с чистого проекта. Используй «Сохранить проект», если хочешь сохранить его отдельно на устройстве.</p>
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
