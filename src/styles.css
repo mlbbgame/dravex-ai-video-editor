@@ -649,3 +649,155 @@ body,
 .dravex-app canvas {
   max-width: 100%;
 }
+
+/* Main-branch polish: stronger hierarchy, wider desktop workspace, safer touch controls. */
+.dravex-main {
+  width: min(100%, 1180px);
+}
+.dravex-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  align-items: start;
+  gap: clamp(18px, 2.6vw, 30px);
+}
+.dravex-stage-column,
+.dravex-control-column {
+  min-width: 0;
+}
+.dravex-control-column {
+  position: sticky;
+  top: 16px;
+  padding: clamp(14px, 1.8vw, 22px);
+  border: 1px solid #30383b;
+  border-radius: 18px;
+  background: linear-gradient(155deg, #171c1e, #101315 72%);
+  box-shadow: 0 16px 42px #00000022;
+}
+.dravex-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dravex-media-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+.dravex-media-heading h2,
+.dravex-control-heading h2 {
+  margin: 0;
+  color: #f4f6f1;
+  font-size: 15px;
+  font-weight: 800;
+}
+.dravex-media-heading p,
+.dravex-control-heading p {
+  margin: 5px 0 0;
+  color: #969fa5;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.dravex-media-heading > button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid #39423b;
+  border-radius: 10px;
+  color: #d5f6a5;
+  background: #c4ff680b;
+  font-size: 11px;
+  font-weight: 750;
+  touch-action: manipulation;
+}
+.dravex-control-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.dravex-control-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  flex: 0 0 38px;
+  place-items: center;
+  border: 1px solid #c4ff6828;
+  border-radius: 12px;
+  color: var(--accent);
+  background: #c4ff6810;
+}
+.dravex-preview {
+  max-height: min(72vh, 760px);
+}
+.dravex-photo-preview {
+  max-height: min(72vh, 760px);
+}
+.dravex-variant {
+  flex-basis: clamp(142px, 16vw, 178px);
+}
+.dravex-variant-preview {
+  height: auto;
+  aspect-ratio: 4 / 5;
+}
+.dravex-create,
+.dravex-preview-action,
+.dravex-media-heading > button,
+.dravex-variant,
+.dravex-project-actions button,
+.dravex-result-actions a,
+.dravex-result-actions button {
+  touch-action: manipulation;
+}
+.dravex-create:focus-visible,
+.dravex-preview-action:focus-visible,
+.dravex-media-heading > button:focus-visible,
+.dravex-project-actions button:focus-visible,
+.dravex-result-actions a:focus-visible,
+.dravex-result-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.dravex-duration select,
+.dravex-music button,
+.dravex-project-actions button,
+.dravex-result-actions a,
+.dravex-result-actions button {
+  min-height: 44px;
+}
+@media (max-width: 900px) {
+  .dravex-main { width: min(100%, 720px); }
+  .dravex-editor-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .dravex-control-column {
+    position: static;
+  }
+  .dravex-preview,
+  .dravex-photo-preview {
+    max-height: min(68svh, 700px);
+  }
+}
+@media (max-width: 420px) {
+  .dravex-intro { align-items: flex-start; }
+  .dravex-editor-badge { max-width: 112px; line-height: 1.35; }
+  .dravex-workflow-steps > span { min-height: 40px; }
+  .dravex-variant { flex-basis: min(44vw, 160px); }
+  .dravex-variant-preview { aspect-ratio: 4 / 5; }
+  .dravex-control-column { padding: 13px; }
+  .dravex-duration select,
+  .dravex-music button { min-height: 44px; font-size: 11px; }
+}
+@media (hover: none) {
+  .dravex-variant:hover .dravex-variant-preview > img,
+  .dravex-variant:hover .dravex-variant-preview > video,
+  .dravex-create:hover:not(:disabled) {
+    transform: none;
+  }
+}
