@@ -313,7 +313,10 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     };
     const failed = () => {
       cleanup();
-      reject(new Error(`Could not read video: ${segment.name}. Try MP4 (H.264) or WebM.`));
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      reject(new Error(`Не удалось прочитать видео «${segment.name}». Попробуй MP4 (H.264) или WebM.`));
     };
     timeoutId = window.setTimeout(() => {
       cleanup();
