@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { buildHighlightVariants, type HighlightMoment } from "../src/video/highlight-finder";
+import { buildHighlightVariants, rankHighlightMomentsForStyle, type HighlightMoment } from "../src/video/highlight-finder";
 
 const candidate = (time: number): HighlightMoment => ({
   time,
@@ -79,4 +79,16 @@ test("variant rankings prefer different motion profiles instead of applying a co
 
   expect(averageMotion[0]).toBeGreaterThan(averageMotion[1]);
   expect(averageMotion[1]).toBeGreaterThan(averageMotion[2]);
+});
+
+test("active montage ranking prioritizes motion, cinematic contrast, and calm storytelling differently", () => {
+  const moments: HighlightMoment[] = [
+    { time: 1, start: 0, end: 2, score: 0.78, motion: 0.95, contrast: 0.2 },
+    { time: 5, start: 4, end: 6, score: 0.9, motion: 0.5, contrast: 0.95 },
+    { time: 9, start: 8, end: 10, score: 0.82, motion: 0.1, contrast: 0.4 },
+  ];
+
+  expect(rankHighlightMomentsForStyle(moments, "velocity")[0].time).toBe(1);
+  expect(rankHighlightMomentsForStyle(moments, "cinematic")[0].time).toBe(5);
+  expect(rankHighlightMomentsForStyle(moments, "story")[0].time).toBe(9);
 });
