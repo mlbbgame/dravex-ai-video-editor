@@ -552,6 +552,19 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   const downloadedFile = await download.path();
   expect(downloadedFile).toBeTruthy();
   expect((await stat(downloadedFile!)).size).toBeGreaterThan(1_000);
+
+  // Inspect the downloaded file itself, not only the browser blob preview.
+  // The source fixture contains audio, so the final WebM should preserve both streams.
+  const streamInfo = JSON.parse(execFileSync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "stream=codec_type",
+    "-of", "json",
+    downloadedFile!
+  ], { encoding: "utf8" })) as { streams: Array<{ codec_type: string }> };
+  const streamTypes = streamInfo.streams.map((stream) => stream.codec_type);
+  expect(streamTypes).toContain("video");
+  expect(streamTypes).toContain("audio");
+
   // Preserve a short source-video export for visual review of the real renderer output.
   await mkdir("test-results", { recursive: true });
   await copyFile(downloadedFile!, "test-results/dravex-source-video-montage.webm");
