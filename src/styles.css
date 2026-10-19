@@ -801,3 +801,15 @@ body,
     transform: none;
   }
 }
+
+
+/* Quick music access keeps the main edit flow clear without duplicating settings. */
+.dravex-quick-music { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px; padding:12px; border:1px solid #343d35; border-radius:12px; background:linear-gradient(120deg,#c4ff680c,#101416 72%); }
+.dravex-quick-music-copy { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.dravex-quick-music-copy strong { color:#f1f5ec; font-size:12px; }
+.dravex-quick-music-copy small { color:#9da7a0; font-size:10px; line-height:1.4; overflow-wrap:anywhere; }
+.dravex-quick-music-actions { display:flex; align-items:center; flex:0 0 auto; gap:6px; }
+.dravex-quick-music-actions button { min-height:40px; display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:8px 10px; border:1px solid #46563a; border-radius:9px; color:#d4f7a4; background:#c4ff680c; font-size:11px; font-weight:750; }
+.dravex-quick-music-actions .dravex-quick-music-remove { width:40px; padding:8px; color:#d6d9d2; border-color:#3b4143; background:#111416; }
+.dravex-editor-sync { margin:0 0 12px; }
+@media (max-width:360px) { .dravex-quick-music { align-items:flex-start; flex-direction:column; } .dravex-quick-music-actions { width:100%; } .dravex-quick-music-actions button:first-child { flex:1; } }
