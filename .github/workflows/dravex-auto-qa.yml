@@ -59,9 +59,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dravex-rendered-samples
-          path: test-results/dravex-*-montage.webm
+          path: test-results/dravex-*.webm
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Upload Playwright traces on failure
         if: failure()
