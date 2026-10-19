@@ -33,7 +33,7 @@ export function assessMediaSelection(files: readonly MediaIntakeFile[]): MediaIn
   const videos = files.filter((file) => getMediaKind(file) === "video");
   const images = files.filter((file) => getMediaKind(file) === "image");
 
-  if (files.length > MAX_PHOTO_COUNT) {
+  if (images.length > MAX_PHOTO_COUNT) {
     errors.push(`Можно добавить не более ${MAX_PHOTO_COUNT} фотографий за один раз. Раздели материал на несколько монтажей.`);
   }
 

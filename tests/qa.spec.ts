@@ -5,6 +5,7 @@ import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-
 import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
+import { assessMediaSelection } from "../src/video/media-intake";
 
 test("editor opens and exposes the primary upload action", async ({ page }) => {
   await page.goto("/");
@@ -500,4 +501,25 @@ test("mobile editor exposes clear material, montage, and result steps", async ({
   await expect(steps.getByText("Результат")).toBeVisible();
   await expect(page.getByRole("button", { name: /Добавить видео или фото/i })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Разделы DRAVEX" })).toBeVisible();
+});
+
+
+test("media intake limits photo count without rejecting a video plus a full photo batch", () => {
+  const photos = Array.from({ length: 80 }, (_, index) => ({
+    name: `photo-${index}.jpg`,
+    type: "image/jpeg",
+    size: 1024,
+  }));
+  const video = { name: "source.mp4", type: "video/mp4", size: 1024 };
+
+  const mixed = assessMediaSelection([video, ...photos]);
+  expect(mixed.valid).toBe(true);
+  expect(mixed.errors).toEqual([]);
+
+  const tooManyPhotos = assessMediaSelection([
+    ...photos,
+    { name: "extra.jpg", type: "image/jpeg", size: 1024 },
+  ]);
+  expect(tooManyPhotos.valid).toBe(false);
+  expect(tooManyPhotos.errors[0]).toContain("80 фотографий");
 });
