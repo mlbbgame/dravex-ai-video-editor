@@ -1,3 +1,5 @@
+const BEAT_ANALYSIS_SAMPLE_RATE = 11_025;
+
 export type BeatAnalysis = {
   duration: number;
   beats: number[];
@@ -13,12 +15,15 @@ export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> 
     ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextConstructor) throw new Error("Этот браузер не поддерживает анализ музыки.");
 
-  const context = new AudioContextConstructor();
+  // Beat timing needs coarse energy envelopes, not full-fidelity PCM. Ask the browser
+  // to resample during decode so long tracks use much less decoded memory on Android.
+  const context = new AudioContextConstructor({ sampleRate: BEAT_ANALYSIS_SAMPLE_RATE });
   try {
     const response = await fetch(audioUrl);
     if (!response.ok) throw new Error("Не удалось прочитать музыкальный файл.");
     const encoded = await response.arrayBuffer();
-    const buffer = await context.decodeAudioData(encoded.slice(0));
+    // decodeAudioData may detach its input buffer; no second full-size copy is needed.
+    const buffer = await context.decodeAudioData(encoded);
     const channelCount = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
     const hopSeconds = 0.05;
