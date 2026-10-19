@@ -44,3 +44,28 @@ test("does not emit size warnings for a small file with an unknown extension", (
   expect(result.valid).toBe(true);
   expect(result.warnings).toEqual([]);
 });
+
+
+test("rejects empty media files before browser decoding", () => {
+  const result = assessMediaSelection([
+    media("empty-clip.mp4", 0, "video/mp4"),
+  ]);
+
+  expect(result.valid).toBe(false);
+  expect(result.totalBytes).toBe(0);
+  expect(result.errors.join(" ")).toContain("empty-clip.mp4");
+  expect(result.errors.join(" ")).toContain("пустой");
+});
+
+test("invalid file sizes never poison the total size calculation", () => {
+  const result = assessMediaSelection([
+    media("unknown-size.mp4", Number.NaN, "video/mp4"),
+    media("negative-size.jpg", -10, "image/jpeg"),
+    media("valid.jpg", 1024, "image/jpeg"),
+  ]);
+
+  expect(result.valid).toBe(false);
+  expect(result.totalBytes).toBe(1024);
+  expect(Number.isFinite(result.totalBytes)).toBe(true);
+  expect(result.errors.join(" ")).toContain("2 файлов");
+});

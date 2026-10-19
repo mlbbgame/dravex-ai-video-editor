@@ -29,7 +29,14 @@ function formatBytes(bytes: number): string {
 export function assessMediaSelection(files: readonly MediaIntakeFile[]): MediaIntakeAssessment {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const totalBytes = files.reduce((total, file) => total + Math.max(0, file.size || 0), 0);
+  const invalidSizeFiles = files.filter((file) => !Number.isFinite(file.size) || file.size <= 0);
+  const totalBytes = files.reduce((total, file) => total + (Number.isFinite(file.size) ? Math.max(0, file.size) : 0), 0);
+
+  if (invalidSizeFiles.length === 1) {
+    errors.push(`Файл «${invalidSizeFiles[0].name}» пустой или имеет некорректный размер. Выбери другой файл.`);
+  } else if (invalidSizeFiles.length > 1) {
+    errors.push(`${invalidSizeFiles.length} файлов пустые или имеют некорректный размер. Удали их и попробуй снова.`);
+  }
   const videos = files.filter((file) => getMediaKind(file) === "video");
   const images = files.filter((file) => getMediaKind(file) === "image");
 
