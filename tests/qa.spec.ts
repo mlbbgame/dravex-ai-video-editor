@@ -517,6 +517,9 @@ for (const sourceDuration of [60, 300]) {
   expect(videoStream?.width).toBe(720);
   expect(videoStream?.height).toBe(1280);
   expect(audioStream?.codec_name).toBe("opus");
+  // Preserve each long-source export for frame-by-frame visual review, not only metadata assertions.
+  await mkdir("test-results", { recursive: true });
+  await copyFile(downloadedFile!, `test-results/dravex-${sourceDuration}-second-source-montage.webm`);
   });
 }
 
