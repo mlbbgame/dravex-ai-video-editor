@@ -358,19 +358,56 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
     { id: "cinematic", title: "Кинематографичный", description: "Более длинные кадры с нарастанием к кульминации", shotLength: 2.5, desired: 22, spacing: 4.2 },
     { id: "slow", title: "Плавный / атмосферный", description: "Длиннее держит выразительные кадры, меньше резких смен", shotLength: 3.5, desired: 16, spacing: 5.5 }
   ];
+
+  // A corrupt/unknown duration must never leak NaN trim values into the renderer.
+  if (!Number.isFinite(sourceDuration) || sourceDuration < 0.25) {
+    return configs.map((config) => ({
+      id: config.id,
+      title: config.title,
+      description: config.description,
+      shotLength: config.shotLength,
+      duration: 0,
+      moments: []
+    }));
+  }
+
+  // Keep only usable candidates, then clamp their trims to the real source bounds.
+  // A single malformed sample should not poison every variant or the final export.
+  const safeCandidates = candidates.flatMap((candidate) => {
+    if (
+      !Number.isFinite(candidate.time) ||
+      !Number.isFinite(candidate.start) ||
+      !Number.isFinite(candidate.end) ||
+      !Number.isFinite(candidate.score) ||
+      !Number.isFinite(candidate.motion) ||
+      !Number.isFinite(candidate.contrast) ||
+      candidate.time < 0 ||
+      candidate.time > sourceDuration ||
+      candidate.end <= candidate.start
+    ) return [];
+
+    const start = Math.max(0, Math.min(sourceDuration, candidate.start));
+    const end = Math.max(0, Math.min(sourceDuration, candidate.end));
+    if (end <= start) return [];
+    return [{ ...candidate, time: Math.max(start, Math.min(end, candidate.time)), start, end }];
+  });
+
   return configs.map((config) => {
+    if (!safeCandidates.length) {
+      return { id: config.id, title: config.title, description: config.description, shotLength: config.shotLength, duration: 0, moments: [] };
+    }
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
-    const count = Math.min(config.desired, availableCount, candidates.length);
-    const moments = chooseSpread(candidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
-      const half = config.shotLength / 2;
-      const start = Math.max(0, Math.min(sourceDuration - config.shotLength, moment.time - half));
+    const count = Math.max(1, Math.min(config.desired, availableCount, safeCandidates.length));
+    const moments = chooseSpread(safeCandidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
+      const shotLength = Math.min(config.shotLength, sourceDuration);
+      const start = Math.max(0, Math.min(sourceDuration - shotLength, moment.time - shotLength / 2));
       return {
         ...moment,
         start,
-        end: Math.min(sourceDuration, start + config.shotLength)
+        end: Math.min(sourceDuration, start + shotLength)
       };
-    });
-    const duration = moments.reduce((sum, item) => sum + Math.max(0, item.end - item.start), 0);
+    }).filter((moment) => Number.isFinite(moment.start) && Number.isFinite(moment.end) && moment.end > moment.start);
+    const duration = moments.reduce((sum, item) => sum + (item.end - item.start), 0);
     return { id: config.id, title: config.title, description: config.description, shotLength: config.shotLength, duration, moments };
   });
 }
