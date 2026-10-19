@@ -16,6 +16,10 @@ test("AI Director identifies detected potted plants as a nature subject without 
   expect(suggestDirectorStyle("nature", "velocity")).toBe("cinematic");
   // COCO object labels do not contain general landscape classes, so unknown scenery stays general.
   expect(inferSceneCategory(["mountain", "forest", "sky"]).category).toBe("general");
+  // Equal support for two different subject categories should not pick one arbitrarily.
+  expect(inferSceneCategory(["person", "pizza"])).toMatchObject({ category: "general", confidence: 0 });
+  // Repeated detections of the same label must not inflate category confidence.
+  expect(inferSceneCategory(["car", "car", "car"]).confidence).toBe(0.55);
 });
 
 test("speed-ramp trim boundary holds a frame inside the selected source range", () => {

@@ -38,6 +38,11 @@ export function inferSceneCategory(labels: string[]): SceneCategoryInference {
     .sort((a, b) => b.matchedLabels.length - a.matchedLabels.length);
   const best = ranked[0];
   if (!best) return { category: "general", confidence: 0, matchedLabels: [] };
+  // Mixed scenes with equal support for different subjects are ambiguous. Do not
+  // force an arbitrary category (and potentially the wrong editing style) on them.
+  if (ranked[1] && ranked[1].matchedLabels.length === best.matchedLabels.length) {
+    return { category: "general", confidence: 0, matchedLabels: [] };
+  }
   // Confidence describes the consistency of detected labels with this simple taxonomy,
   // not a calibrated probability that the whole video belongs to this category.
   return {
