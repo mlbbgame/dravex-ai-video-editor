@@ -69,3 +69,17 @@ test("invalid file sizes never poison the total size calculation", () => {
   expect(Number.isFinite(result.totalBytes)).toBe(true);
   expect(result.errors.join(" ")).toContain("2 файлов");
 });
+
+
+test("warns when multiple large videos are selected together", () => {
+  const result = assessMediaSelection([
+    media("first.mp4", 150 * 1024 * 1024, "video/mp4"),
+    media("second.mp4", 180 * 1024 * 1024, "video/mp4"),
+  ]);
+
+  expect(result.valid).toBe(true);
+  expect(result.errors).toEqual([]);
+  expect(result.warnings.join(" ")).toContain("несколько больших видео");
+  expect(result.warnings.join(" ")).toContain("монтировать по одному видео");
+  expect(result.warnings).toHaveLength(1);
+});
