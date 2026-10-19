@@ -100,12 +100,12 @@ export default function App() {
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
-  const [style, setStyle] = useState<EditStyle>("auto");
+  const [style, setStyle] = useState<EditStyle>("velocity");
   const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
-  const [beatSync, setBeatSync] = useState(true);
-  const [effectStrength, setEffectStrength] = useState<EffectPreset>("balanced");
+  const [beatSync, setBeatSync] = useState(false);
+  const [effectStrength, setEffectStrength] = useState<EffectPreset>("strong");
   const [musicVolume, setMusicVolume] = useState(0.72);
-  const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
+  const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("action");
   const [projectMessage, setProjectMessage] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
   const [scan, setScan] = useState<HighlightProgress>({ current: 0, total: 0, time: 0 });
@@ -156,14 +156,14 @@ export default function App() {
     setMediaUrls([]);
     setMusicFile(null);
     setMusicUrl("");
-    setStyle("auto");
+    setStyle("velocity");
     setDuration(30);
     setAspectRatio("9:16");
     setQuality("720p");
-    setBeatSync(true);
-    setEffectStrength("balanced");
+    setBeatSync(false);
+    setEffectStrength("strong");
     setMusicVolume(0.72);
-    setTransitionMode("auto");
+    setTransitionMode("action");
     setStage("empty");
     setScan({ current: 0, total: 0, time: 0 });
     setRenderProgress(0);
@@ -402,6 +402,8 @@ export default function App() {
     setPreviewStatus(`Готовим ${pendingVariants.length} реальных вариантов по очереди — это может занять немного времени на телефоне…`);
     setError("");
     try {
+      const sourceDurationForPreviews = isImageMode ? 0 : await getVideoDuration(videoUrl);
+      const previewOffsets: Record<string, number> = { aggressive: 0.68, cinematic: 0.28, "music-sync": 0.48, atmosphere: 0.82, "4k-quality": 0.08 };
       for (let index = 0; index < pendingVariants.length; index += 1) {
         if (generation !== previewGeneration.current) return;
         const variant = pendingVariants[index];
@@ -416,7 +418,11 @@ export default function App() {
               url: mediaUrls[segmentIndex],
               duration: previewDuration / Math.min(mediaFiles.length, 6)
             }))
-          : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+          : (() => {
+              const maxStart = Math.max(0, sourceDurationForPreviews - previewDuration);
+              const trimStart = maxStart * (previewOffsets[variant.id] ?? 0);
+              return [{ name: videoFile!.name, url: videoUrl, trimStart, trimEnd: Math.min(sourceDurationForPreviews, trimStart + previewDuration) }];
+            })();
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
