@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { copyFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { getCameraMotionProfile, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getCameraMotionProfile, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates, ensureCandidateCoverage } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
@@ -16,6 +16,15 @@ test("AI Director identifies detected potted plants as a nature subject without 
   expect(suggestDirectorStyle("nature", "velocity")).toBe("cinematic");
   // COCO object labels do not contain general landscape classes, so unknown scenery stays general.
   expect(inferSceneCategory(["mountain", "forest", "sky"]).category).toBe("general");
+});
+
+test("speed-ramp trim boundary holds a frame inside the selected source range", () => {
+  for (const [start, end] of [[0, 0.1], [2, 4], [8.95, 9]]) {
+    const frameTime = getTrimBoundaryFrameTime(start, end);
+    expect(frameTime).toBeGreaterThanOrEqual(start);
+    expect(frameTime).toBeLessThan(end);
+  }
+  expect(getTrimBoundaryFrameTime(Number.NaN, 4)).toBe(0);
 });
 
 test("source-video trim ranges always stay inside valid media duration", () => {

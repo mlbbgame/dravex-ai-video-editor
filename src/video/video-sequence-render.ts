@@ -278,6 +278,12 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
 
 export type VideoTrimRange = { start: number; end: number; duration: number };
 
+/** Hold the last in-range frame when a speed ramp reaches a clip's trim end early. */
+export function getTrimBoundaryFrameTime(start: number, end: number): number {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return Number.isFinite(start) ? start : 0;
+  return Math.max(start, end - Math.min(1 / 24, (end - start) / 2));
+}
+
 /**
  * Clamp a requested source-video trim to the real media duration. Tiny or
  * invalid sources cannot produce a meaningful frame sequence and are rejected
@@ -965,7 +971,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         continue;
       }
 
-      const { video, start, duration } = item;
+      const { video, start, end, duration } = item;
+      let trimBoundaryReached = false;
       video.pause();
       video.playbackRate = 1;
       await seek(video, start);
@@ -986,8 +993,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       while (performance.now() - clipStartedAt < duration * 1000) {
         const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
         const clipProgress = Math.min(1, elapsedSeconds / duration);
+        // Speed ramps can otherwise let the decoder run beyond the selected source trim.
+        // Once the trim boundary is reached, seek back to the last in-range frame and hold it
+        // for the remainder of the planned shot instead of leaking unrelated source footage.
+        if (!trimBoundaryReached && video.currentTime >= end) {
+          video.pause();
+          try { await seek(video, getTrimBoundaryFrameTime(start, end)); } catch { /* keep the last decoded frame */ }
+          trimBoundaryReached = true;
+        }
         // Apply a smooth, per-style velocity curve while preserving the planned shot length.
-        video.playbackRate = getSpeedRampRate(style, clipProgress, cutIndex);
+        video.playbackRate = trimBoundaryReached ? 1 : getSpeedRampRate(style, clipProgress, cutIndex);
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
