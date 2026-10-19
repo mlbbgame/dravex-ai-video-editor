@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
   directorProfiles,
+  getDirectorGuidance,
+  rankDirectorCandidates,
+  suggestDirectorProfile,
   validateDirectorPlan,
   type DirectorEditPlan,
 } from "../src/video/director-contract";
@@ -52,6 +55,70 @@ test("director profiles express distinct goals and effect preferences", () => {
   expect(directorProfiles["cinematic-travel"].pacing).toBe("measured");
   expect(directorProfiles["cinematic-travel"].preferredTransitions).toContain("smooth");
   expect(directorProfiles["cinematic-travel"].eventPriorities).toContain("landscape");
+
+  expect(directorProfiles["nature-wildlife"].eventPriorities).toContain("waterfall-flow");
+  expect(directorProfiles["nature-wildlife"].eventPriorities).toContain("macro-detail");
+  expect(directorProfiles["nature-wildlife"].preferredEffects).toContain("color-grade");
+
+  expect(directorProfiles["food-cooking"].eventPriorities).toContain("chopping");
+  expect(directorProfiles["food-cooking"].eventPriorities).toContain("finished-dish");
+
+  expect(directorProfiles["people-everyday"].eventPriorities).toContain("face-visible");
+  expect(directorProfiles["people-everyday"].eventPriorities).toContain("pet-behavior");
+  expect(directorProfiles["people-everyday"].preferredEffects).not.toContain("flash");
+
+  expect(directorProfiles["product-diy"].eventPriorities).toContain("tools-materials");
+  expect(directorProfiles["product-diy"].eventPriorities).toContain("final-result");
+});
+
+test("scene labels suggest the matching content profile", () => {
+  expect(suggestDirectorProfile(["waterfall-flow", "macro-detail"])).toBe("nature-wildlife");
+  expect(suggestDirectorProfile(["chopping", "finished-dish"])).toBe("food-cooking");
+  expect(suggestDirectorProfile(["face-visible", "pet-behavior"])).toBe("people-everyday");
+  expect(suggestDirectorProfile(["tools-materials", "final-result"])).toBe("product-diy");
+  expect(suggestDirectorProfile(["drift", "tire-smoke"])).toBe("aggressive-car");
+});
+
+test("unknown or ambiguous scene labels use a restrained cinematic fallback", () => {
+  expect(suggestDirectorProfile([])).toBe("cinematic-travel");
+  expect(suggestDirectorProfile(["unrecognized-event"])).toBe("cinematic-travel");
+  expect(suggestDirectorProfile(["waterfall-flow", "chopping"])).toBe("cinematic-travel");
+});
+
+test("all six content profiles are accepted by plan validation", () => {
+  const profileIds = Object.keys(directorProfiles) as Array<keyof typeof directorProfiles>;
+  for (const profile of profileIds) {
+    const result = validateDirectorPlan({ ...validPlan, profile }, 30);
+    expect(result.valid, `profile ${profile} should be accepted: ${result.errors.join(", ")}`).toBe(true);
+  }
+});
+
+test("director guidance protects natural, people, and process footage", () => {
+  expect(getDirectorGuidance("nature-wildlife").avoidFlashyEffects).toBe(true);
+  expect(getDirectorGuidance("people-everyday").preferredEffects).not.toContain("flash");
+  expect(getDirectorGuidance("food-cooking").preserveChronology).toBe(true);
+  expect(getDirectorGuidance("product-diy").preserveChronology).toBe(true);
+  expect(getDirectorGuidance("aggressive-car").avoidFlashyEffects).toBe(false);
+});
+
+test("candidate ranking rejects invalid timestamps and preserves process chronology", () => {
+  const candidates = [
+    { sourceStart: 8, sourceEnd: 9, eventLabels: ["finished-dish"], confidence: 0.95 },
+    { sourceStart: 2, sourceEnd: 3, eventLabels: ["chopping"], confidence: 0.6 },
+    { sourceStart: 30, sourceEnd: 31, eventLabels: ["finished-dish"], confidence: 1 },
+  ];
+  const ranked = rankDirectorCandidates("food-cooking", candidates, 20);
+  expect(ranked).toHaveLength(2);
+  expect(ranked.map((candidate) => candidate.sourceStart)).toEqual([2, 8]);
+});
+
+test("non-process profile ranking prioritizes matching high-confidence scenes", () => {
+  const candidates = [
+    { sourceStart: 1, sourceEnd: 2, eventLabels: ["quiet-moment"], confidence: 0.4 },
+    { sourceStart: 5, sourceEnd: 6, eventLabels: ["waterfall-flow", "natural-light"], confidence: 0.9 },
+  ];
+  const ranked = rankDirectorCandidates("nature-wildlife", candidates, 10);
+  expect(ranked[0].eventLabels).toContain("waterfall-flow");
 });
 
 test("valid director plan passes source-bound validation", () => {
