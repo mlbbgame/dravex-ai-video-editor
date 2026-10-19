@@ -1,5 +1,18 @@
 const BEAT_ANALYSIS_SAMPLE_RATE = 11_025;
 
+/**
+ * Some mobile browsers cannot create an AudioContext at the requested analysis
+ * rate. Fall back to the device default instead of failing music analysis.
+ * The downstream analysis always uses the actual decoded buffer sample rate.
+ */
+export function createBeatAnalysisContext(AudioContextConstructor: typeof AudioContext): AudioContext {
+  try {
+    return new AudioContextConstructor({ sampleRate: BEAT_ANALYSIS_SAMPLE_RATE });
+  } catch {
+    return new AudioContextConstructor();
+  }
+}
+
 export type BeatAnalysis = {
   duration: number;
   beats: number[];
@@ -17,7 +30,7 @@ export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> 
 
   // Beat timing needs coarse energy envelopes, not full-fidelity PCM. Ask the browser
   // to resample during decode so long tracks use much less decoded memory on Android.
-  const context = new AudioContextConstructor({ sampleRate: BEAT_ANALYSIS_SAMPLE_RATE });
+  const context = createBeatAnalysisContext(AudioContextConstructor);
   try {
     const response = await fetch(audioUrl);
     if (!response.ok) throw new Error("Не удалось прочитать музыкальный файл.");
