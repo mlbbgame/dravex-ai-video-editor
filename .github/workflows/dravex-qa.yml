@@ -70,8 +70,19 @@ jobs:
               ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/exported-video-frames/${name}-${point}.png" || echo "Frame extraction failed: $video at $timestamp" >&2
             done
           done
-          find test-results/exported-video-frames -type f -maxdepth 1 -print
-          
+          find test-results/exported-video-frames -maxdepth 1 -type f -print
+          video_count="$(find test-results/exported-videos -maxdepth 1 -type f -name '*.webm' | wc -l)"
+          frame_count="$(find test-results/exported-video-frames -maxdepth 1 -type f -name '*.png' | wc -l)"
+          {
+            echo "## DRAVEX visual export review"
+            echo "- Exported WebM files found: $video_count"
+            echo "- Review PNG frames extracted: $frame_count"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$video_count" -gt 0 && "$frame_count" -eq 0 ]]; then
+            echo "Exported videos exist, but no review frames could be extracted." >&2
+            exit 1
+          fi
+
       - name: Upload actual montage exports
         if: always()
         uses: actions/upload-artifact@v4
