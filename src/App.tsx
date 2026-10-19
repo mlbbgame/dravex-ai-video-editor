@@ -149,6 +149,7 @@ export default function App() {
   const autoPreviewAttempt = useRef(-1);
   const [usedStyle, setUsedStyle] = useState("");
   const videoInput = useRef<HTMLInputElement>(null);
+  const mediaSelectionMode = useRef<"replace" | "add">("replace");
   const musicInput = useRef<HTMLInputElement>(null);
   const videoFile = mediaFiles[0] ?? null;
   const videoUrl = mediaUrls[0] ?? "";
@@ -343,6 +344,8 @@ export default function App() {
 
   const onMediaSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
+    const selectionMode = mediaSelectionMode.current;
+    mediaSelectionMode.current = "replace";
     // Reset immediately so choosing the same file again still fires a change event.
     event.target.value = "";
     if (!files.length) return;
@@ -353,16 +356,47 @@ export default function App() {
       setError("Выбери одно видео или несколько фотографий. Видео и фото пока нужно добавлять отдельно.");
       return;
     }
-    const intake = assessMediaSelection(files);
+
+    const appendPhotos = selectionMode === "add" && mediaFiles.length > 0 && isImageMode && images.length === files.length;
+    if (selectionMode === "add" && !appendPhotos) {
+      setError("К фотоподборке можно добавлять только фотографии. Чтобы заменить материал, нажми «Заменить».");
+      return;
+    }
+
+    let nextFiles = files;
+    let newFiles = files;
+    if (appendPhotos) {
+      const knownKeys = new Set(mediaFiles.map((file) => `${file.name}|${file.size}|${file.lastModified}`));
+      newFiles = images.filter((file) => {
+        const key = `${file.name}|${file.size}|${file.lastModified}`;
+        if (knownKeys.has(key)) return false;
+        knownKeys.add(key);
+        return true;
+      });
+      if (!newFiles.length) {
+        setError("Эти фотографии уже добавлены в медиатеку.");
+        return;
+      }
+      nextFiles = [...mediaFiles, ...newFiles];
+    }
+
+    const intake = assessMediaSelection(nextFiles);
     if (!intake.valid) {
       setError(intake.errors.join(" "));
       return;
     }
-    mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+
     clearRenderedVariants();
-    setMediaFiles(files);
-    setMediaUrls(files.map((file) => URL.createObjectURL(file)));
-    setActivePhotoIndex(0);
+    if (appendPhotos) {
+      setMediaFiles(nextFiles);
+      setMediaUrls([...mediaUrls, ...newFiles.map((file) => URL.createObjectURL(file))]);
+      setActivePhotoIndex(mediaFiles.length);
+    } else {
+      mediaUrls.forEach((url) => URL.revokeObjectURL(url));
+      setMediaFiles(nextFiles);
+      setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
+      setActivePhotoIndex(0);
+    }
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
@@ -370,7 +404,6 @@ export default function App() {
     setPreviewStatus(intake.warnings.join(" "));
     setStage("ready");
     setScan({ current: 0, total: 0, time: 0 });
-    event.target.value = "";
   };
 
   const reorderPhoto = (index: number, direction: -1 | 1) => {
@@ -814,7 +847,7 @@ export default function App() {
               <span className={stage === "done" ? "is-done" : stage === "analyzing" || stage === "rendering" ? "is-active" : ""}><b>3</b> Результат</span>
             </div>
             <input ref={videoInput} className="dravex-hidden" type="file" accept="video/*,image/*" multiple onChange={onMediaSelected} />
-            <div className="dravex-media-heading"><div><h2>Медиатека</h2><p>{mediaFiles.length ? `${mediaFiles.length} ${isImageMode ? "фото" : "видеофайл"} · ${(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ` : "Добавь видео или фотографии для начала"}</p></div>{mediaFiles.length > 0 && <button type="button" onClick={() => videoInput.current?.click()}><Upload size={15} />Добавить</button>}</div>
+            <div className="dravex-media-heading"><div><h2>Медиатека</h2><p>{mediaFiles.length ? `${mediaFiles.length} ${isImageMode ? "фото" : "видеофайл"} · ${(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ` : "Добавь видео или фотографии для начала"}</p></div>{mediaFiles.length > 0 && <button type="button" onClick={() => { mediaSelectionMode.current = "add"; videoInput.current?.click(); }}><Upload size={15} />Добавить</button>}</div>
         {!mediaFiles.length ? (
           <button className="dravex-upload" onClick={() => videoInput.current?.click()} type="button">
             <span className="dravex-upload-icon"><Upload size={25} /></span><strong>Добавить видео или фото</strong><span>Выбери материал из галереи телефона</span><small>Одно видео или несколько фотографий</small>
@@ -850,7 +883,7 @@ export default function App() {
                 </div>
               </div>)}</div>
             </> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
-            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => videoInput.current?.click()}>Заменить</button></div>
+            <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => { mediaSelectionMode.current = "replace"; videoInput.current?.click(); }}>Заменить</button></div>
           </div>
         )}
 

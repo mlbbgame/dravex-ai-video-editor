@@ -129,6 +129,23 @@ test("same-tab reload restores the session draft while a fresh session keeps man
   expect(storedFileCount.manualFiles).toBe(1);
 });
 
+test("Add appends new photos instead of replacing the existing photo selection", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const makeSvg = (fill: string) => Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="480"><rect width="320" height="480" fill="${fill}"/></svg>`,
+    "utf8",
+  );
+  const input = page.locator('input[accept="video/*,image/*"]');
+  await input.setInputFiles({ name: "first-photo.svg", mimeType: "image/svg+xml", buffer: makeSvg("#243b53") });
+  await expect(page.locator(".dravex-image-grid .dravex-image-thumb")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Добавить", exact: true }).click();
+  await input.setInputFiles({ name: "second-photo.svg", mimeType: "image/svg+xml", buffer: makeSvg("#b8f45b") });
+  await expect(page.locator(".dravex-image-grid .dravex-image-thumb")).toHaveCount(2);
+  await expect(page.getByText(/2 фотографий добавлено/)).toBeVisible();
+});
+
 test("browser Back from Music returns to the current editor without losing media", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
