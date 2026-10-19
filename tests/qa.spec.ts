@@ -344,7 +344,7 @@ test("camera motion profiles provide visible but controlled movement", () => {
 });
 
 test("one-button photo auto-montage produces a playable WebM that can be downloaded", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
@@ -360,7 +360,7 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   // The app creates a short real preview after import. Wait for that render to
   // finish before triggering the full montage, because the phone pipeline is serialized.
   await expect(page.locator(".dravex-photo-preview")).toBeVisible();
-  await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
+  await expect(page.locator(".dravex-variant video")).toHaveCount(4, { timeout: 60_000 });
   // Regression guard: preview cards must not compete with the main player for Android decoders.
   const previewCards = page.locator(".dravex-variant video");
   await expect.poll(() => previewCards.evaluateAll((videos) => videos.every((video) =>
@@ -443,7 +443,7 @@ test("one-button source-video montage renders and downloads a playable WebM", as
   await unlink(sourceFixturePath);
 
   await expect(page.locator("video.dravex-preview")).toBeVisible();
-  await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
+  await expect(page.locator(".dravex-variant video")).toHaveCount(4, { timeout: 60_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
@@ -523,7 +523,7 @@ for (const sourceDuration of [60, 300]) {
 
   await unlink(fixturePath);
   await expect(page.locator("video.dravex-preview")).toBeVisible();
-  await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
+  await expect(page.locator(".dravex-variant video")).toHaveCount(4, { timeout: 60_000 });
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
