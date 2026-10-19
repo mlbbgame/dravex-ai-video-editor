@@ -94,17 +94,26 @@ export function snapCutBoundariesToBeats(
   segmentCount: number,
   preferredShotSeconds: number
 ): number[] {
-  if (segmentCount <= 1 || beats.length < 2 || targetDuration <= 0) {
-    return Array.from({ length: segmentCount + 1 }, (_, index) => targetDuration * index / segmentCount);
-  }
+  if (!Number.isFinite(targetDuration) || targetDuration <= 0) return [0];
+
+  const safeSegmentCount = Number.isFinite(segmentCount) ? Math.floor(segmentCount) : 1;
+  if (safeSegmentCount <= 0) return [0];
+
+  const evenlySpaced = () =>
+    Array.from({ length: safeSegmentCount + 1 }, (_, index) => targetDuration * index / safeSegmentCount);
+  const validBeats = beats.filter(Number.isFinite).filter((beat) => beat >= 0 && beat <= targetDuration);
+  if (safeSegmentCount === 1 || validBeats.length < 2) return evenlySpaced();
 
   const boundaries = [0];
-  const minimumGap = Math.min(0.48, targetDuration / Math.max(2, segmentCount * 1.25));
-  const tolerance = Math.min(0.55, Math.max(0.22, preferredShotSeconds * 0.3));
+  const minimumGap = Math.min(0.48, targetDuration / Math.max(2, safeSegmentCount * 1.25));
+  const safePreferredShotSeconds = Number.isFinite(preferredShotSeconds) && preferredShotSeconds > 0
+    ? preferredShotSeconds
+    : targetDuration / safeSegmentCount;
+  const tolerance = Math.min(0.55, Math.max(0.22, safePreferredShotSeconds * 0.3));
 
-  for (let index = 1; index < segmentCount; index += 1) {
-    const ideal = targetDuration * index / segmentCount;
-    const remainingCuts = segmentCount - index;
+  for (let index = 1; index < safeSegmentCount; index += 1) {
+    const ideal = targetDuration * index / safeSegmentCount;
+    const remainingCuts = safeSegmentCount - index;
     // Reserve enough time for every remaining shot. Without this upper bound, a late beat
     // can push one boundary past the end and collapse several final shots to zero length.
     const minimum = boundaries[boundaries.length - 1] + minimumGap;
@@ -114,7 +123,7 @@ export function snapCutBoundariesToBeats(
       continue;
     }
 
-    const nearby = beats
+    const nearby = validBeats
       .filter((beat) => beat >= minimum && beat <= maximum && Math.abs(beat - ideal) <= tolerance)
       .sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
     const chosen = nearby ?? Math.max(minimum, Math.min(maximum, ideal));
