@@ -289,12 +289,41 @@ export async function analyzeVideoForHighlights(
   }
 }
 
+function normalizeSignal(value: number, values: number[]): number {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (!Number.isFinite(value) || max - min < 0.0001) return 0.5;
+  return Math.max(0, Math.min(1, (value - min) / (max - min)));
+}
+
+/**
+ * Rank moments for the actual editorial intent. Multiplying every score by the
+ * same style constant does not change sort order, so each profile must combine
+ * the measured signals differently. These are visual heuristics, not semantic
+ * understanding of what the footage depicts.
+ */
+function scoreForVariant(
+  moment: HighlightMoment,
+  candidates: HighlightMoment[],
+  mode: HighlightVariant["id"]
+): number {
+  const scores = candidates.map((item) => item.score);
+  const motions = candidates.map((item) => item.motion);
+  const contrasts = candidates.map((item) => item.contrast);
+  const base = normalizeSignal(moment.score, scores);
+  const motion = normalizeSignal(moment.motion, motions);
+  const contrast = normalizeSignal(moment.contrast, contrasts);
+
+  if (mode === "aggressive") return base * 0.35 + motion * 0.55 + contrast * 0.10;
+  if (mode === "cinematic") return base * 0.45 + contrast * 0.40 + motion * 0.15;
+  // The atmospheric profile prefers visually legible, less frantic moments.
+  return base * 0.45 + contrast * 0.30 + (1 - motion) * 0.25;
+}
+
 function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
-  const ranked = [...candidates].sort((a, b) => {
-    const scoreA = a.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
-    const scoreB = b.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
-    return scoreB - scoreA;
-  });
+  const ranked = [...candidates].sort((a, b) =>
+    scoreForVariant(b, candidates, mode) - scoreForVariant(a, candidates, mode)
+  );
   const selected: HighlightMoment[] = [];
   // Seed the cut with the strongest moment from evenly spaced time buckets so a long source
   // does not accidentally become an edit from one short action-heavy stretch.
