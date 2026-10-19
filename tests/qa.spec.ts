@@ -593,6 +593,14 @@ test("mobile editor exposes clear material, montage, and result steps", async ({
 });
 
 
+test("media intake warns about videos at or above 100 MB without rejecting them", () => {
+  const mediumVideo = { name: "large-source.mp4", type: "video/mp4", size: 100 * 1024 * 1024 };
+  const assessment = assessMediaSelection([mediumVideo]);
+  expect(assessment.valid).toBe(true);
+  expect(assessment.warnings.join(" ")).toContain("Большое видео");
+  expect(assessment.warnings.join(" ")).toContain("100 МБ");
+});
+
 test("media intake limits photo count without rejecting a video plus a full photo batch", () => {
   const photos = Array.from({ length: 80 }, (_, index) => ({
     name: `photo-${index}.jpg`,

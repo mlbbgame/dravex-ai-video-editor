@@ -115,6 +115,7 @@ export default function App() {
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [videoPreviewStatus, setVideoPreviewStatus] = useState<"loading" | "ready" | "unsupported" | "error">("loading");
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const [musicUrl, setMusicUrl] = useState("");
   const [activeTab, setActiveTab] = useState<"editor" | "music">("editor");
@@ -405,6 +406,7 @@ export default function App() {
     setError("");
     setPreviewStatus(intake.warnings.join(" "));
     setStage("ready");
+    setVideoPreviewStatus("loading");
     setScan({ current: 0, total: 0, time: 0 });
   };
 
@@ -884,7 +886,7 @@ export default function App() {
                   <button type="button" aria-label={`Удалить фото ${index + 1}`} title="Удалить фото" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
                 </div>
               </div>)}</div>
-            </> : <video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" />}
+            </> : <div className="dravex-source-video-wrap"><video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" onLoadedMetadata={(event) => { const video = event.currentTarget; setVideoPreviewStatus(Number.isFinite(video.duration) && video.duration > 0 ? "ready" : "unsupported"); }} onError={() => setVideoPreviewStatus("error")} /><div className={`dravex-video-status ${videoPreviewStatus === "error" || videoPreviewStatus === "unsupported" ? "is-warning" : ""}`} role="status">{videoPreviewStatus === "ready" ? "Видео загружено · предпросмотр готов" : videoPreviewStatus === "loading" ? "Загружаем предпросмотр видео…" : videoPreviewStatus === "unsupported" ? "Браузер не смог прочитать длительность. Попробуй MP4 (H.264 + AAC) или другое видео." : "Не удалось показать это видео в браузере. Файл может использовать неподдерживаемый кодек; попробуй MP4 (H.264 + AAC)."}</div></div>}
             <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => { mediaSelectionMode.current = "replace"; videoInput.current?.click(); }}>Заменить</button></div>
           </div>
         )}

@@ -813,3 +813,9 @@ body,
 .dravex-quick-music-actions .dravex-quick-music-remove { width:40px; padding:8px; color:#d6d9d2; border-color:#3b4143; background:#111416; }
 .dravex-editor-sync { margin:0 0 12px; }
 @media (max-width:360px) { .dravex-quick-music { align-items:flex-start; flex-direction:column; } .dravex-quick-music-actions { width:100%; } .dravex-quick-music-actions button:first-child { flex:1; } }
+
+
+/* Source-video import status makes codec/preview failures actionable on mobile. */
+.dravex-source-video-wrap { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.dravex-video-status { padding:8px 10px; border:1px solid #344234; border-radius:9px; color:#b8d5a4; background:#111811; font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
+.dravex-video-status.is-warning { border-color:#69502d; color:#f0c88d; background:#1b160f; }
