@@ -603,3 +603,55 @@ body {
   .dravex-preview-action,
   .dravex-create { scroll-behavior: auto; transition: none; }
 }
+
+
+.dravex-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0 0 16px;
+}
+.dravex-workflow-steps > span {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 5px;
+  border: 1px solid #2b2f35;
+  border-radius: 10px;
+  color: #8d949c;
+  background: #121417;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dravex-workflow-steps b {
+  width: 21px;
+  height: 21px;
+  display: grid;
+  flex: 0 0 21px;
+  place-items: center;
+  border: 1px solid #42474e;
+  border-radius: 50%;
+  color: #aab0b7;
+  font-size: 10px;
+}
+.dravex-workflow-steps > span.is-active {
+  border-color: #b8f45b65;
+  color: #eaf5dc;
+  background: #b8f45b0b;
+}
+.dravex-workflow-steps > span.is-active b,
+.dravex-workflow-steps > span.is-done b {
+  border-color: var(--accent);
+  color: #11150b;
+  background: var(--accent);
+}
+.dravex-workflow-steps > span.is-done { color: #c2d6ad; }
+@media (max-width: 360px) {
+  .dravex-workflow-steps { gap: 4px; }
+  .dravex-workflow-steps > span { gap: 4px; font-size: 9px; }
+  .dravex-workflow-steps b { width: 19px; height: 19px; flex-basis: 19px; }
+}
