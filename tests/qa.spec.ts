@@ -60,6 +60,24 @@ test("editor opens and exposes the primary upload action", async ({ page }) => {
 });
 
 
+test("media picker explains unsupported file formats and mixed media selections", async ({ page }) => {
+  await page.goto("/");
+  const input = page.locator('input[accept="video/*,image/*"]');
+
+  await input.setInputFiles({
+    name: "notes.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("not a video or photo")
+  });
+  await expect(page.getByText(/Не удалось определить формат одного из файлов/i)).toBeVisible();
+
+  await input.setInputFiles([
+    { name: "clip.mp4", mimeType: "video/mp4", buffer: Buffer.from("fake video") },
+    { name: "photo.jpg", mimeType: "image/jpeg", buffer: Buffer.from("fake photo") }
+  ]);
+  await expect(page.getByText(/Смешивание видео с фото/i)).toBeVisible();
+});
+
 test("editor and music studio avoid horizontal overflow on narrow Android screens", async ({ page }) => {
   await page.goto("/");
   const tabs = page.getByRole("navigation", { name: "Разделы DRAVEX" });
