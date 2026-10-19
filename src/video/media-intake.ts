@@ -44,8 +44,12 @@ export function assessMediaSelection(files: readonly MediaIntakeFile[]): MediaIn
     errors.push(`Можно добавить не более ${MAX_PHOTO_COUNT} фотографий за один раз. Раздели материал на несколько монтажей.`);
   }
 
-  if (videos.length === 1 && videos[0].size >= LARGE_VIDEO_WARNING_BYTES) {
-    warnings.push(`Большое видео (${formatBytes(videos[0].size)}). На телефоне анализ и экспорт могут занять больше времени; не закрывай вкладку.`);
+  const largeVideos = videos.filter((file) => file.size >= LARGE_VIDEO_WARNING_BYTES);
+  if (largeVideos.length === 1) {
+    warnings.push(`Большое видео (${formatBytes(largeVideos[0].size)}). На телефоне анализ и экспорт могут занять больше времени; не закрывай вкладку.`);
+  } else if (largeVideos.length > 1) {
+    const largeVideoBytes = largeVideos.reduce((total, file) => total + file.size, 0);
+    warnings.push(`Выбрано несколько больших видео (${largeVideos.length}; вместе ${formatBytes(largeVideoBytes)}). На Android лучше монтировать по одному видео за раз, чтобы снизить риск нехватки памяти.`);
   }
 
   if (images.some((file) => file.size >= LARGE_IMAGE_WARNING_BYTES)) {
@@ -56,7 +60,7 @@ export function assessMediaSelection(files: readonly MediaIntakeFile[]): MediaIn
     warnings.push("Общий размер фотографий большой. Если редактор зависает, попробуй уменьшить количество или размер исходников.");
   }
 
-  if (totalBytes >= VERY_LARGE_SELECTION_WARNING_BYTES && !warnings.some((warning) => warning.startsWith("Большое видео"))) {
+  if (totalBytes >= VERY_LARGE_SELECTION_WARNING_BYTES && largeVideos.length === 0) {
     warnings.push(`Выбрано много данных (${formatBytes(totalBytes)}). Убедись, что на телефоне достаточно свободной памяти.`);
   }
 
