@@ -51,6 +51,27 @@ jobs:
       - name: Run DRAVEX browser smoke tests
         run: npm run test:qa
 
+      - name: Extract review frames from actual montage exports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/exported-video-frames
+          shopt -s nullglob
+          for video in test-results/exported-videos/*.webm; do
+            name="$(basename "${video%.webm}")"
+            duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video")"
+            if [[ -z "$duration" ]]; then
+              echo "Could not read duration for $video" >&2
+              continue
+            fi
+            for point in 0 0.5 0.9; do
+              timestamp="$(awk -v d="$duration" -v p="$point" 'BEGIN { t=d*p; if (t<0) t=0; if (t>d-0.1) t=(d>0.1 ? d-0.1 : 0); printf "%.3f", t }')"
+              ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/exported-video-frames/${name}-${point}.png" || echo "Frame extraction failed: $video at $timestamp" >&2
+            done
+          done
+          find test-results/exported-video-frames -type f -maxdepth 1 -print
+          
       - name: Upload actual montage exports
         if: always()
         uses: actions/upload-artifact@v4
