@@ -9,6 +9,7 @@ import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalPro
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
+import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -45,19 +46,8 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
-  const ranked = rankHighlightMomentsForStyle(candidates, style);
-  const selected: HighlightMoment[] = [];
-  for (let bucket = 0; bucket < count; bucket += 1) {
-    const from = sourceDuration * bucket / count;
-    const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 1.15)));
-    if (best) selected.push(best);
-  }
-  for (const item of ranked) {
-    if (selected.length >= count) break;
-    if (selected.every((existing) => Math.abs(existing.time - item.time) > Math.max(0.8, shotLength * 0.82))) selected.push(item);
-  }
-  selected.sort((a, b) => a.time - b.time);
+  const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style);
+
   if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
   const segments: VideoSegment[] = [];
   let remaining = usableDuration;
