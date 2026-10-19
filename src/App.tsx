@@ -10,6 +10,7 @@ import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { selectDiverseHighlightMoments } from "./video/montage-selection";
+import { analyzePhotoSet } from "./video/photo-analysis";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -637,8 +638,12 @@ export default function App() {
           : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
           : actualStyle === "story" ? [1.12, 0.92, 1.08, 1, 0.9]
           : [0.9, 1.08, 1, 1.12, 0.9];
-        const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length]);
+        const photoAnalysis = await analyzePhotoSet(mediaUrls);
+        const weights = mediaFiles.map((_, index) =>
+          rhythm[index % rhythm.length] * (photoAnalysis.weights[index] ?? 1)
+        );
         const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        setMessage("Фото оценены по освещению, контрасту, деталям и сходству соседних кадров; порядок снимков сохранён.");
         segments = mediaFiles.map((file, index) => ({
           kind: "image" as const,
           name: file.name,
