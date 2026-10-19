@@ -328,7 +328,10 @@ export async function analyzeWithAIDirector(
     directorScore: candidate.score
   }));
   if (!candidates.length || !samples.length || !Number.isFinite(duration) || duration < 0.25) {
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note: "Недостаточно кадров для AI Director; используем базовый анализ движения." };
+    const note = !Number.isFinite(duration) || duration < 0.25
+      ? "Не удалось определить корректную длительность видео. Использован резервный анализ движения и контраста."
+      : "Недостаточно кадров для AI Director; используем базовый анализ движения.";
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note };
   }
 
   let detector: ObjectDetector;
