@@ -291,7 +291,9 @@ export function resolveVideoTrimRange(sourceDuration: number, trimStart: number,
   const start = Math.max(0, Math.min(startCandidate, sourceDuration - 0.1));
   const requestedEnd = Number.isFinite(trimEnd) && trimEnd > 0 ? trimEnd : sourceDuration;
   const end = Math.min(sourceDuration, Math.max(start + 0.1, Math.min(requestedEnd, sourceDuration)));
-  return { start, end, duration: end - start };
+  // Normalize floating-point noise so a 0.1s minimum is not represented as 0.099999...
+  const duration = Number((end - start).toFixed(6));
+  return { start, end, duration };
 }
 
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
