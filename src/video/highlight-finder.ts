@@ -164,6 +164,37 @@ function frameFeatures(data: Uint8ClampedArray) {
 }
 
 /**
+ * Prevent sparse peak detection from producing a one-shot montage when a clip
+ * contains usable frames but no clean local maxima (common with short/mobile video).
+ * Preserve strong peaks, then fill missing coverage with spaced high-scoring samples.
+ */
+export function ensureCandidateCoverage(
+  samples: HighlightSample[],
+  candidates: HighlightMoment[],
+  duration: number
+): HighlightMoment[] {
+  if (!Number.isFinite(duration) || duration < 0.25 || !samples.length) return candidates;
+  const result = [...candidates];
+  const targetCount = Math.min(4, samples.length);
+  const spacing = Math.max(0.6, Math.min(2.2, duration / 8));
+  const ranked = [...samples].sort((a, b) => b.score - a.score);
+  for (const sample of ranked) {
+    if (result.length >= targetCount) break;
+    if (result.some((item) => Math.abs(item.time - sample.time) < spacing)) continue;
+    const half = Math.max(0.12, Math.min(0.8, duration / 6));
+    result.push({
+      time: sample.time,
+      start: Math.max(0, sample.time - half),
+      end: Math.min(duration, sample.time + half),
+      score: sample.score,
+      motion: sample.motion,
+      contrast: sample.contrast
+    });
+  }
+  return result.sort((a, b) => a.time - b.time);
+}
+
+/**
  * A lightweight browser-only visual scan. It detects visual change and contrast;
  * it is deliberately not described as semantic AI or character/emotion recognition.
  */
@@ -284,20 +315,7 @@ export async function analyzeVideoForHighlights(
 
     // Very short clips may not contain a local peak away from the edges.
     // Keep them usable by ranking the sampled frames instead of rejecting the file.
-    if (!candidates.length) {
-      candidates = [...samples]
-        .sort((a, b) => b.score - a.score)
-        .slice(0, Math.min(4, samples.length))
-        .map((sample) => ({
-          time: sample.time,
-          start: Math.max(0, sample.time - Math.min(0.8, duration / 3)),
-          end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
-          score: sample.score,
-          motion: sample.motion,
-          contrast: sample.contrast
-        }))
-        .sort((a, b) => a.time - b.time);
-    }
+    candidates = ensureCandidateCoverage(samples, candidates, duration);
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
     return { duration, samples, candidates };
   } finally {
