@@ -5,6 +5,7 @@ const CUT_COUNTS: Record<string, number> = {
   velocity: 4,
   cinema: 2,
   pulse: 4,
+  story: 4,
 };
 
 const CUT_CENTERS: Record<string, number[]> = {

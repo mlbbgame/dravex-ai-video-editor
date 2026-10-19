@@ -17,6 +17,13 @@ test("cinematic preview uses fewer, longer shots", () => {
   expect(cinematic.cuts[0].trimEnd - cinematic.cuts[0].trimStart).toBeCloseTo(1.9);
 });
 
+test("atmospheric story preview uses four varied cuts and samples all photos", () => {
+  const story = planVariantPreviewCuts(45, 3.8, "story");
+  expect(story.cuts).toHaveLength(4);
+  expect(story.cuts[0].trimStart).toBeLessThan(story.cuts[3].trimStart);
+  expect(selectVariantPreviewIndices(8, "story")).toEqual([0, 2, 5, 7]);
+});
+
 test("short sources never produce trims outside their duration", () => {
   const plan = planVariantPreviewCuts(1.2, 3.8, "velocity");
   expect(plan.duration).toBeCloseTo(1.2);
