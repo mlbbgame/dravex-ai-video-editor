@@ -32,3 +32,27 @@ test("dense recognition clamps windows and caps work", () => {
   expect(times.every((time) => time >= 0 && time <= 10)).toBe(true);
   expect(buildDenseSampleTimes(10, [{ start: 8, end: 2 }])).toEqual([]);
 });
+
+test("dense recognition preserves coverage of late event windows when budget is limited", () => {
+  const times = buildDenseSampleTimes(
+    100,
+    [{ start: 0, end: 20 }, { start: 80, end: 100 }],
+    0.1,
+    8,
+  );
+
+  expect(times).toHaveLength(8);
+  expect(times.some((time) => time <= 20)).toBe(true);
+  expect(times.some((time) => time >= 80)).toBe(true);
+  expect(times.every((time, index) => time >= 0 && time <= 100 && (index === 0 || time > times[index - 1]))).toBe(true);
+});
+
+test("dense recognition ignores malformed windows and rejects invalid budgets", () => {
+  expect(buildDenseSampleTimes(20, [
+    { start: Number.NaN, end: 2 },
+    { start: 10, end: 2 },
+    { start: 4, end: 5 },
+  ])).toEqual([4, 4.25, 4.5, 4.75, 5]);
+  expect(buildDenseSampleTimes(20, [{ start: 1, end: 2 }], 0)).toEqual([]);
+  expect(buildDenseSampleTimes(20, [{ start: 1, end: 2 }], 0.25, 0)).toEqual([]);
+});
