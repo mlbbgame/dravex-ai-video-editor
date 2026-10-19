@@ -266,6 +266,11 @@ test("one-button photo auto-montage produces a playable WebM that can be downloa
   // finish before triggering the full montage, because the phone pipeline is serialized.
   await expect(page.locator(".dravex-photo-preview")).toBeVisible();
   await expect(page.locator(".dravex-variant video")).toHaveCount(3, { timeout: 45_000 });
+  // Regression guard: preview cards must not compete with the main player for Android decoders.
+  const previewCards = page.locator(".dravex-variant video");
+  await expect.poll(() => previewCards.evaluateAll((videos) => videos.every((video) =>
+    !video.autoplay && !video.loop && video.preload === "none"
+  ))).toBe(true);
   await page.getByRole("button", { name: "Автомонтаж" }).click();
 
   const result = page.locator(".dravex-result");
