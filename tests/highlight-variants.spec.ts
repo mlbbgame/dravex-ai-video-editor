@@ -37,7 +37,7 @@ test("montage profiles rank motion and contrast differently instead of scaling e
 });
 
 test("every montage variant returns valid source-bounded moments in chronological order", () => {
-  const variants = buildHighlightVariants(makeCandidates(), 60);
+  const variants = buildHighlightVariants(makeCandidates(), 50);
 
   for (const variant of variants) {
     expect(variant.moments.length).toBeGreaterThan(0);
