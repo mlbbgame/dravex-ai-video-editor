@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { snapCutBoundariesToBeats } from "../src/video/beat-sync";
+import { createBeatAnalysisContext, snapCutBoundariesToBeats } from "../src/video/beat-sync";
 
 test("beat snapping returns safe boundaries for zero or invalid segment counts", () => {
   expect(snapCutBoundariesToBeats([0, 1, 2], 5, 0, 1)).toEqual([0]);
@@ -35,4 +35,20 @@ test("beat snapping keeps cuts increasing and inside the target duration", () =>
   expect(boundaries.at(-1)).toBe(3.2);
   expect(boundaries.every(Number.isFinite)).toBe(true);
   expect(boundaries.every((value, index) => index === 0 || value > boundaries[index - 1])).toBe(true);
+});
+
+
+test("audio analysis falls back to the device default when a low sample rate is rejected", () => {
+  const optionsSeen: unknown[] = [];
+  class FakeAudioContext {
+    constructor(options?: AudioContextOptions) {
+      optionsSeen.push(options);
+      if (options?.sampleRate) throw new Error("Requested sample rate is unsupported");
+    }
+  }
+
+  const context = createBeatAnalysisContext(FakeAudioContext as unknown as typeof AudioContext);
+
+  expect(context).toBeInstanceOf(FakeAudioContext);
+  expect(optionsSeen).toEqual([{ sampleRate: 11_025 }, undefined]);
 });
