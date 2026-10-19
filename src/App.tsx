@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
-import { analyzeVideoForHighlights, getVideoDuration, rankHighlightMomentsForStyle, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import { analyzeWithAIDirector } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -9,6 +9,8 @@ import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalPro
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
+import { selectDiverseHighlightMoments } from "./video/montage-selection";
+import { analyzePhotoSet } from "./video/photo-analysis";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -45,19 +47,8 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
-  const ranked = rankHighlightMomentsForStyle(candidates, style);
-  const selected: HighlightMoment[] = [];
-  for (let bucket = 0; bucket < count; bucket += 1) {
-    const from = sourceDuration * bucket / count;
-    const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 1.15)));
-    if (best) selected.push(best);
-  }
-  for (const item of ranked) {
-    if (selected.length >= count) break;
-    if (selected.every((existing) => Math.abs(existing.time - item.time) > Math.max(0.8, shotLength * 0.82))) selected.push(item);
-  }
-  selected.sort((a, b) => a.time - b.time);
+  const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style);
+
   if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
   const segments: VideoSegment[] = [];
   let remaining = usableDuration;
@@ -647,8 +638,12 @@ export default function App() {
           : actualStyle === "glitch" ? [0.68, 1.18, 0.76, 1.25, 0.9]
           : actualStyle === "story" ? [1.12, 0.92, 1.08, 1, 0.9]
           : [0.9, 1.08, 1, 1.12, 0.9];
-        const weights = mediaFiles.map((_, index) => rhythm[index % rhythm.length]);
+        const photoAnalysis = await analyzePhotoSet(mediaUrls);
+        const weights = mediaFiles.map((_, index) =>
+          rhythm[index % rhythm.length] * (photoAnalysis.weights[index] ?? 1)
+        );
         const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        setMessage("Фото оценены по освещению, контрасту, деталям и сходству соседних кадров; порядок снимков сохранён.");
         segments = mediaFiles.map((file, index) => ({
           kind: "image" as const,
           name: file.name,
