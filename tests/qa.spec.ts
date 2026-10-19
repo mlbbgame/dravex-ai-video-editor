@@ -31,6 +31,7 @@ test("editor and music studio avoid horizontal overflow on narrow Android screen
     expect(editorWidth.content, `editor overflows at ${width}px`).toBeLessThanOrEqual(editorWidth.viewport + 1);
 
     await tabs.getByRole("button", { name: "Музыка" }).click();
+    await expect(page.locator(".dravex-music-sync")).toHaveCount(0);
     const musicWidth = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       content: document.documentElement.scrollWidth,
