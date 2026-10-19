@@ -276,6 +276,15 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
   }
 }
 
+/** Metadata guards shared by loaders and regression tests. */
+export function hasUsableImageDimensions(width: number, height: number): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+}
+
+export function hasUsableAudioDuration(duration: number): boolean {
+  return Number.isFinite(duration) && duration > 0;
+}
+
 export type VideoTrimRange = { start: number; end: number; duration: number };
 
 /** Hold the last in-range frame when a speed ramp reaches a clip's trim end early. */
@@ -375,7 +384,15 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
       window.clearTimeout(timeoutId);
       return true;
     };
-    image.onload = () => { if (finish()) resolve(image); };
+    image.onload = () => {
+      if (!finish()) return;
+      if (!hasUsableImageDimensions(image.naturalWidth, image.naturalHeight)) {
+        image.src = "";
+        reject(new Error(`У фото «${segment.name}» не удалось определить размер изображения. Попробуй другое фото.`));
+        return;
+      }
+      resolve(image);
+    };
     image.onerror = () => {
       if (finish()) reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
     };
@@ -393,10 +410,26 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       settled = true;
       window.clearTimeout(timeoutId);
       audio.removeEventListener("loadedmetadata", loaded);
+      audio.removeEventListener("durationchange", loaded);
       audio.removeEventListener("error", failed);
       return true;
     };
-    const loaded = () => { if (finish()) resolve(audio); };
+    const loaded = () => {
+      if (!hasUsableAudioDuration(audio.duration)) {
+        if (Number.isNaN(audio.duration) || audio.duration <= 0) {
+          if (finish()) {
+            audio.pause();
+            audio.removeAttribute("src");
+            audio.load();
+            reject(new Error(`У аудио «${segment.name}» не удалось определить длительность. Попробуй другой аудиофайл.`));
+          }
+        }
+        // Infinity can be reported temporarily by some browsers while metadata
+        // is incomplete. Wait for durationchange or the existing timeout.
+        return;
+      }
+      if (finish()) resolve(audio);
+    };
     const failed = () => {
       if (finish()) reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
     };
@@ -407,7 +440,8 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       audio.load();
       reject(new Error(`Аудио «${segment.name}» не загрузилось за 20 секунд. Попробуй другой аудиофайл.`));
     }, 20_000);
-    audio.addEventListener("loadedmetadata", loaded, { once: true });
+    audio.addEventListener("loadedmetadata", loaded);
+    audio.addEventListener("durationchange", loaded);
     audio.addEventListener("error", failed, { once: true });
     audio.src = segment.url;
     audio.load();
