@@ -173,19 +173,54 @@ export function ensureCandidateCoverage(
   candidates: HighlightMoment[],
   duration: number
 ): HighlightMoment[] {
-  if (!Number.isFinite(duration) || duration < 0.25 || !samples.length) return candidates;
-  const result = [...candidates];
-  const targetCount = Math.min(4, samples.length);
+  if (!Number.isFinite(duration) || duration < 0.25) return [];
+
+  // Sanitize both sources before ranking: one broken seek/sample must not leak
+  // NaN timestamps or out-of-range trims into variant planning and export.
+  const safeCandidates = candidates.flatMap((candidate) => {
+    if (
+      !Number.isFinite(candidate.time) ||
+      !Number.isFinite(candidate.start) ||
+      !Number.isFinite(candidate.end) ||
+      !Number.isFinite(candidate.score) ||
+      !Number.isFinite(candidate.motion) ||
+      !Number.isFinite(candidate.contrast) ||
+      candidate.end <= candidate.start ||
+      candidate.time < 0 ||
+      candidate.time > duration
+    ) return [];
+
+    const start = Math.max(0, Math.min(duration, candidate.start));
+    const end = Math.max(0, Math.min(duration, candidate.end));
+    if (end <= start) return [];
+    return [{ ...candidate, time: Math.max(start, Math.min(end, candidate.time)), start, end }];
+  }).sort((a, b) => a.time - b.time);
+
+  const safeSamples = samples.filter((sample) =>
+    Number.isFinite(sample.time) &&
+    Number.isFinite(sample.score) &&
+    Number.isFinite(sample.motion) &&
+    Number.isFinite(sample.contrast) &&
+    sample.time >= 0 &&
+    sample.time <= duration
+  );
+  if (!safeSamples.length) return safeCandidates;
+
+  const result = [...safeCandidates];
+  const targetCount = Math.min(4, safeSamples.length);
   const spacing = Math.max(0.6, Math.min(2.2, duration / 8));
-  const ranked = [...samples].sort((a, b) => b.score - a.score);
+  const ranked = [...safeSamples].sort((a, b) => b.score - a.score);
   for (const sample of ranked) {
     if (result.length >= targetCount) break;
     if (result.some((item) => Math.abs(item.time - sample.time) < spacing)) continue;
     const half = Math.max(0.12, Math.min(0.8, duration / 6));
+    const start = Math.max(0, Math.min(duration, sample.time - half));
+    const end = Math.max(0, Math.min(duration, sample.time + half));
+    if (end <= start) continue;
     result.push({
       time: sample.time,
-      start: Math.max(0, sample.time - half),
-      end: Math.min(duration, sample.time + half),
+      start,
+      end,
       score: sample.score,
       motion: sample.motion,
       contrast: sample.contrast

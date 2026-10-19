@@ -741,3 +741,38 @@ test("mobile viewport never creates page-level horizontal overflow in editor or 
     expect(musicDimensions.page, `music overflow at ${width}px`).toBeLessThanOrEqual(musicDimensions.viewport + 1);
   }
 });
+
+
+test("highlight coverage drops corrupt samples and clamps candidate trims to source bounds", () => {
+  const samples = [
+    { time: 1, score: 0.8, motion: 0.2, contrast: 0.1 },
+    { time: Number.NaN, score: 1, motion: 0.2, contrast: 0.1 },
+    { time: 4, score: Number.POSITIVE_INFINITY, motion: 0.2, contrast: 0.1 },
+    { time: 12, score: 0.9, motion: 0.4, contrast: 0.3 },
+  ];
+  const candidates = [
+    { time: 2, start: -4, end: 5, score: 0.7, motion: 0.3, contrast: 0.2 },
+    { time: Number.NaN, start: 0, end: 1, score: 1, motion: 0.5, contrast: 0.3 },
+    { time: 6, start: 5, end: 5, score: 0.6, motion: 0.2, contrast: 0.1 },
+  ];
+
+  const result = ensureCandidateCoverage(samples, candidates, 8);
+
+  expect(result.length).toBeGreaterThan(0);
+  expect(result.every((item) =>
+    Number.isFinite(item.time)
+    && Number.isFinite(item.start)
+    && Number.isFinite(item.end)
+    && Number.isFinite(item.score)
+    && item.start >= 0
+    && item.end <= 8
+    && item.end > item.start
+  )).toBe(true);
+  expect(result.some((item) => item.time === 2 && item.start === 0 && item.end === 5)).toBe(true);
+});
+
+test("invalid duration never returns malformed highlight candidates", () => {
+  const candidate = { time: 1, start: 0, end: 2, score: 1, motion: 0.2, contrast: 0.1 };
+  expect(ensureCandidateCoverage([], [candidate], Number.NaN)).toEqual([]);
+  expect(ensureCandidateCoverage([], [candidate], 0.1)).toEqual([]);
+});
