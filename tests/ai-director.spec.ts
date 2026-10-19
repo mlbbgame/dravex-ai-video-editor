@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  findNearestDetectedObjects,
   inferMotionCues,
   inferSceneCategory,
   inferTrackedObjectCues,
@@ -92,4 +93,11 @@ test("automatic style adapts to detected subjects while unknown scenes keep the 
   expect(suggestDirectorStyle("food", "velocity")).toBe("cinematic");
   expect(suggestDirectorStyle("people", "velocity")).toBe("story");
   expect(suggestDirectorStyle("general", "cinematic")).toBe("cinematic");
+});
+
+test("sampled subject detections inform nearby moments without leaking across distant scenes", () => {
+  expect(findNearestDetectedObjects(4.8, [2, 5, 10], [[personLeft], [personRight], [personNear]], 2))
+    .toEqual([personRight]);
+  expect(findNearestDetectedObjects(7.5, [2, 5, 10], [[personLeft], [personRight], [personNear]], 2))
+    .toEqual([]);
 });
