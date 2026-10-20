@@ -89,7 +89,7 @@ async function loadClassifier(): Promise<ImageClassifier> {
   if (!classifierPromise) {
     classifierPromise = (async () => {
       const { pipeline } = await import("@huggingface/transformers");
-      let instance;
+      let instance: unknown;
       if (typeof navigator !== "undefined" && "gpu" in navigator) {
         try {
           instance = await pipeline("image-classification", MODEL_ID, { device: "webgpu", dtype: "q8" });
