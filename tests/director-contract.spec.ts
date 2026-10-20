@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   directorProfiles,
+  directorProfileForSemanticProfile,
   getDirectorGuidance,
   rankDirectorCandidates,
   suggestDirectorProfile,
@@ -85,7 +86,7 @@ test("unknown or ambiguous scene labels use a restrained cinematic fallback", ()
   expect(suggestDirectorProfile(["waterfall-flow", "chopping"])).toBe("cinematic-travel");
 });
 
-test("all six content profiles are accepted by plan validation", () => {
+test("all director content profiles are accepted by plan validation", () => {
   const profileIds = Object.keys(directorProfiles) as Array<keyof typeof directorProfiles>;
   for (const profile of profileIds) {
     const result = validateDirectorPlan({ ...validPlan, profile }, 30);
@@ -172,4 +173,15 @@ test("director plan rejects target duration longer than the source in schema v1"
   const result = validateDirectorPlan(invalidPlan, 30);
   expect(result.valid).toBe(false);
   expect(result.errors).toContain("Target duration cannot exceed source duration in this initial contract.");
+});
+
+
+test("semantic categories route to appropriate editing profiles", () => {
+  expect(directorProfileForSemanticProfile("anime")).toBe("anime-edit");
+  expect(directorProfileForSemanticProfile("gaming")).toBe("gaming-highlights");
+  expect(directorProfileForSemanticProfile("food")).toBe("food-cooking");
+  expect(directorProfileForSemanticProfile("wildlife")).toBe("nature-wildlife");
+  expect(directorProfileForSemanticProfile("unknown")).toBe("cinematic-travel");
+  expect(suggestDirectorProfile(["anime-action", "impact-frame"])).toBe("anime-edit");
+  expect(suggestDirectorProfile(["team-fight", "clutch-play"])).toBe("gaming-highlights");
 });
