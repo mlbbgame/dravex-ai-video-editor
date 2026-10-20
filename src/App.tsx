@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import type { SemanticProfile } from "./video/semantic-classifier";
 import { analyzeWithAIDirector } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
@@ -42,6 +43,18 @@ const montageVariants: MontageVariant[] = [
   { id: "pulse", title: "Динамичный под музыку", note: "Ритмичный монтаж с выбранным треком", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
   { id: "story", title: "История / атмосферный", note: "Спокойный ритм для природы, еды и путешествий", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Clapperboard },
 ];
+
+function styleForSemanticProfile(profile: SemanticProfile | undefined, fallback: Exclude<EditStyle, "auto">): Exclude<EditStyle, "auto"> {
+  switch (profile) {
+    case "automotive": return "velocity";
+    case "nature":
+    case "food":
+    case "wildlife": return "cinematic";
+    case "people": return "story";
+    case "product-diy": return "cinematic";
+    default: return fallback;
+  }
+}
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
   // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
@@ -660,12 +673,18 @@ export default function App() {
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
         try {
-          const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+          const analysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
+            setScan({ current: progress.current, total: progress.total, time: progress.time });
+            if (progress.phase === "semantic") setMessage("AI Director: определяем тип сцены; если модель недоступна, продолжим по движению и композиции…");
+          });
           sourceVideoDuration = analysis.duration;
           renderDuration = Math.min(duration, analysis.duration);
           if (style === "auto") {
             const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
-            actualStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+            const motionStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
+            actualStyle = analysis.semantic?.profile && analysis.semantic.profile !== "unknown"
+              ? styleForSemanticProfile(analysis.semantic.profile, motionStyle)
+              : motionStyle;
           }
           setMessage("AI Director: загружаем модель распознавания объектов и анализируем сцены…");
           const directorResult = await analyzeWithAIDirector(
