@@ -999,6 +999,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         video.playbackRate = sourceEnded ? 1 : getSpeedRampRate(style, clipProgress);
         if (!sourceEnded && video.currentTime >= end - 0.04) {
           video.pause();
+          // Playback-rate changes can step past the trim boundary between
+          // animation frames; seek back inside the selected range before holding.
+          await seek(video, Math.max(start, end - 0.06));
           sourceEnded = true;
           video.playbackRate = 1;
         }
