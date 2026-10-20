@@ -222,3 +222,39 @@ test("variant builder rejects malformed and out-of-range candidates before trimm
   }
 });
 
+
+
+test("scene-aware candidates ignore malformed visual features and normalize invalid intervals", () => {
+  const valid = Array.from({ length: 12 }, (_, index) => ({
+    time: index * 2,
+    score: 0.4 + (index % 4) * 0.1,
+    motion: index % 3 === 0 ? 0.8 : 0.1,
+    contrast: 0.3 + (index % 2) * 0.2,
+    sharpness: 0.6,
+    saturation: 0.5,
+    brightness: 0.5,
+    exposure: 1
+  }));
+  const malformed = [
+    { ...valid[2], time: 4, contrast: Number.NaN },
+    { ...valid[3], sharpness: Number.POSITIVE_INFINITY },
+    { ...valid[4], saturation: Number.NaN },
+    { ...valid[5], brightness: Number.NaN },
+    { ...valid[6], exposure: Number.NEGATIVE_INFINITY }
+  ];
+
+  for (const interval of [Number.NaN, Number.POSITIVE_INFINITY, 0, -3]) {
+    const candidates = buildSceneAwareCandidates([...valid, ...malformed], 24, interval);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.every((candidate) =>
+      Number.isFinite(candidate.time) &&
+      Number.isFinite(candidate.score) &&
+      Number.isFinite(candidate.start) &&
+      Number.isFinite(candidate.end) &&
+      candidate.start >= 0 &&
+      candidate.end <= 24 &&
+      candidate.end > candidate.start
+    )).toBe(true);
+    expect(new Set(candidates.map((candidate) => candidate.time)).size).toBe(candidates.length);
+  }
+});
