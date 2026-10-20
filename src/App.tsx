@@ -212,7 +212,6 @@ export default function App() {
         setStyle((project.style as EditStyle) || "auto");
         setDuration(project.duration || 30);
         setAspectRatio(project.aspectRatio ?? "9:16");
-      setFramingMode(project.framingMode ?? "auto");
         setFramingMode(project.framingMode ?? "auto");
         setQuality(project.quality || "720p");
         setBeatSync(project.beatSync !== false);
