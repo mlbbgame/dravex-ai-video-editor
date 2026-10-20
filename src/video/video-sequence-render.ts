@@ -298,6 +298,12 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     };
     const failed = () => {
       cleanup();
+      // Release a broken or unsupported source immediately. This element is not
+      // added to the loaded-segment cache when loading fails, so the outer cleanup
+      // cannot otherwise release its decoder and object URL reference.
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
       reject(new Error(`Could not read video: ${segment.name}. Try MP4 (H.264) or WebM.`));
     };
     timeoutId = window.setTimeout(() => {
