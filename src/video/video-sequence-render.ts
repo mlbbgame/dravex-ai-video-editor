@@ -512,10 +512,37 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
+  // Load music with explicit failure cleanup. Promise.all rejects as soon as
+  // one track fails, but other tracks may already have decoded metadata and
+  // source videos are already resident; release all fulfilled media before
+  // reporting the import error to the UI.
+  const audioResults = await Promise.allSettled(audioTracks.map(async (segment) => ({
     segment,
     audio: await loadAudio(segment)
   })));
+  const loadedAudio = audioResults
+    .filter((result): result is PromiseFulfilledResult<{ segment: AudioSegment; audio: HTMLAudioElement }> => result.status === "fulfilled")
+    .map((result) => result.value);
+  const audioLoadFailure = audioResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (audioLoadFailure) {
+    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
+      image.width = 1;
+      image.height = 1;
+    });
+    loadedAudio.forEach(({ audio }) => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    });
+    throw audioLoadFailure.reason instanceof Error
+      ? audioLoadFailure.reason
+      : new Error("Не удалось загрузить одну из музыкальных дорожек.");
+  }
 
   const { width, height } = getOutputDimensions(aspectRatio, quality);
   const canvas = document.createElement("canvas");
