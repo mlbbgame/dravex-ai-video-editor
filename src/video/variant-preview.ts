@@ -35,6 +35,7 @@ export function planVariantPreviewCuts(
   const count = Math.max(1, Math.min(desiredCount, Math.floor(duration / 0.45)));
   const centers = CUT_CENTERS[variantId] ?? CUT_CENTERS.auto;
   const shotDuration = duration / count;
+  let previousEnd = 0;
   const cuts = Array.from({ length: count }, (_, index) => {
     // If the whole source is shorter than the requested preview, partition it
     // chronologically. Clamping style-specific centers near zero can otherwise
@@ -45,8 +46,13 @@ export function planVariantPreviewCuts(
     }
 
     const centerRatio = centers[Math.min(index, centers.length - 1)] ?? (index + 0.5) / count;
-    const trimStart = Math.max(0, Math.min(sourceDuration - shotDuration, sourceDuration * centerRatio - shotDuration / 2));
-    return { trimStart, trimEnd: trimStart + shotDuration };
+    const desiredStart = Math.max(0, Math.min(sourceDuration - shotDuration, sourceDuration * centerRatio - shotDuration / 2));
+    // Distinct target centers can still produce overlapping footage on clips
+    // only slightly longer than the preview. Move each cut forward as needed.
+    const trimStart = Math.min(sourceDuration - shotDuration, Math.max(previousEnd, desiredStart));
+    const trimEnd = trimStart + shotDuration;
+    previousEnd = trimEnd;
+    return { trimStart, trimEnd };
   });
 
   return { duration, cuts };
