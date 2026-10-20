@@ -55,7 +55,27 @@ jobs:
       - name: Run Lighthouse mobile audit
         run: |
           mkdir -p lighthouse-reports
-          npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/             --chrome-path="$(which chrome)"             --chrome-flags="--headless --no-sandbox"             --only-categories=performance,accessibility,best-practices,seo             --output=html,json             --output-path=lighthouse-reports/dravex             --quiet
+          # Headless Chrome can occasionally miss the first paint on a cold start.
+          # Use the current headless implementation, allow a longer page-load window,
+          # and retry once. Persistent NO_FCP errors still fail the workflow.
+          for attempt in 1 2; do
+            if npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/ \
+              --chrome-path="$(which chrome)" \
+              --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+              --max-wait-for-load=45000 \
+              --only-categories=performance,accessibility,best-practices,seo \
+              --output=html,json \
+              --output-path=lighthouse-reports/dravex \
+              --quiet; then
+              break
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              echo "Lighthouse failed after retry; inspect Chrome/page startup logs and the uploaded reports."
+              exit 1
+            fi
+            echo "Lighthouse did not complete on attempt $attempt; retrying after a short pause."
+            sleep 3
+          done
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const report = JSON.parse(fs.readFileSync('lighthouse-reports/dravex.report.json', 'utf8'));
