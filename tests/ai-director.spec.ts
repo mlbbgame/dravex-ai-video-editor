@@ -180,3 +180,30 @@ test("temporal event cues flag likely scene changes without inventing an action"
 test("temporal event cues ignore invalid motion values", () => {
   expect(inferTemporalEventCues(Number.NaN, 0.2, 0.1)).toEqual([]);
 });
+
+test("temporal cues do not invent peaks for steady motion or scene changes for matching labels", () => {
+  expect(inferTemporalEventCues(0.08, 0.08, 0.08, [" Car "], ["car"], ["CAR"], 0.08))
+    .not.toContain("Пик движения");
+  expect(inferTemporalEventCues(0.08, 0.08, 0.08, [" Car "], ["car"], ["CAR"], 0.08))
+    .not.toContain("Вероятная смена сцены");
+});
+
+test("temporal cues safely reject negative motion and normalize empty labels", () => {
+  expect(inferTemporalEventCues(-0.1, 0.2, 0.1, ["car"], ["dog"], ["dog"])).toEqual([]);
+  expect(inferTemporalEventCues(0.04, 0.05, 0.04, [" "], [""], [" "])).toEqual([]);
+});
+
+test("director ranking stays finite and bounded across all edit styles", () => {
+  const moment = { score: 0.7, motion: 0.18, contrast: 0.22 };
+  const objects = [
+    { label: "car", score: 0.91, box: { xmin: 15, ymin: 20, xmax: 175, ymax: 145 } },
+    { label: "person", score: 0.87, box: { xmin: 185, ymin: 25, xmax: 245, ymax: 150 } },
+  ];
+
+  for (const style of ["velocity", "anime", "cinematic", "glitch", "story"] as const) {
+    const score = scoreDirectorMoment(moment, objects, style, 0.08, 0.4);
+    expect(Number.isFinite(score), style).toBe(true);
+    expect(score, style).toBeGreaterThanOrEqual(0);
+    expect(score, style).toBeLessThanOrEqual(1);
+  }
+});
