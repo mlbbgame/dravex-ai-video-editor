@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceFrameRect } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeImageDuration, getSourceFrameRect, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -39,6 +39,17 @@ test("invalid framing dimensions fall back safely", () => {
   expect(getSourceFrameRect(0, 1080, 1080, 1920, "cover")).toEqual({
     x: 0, y: 0, width: 1, height: 1080,
   });
+});
+
+
+test("automatic framing preserves the existing safe behavior while explicit fit and fill override it", () => {
+  expect(shouldContainSource(16 / 9, 9 / 16)).toBe(true);
+  expect(shouldContainSource(16 / 9, 9 / 16, "auto")).toBe(true);
+  expect(shouldContainSource(16 / 9, 9 / 16, "fit")).toBe(true);
+  expect(shouldContainSource(16 / 9, 9 / 16, "fill")).toBe(false);
+  expect(shouldContainSource(1, 1, "auto")).toBe(false);
+  expect(shouldContainSource(1, 1, "fit")).toBe(true);
+  expect(shouldContainSource(1, 1, "fill")).toBe(false);
 });
 
 test("render loop frame pacing matches the recorder frame rate", () => {
