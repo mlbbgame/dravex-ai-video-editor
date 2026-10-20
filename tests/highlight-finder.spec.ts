@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { buildHighlightVariants, scoreVisualSamples, type HighlightMoment } from "../src/video/highlight-finder";
+import { buildHighlightVariants, buildSceneAwareCandidates, scoreVisualSamples, type HighlightMoment } from "../src/video/highlight-finder";
 
 test("visual scoring balances motion with sharpness, exposure, and readable detail", () => {
   const scored = scoreVisualSamples([
@@ -42,4 +42,48 @@ test("highlight variants keep trims inside source bounds and avoid duplicate mom
   }
   expect(buildHighlightVariants(candidates, Number.NaN)).toHaveLength(0);
   expect(buildHighlightVariants(candidates, 0)).toHaveLength(0);
+});
+
+
+test("scene-aware candidates include motion changes and preserve timeline coverage", () => {
+  const samples = Array.from({ length: 24 }, (_, index) => {
+    const motion = index >= 10 && index <= 12 ? 0.95 : index < 10 ? 0.08 : 0.12;
+    const score = index >= 10 && index <= 12 ? 0.9 : 0.45 + (index % 4) * 0.04;
+    return {
+      time: index * 2,
+      score,
+      motion,
+      contrast: 0.4 + (index % 3) * 0.1,
+      sharpness: index === 11 ? 0.85 : 0.6,
+      saturation: 0.5,
+      brightness: 0.5,
+      exposure: 1
+    };
+  });
+
+  const candidates = buildSceneAwareCandidates(samples, 48, 2);
+  expect(candidates.length).toBeGreaterThan(3);
+  expect(candidates.every((item) => item.start >= 0 && item.end <= 48 && item.end > item.start)).toBe(true);
+  expect(new Set(candidates.map((item) => item.time)).size).toBe(candidates.length);
+  expect(candidates.some((item) => item.time >= 18 && item.time <= 24)).toBe(true);
+  expect(candidates[0].time).toBeLessThan(candidates[candidates.length - 1].time);
+});
+
+test("scene-aware candidates handle static footage without inventing event labels", () => {
+  const samples = Array.from({ length: 8 }, (_, index) => ({
+    time: index * 2,
+    score: 0.5,
+    motion: 0,
+    contrast: 0.1,
+    sharpness: 0.4,
+    saturation: 0,
+    brightness: 0.08,
+    exposure: 0.5
+  }));
+  const candidates = buildSceneAwareCandidates(samples, 16, 2);
+  expect(candidates.length).toBeGreaterThan(0);
+  expect(candidates.every((item) => item.score >= 0 && item.score <= 1)).toBe(true);
+  expect(new Set(candidates.map((item) => item.time)).size).toBe(candidates.length);
+  expect(buildSceneAwareCandidates([], 16)).toEqual([]);
+  expect(buildSceneAwareCandidates(samples, Number.NaN)).toEqual([]);
 });
