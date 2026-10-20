@@ -113,6 +113,16 @@ test("director frame budget rejects zero, negative, and non-finite durations", (
   expect(getDirectorFrameBudget(Number.POSITIVE_INFINITY)).toEqual(emptyBudget);
 });
 
+test("long-video director budget samples an interior scene while staying bounded for mobile", () => {
+  expect(getDirectorFrameBudget(30)).toEqual({
+    maxFrames: 3,
+    inferenceBudgetMs: 6500,
+    includeEdges: false,
+  });
+  expect(getDirectorFrameBudget(300).maxFrames).toBe(3);
+  expect(getDirectorFrameBudget(29.99).maxFrames).toBe(4);
+});
+
 test("AI Director safely falls back for unknown or too-short source duration", async () => {
   const sample = [{ time: 0.2, score: 0.7, motion: 0.1, contrast: 0.2 }];
   const candidate = [{ time: 0.2, start: 0, end: 0.4, score: 0.7, motion: 0.1, contrast: 0.2 }];

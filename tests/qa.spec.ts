@@ -10,8 +10,10 @@ import { getDirectorFrameBudget, getSceneCategoryLabel, inferSceneCategory, sugg
 
 test("AI Director bounds long-clip object detection without skipping semantic samples", () => {
   expect(getDirectorFrameBudget(9)).toEqual({ maxFrames: 4, inferenceBudgetMs: 10_000, includeEdges: true });
-  expect(getDirectorFrameBudget(60)).toEqual({ maxFrames: 2, inferenceBudgetMs: 5_000, includeEdges: false });
-  expect(getDirectorFrameBudget(300)).toEqual({ maxFrames: 2, inferenceBudgetMs: 5_000, includeEdges: false });
+  expect(getDirectorFrameBudget(29.99)).toEqual({ maxFrames: 4, inferenceBudgetMs: 10_000, includeEdges: true });
+  expect(getDirectorFrameBudget(30)).toEqual({ maxFrames: 3, inferenceBudgetMs: 6_500, includeEdges: false });
+  expect(getDirectorFrameBudget(60)).toEqual({ maxFrames: 3, inferenceBudgetMs: 6_500, includeEdges: false });
+  expect(getDirectorFrameBudget(300)).toEqual({ maxFrames: 3, inferenceBudgetMs: 6_500, includeEdges: false });
   expect(getDirectorFrameBudget(Number.NaN).maxFrames).toBe(0);
   expect(getSceneCategoryLabel("nature")).toBe("природа и растения");
   expect(getSceneCategoryLabel("general")).toBeNull();
