@@ -91,6 +91,66 @@ test("mobile editor root respects dynamic viewport and safe-area padding", async
   expect(parseFloat(styles.paddingBottom)).toBeGreaterThanOrEqual(22);
 });
 
+test("real browser-recorded video uploads and decodes in the editor", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  // Create a tiny real WebM in Chromium instead of uploading a fake video byte buffer.
+  const base64 = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 240;
+    const context = canvas.getContext("2d");
+    if (!context || typeof MediaRecorder === "undefined") throw new Error("MediaRecorder is unavailable");
+    const stream = canvas.captureStream(12);
+    const chunks: BlobPart[] = [];
+    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    const finished = new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error("Browser video recording failed"));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: "video/webm" }));
+    });
+    recorder.start();
+    const started = performance.now();
+    await new Promise<void>((resolve) => {
+      const draw = (now: number) => {
+        if (context) {
+          context.fillStyle = "#14213d";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.fillStyle = "#fca311";
+          context.fillRect(((now - started) / 4) % 280, 70, 40, 100);
+        }
+        if (now - started < 1200) requestAnimationFrame(draw);
+        else resolve();
+      };
+      requestAnimationFrame(draw);
+    });
+    recorder.stop();
+    const blob = await finished;
+    stream.getTracks().forEach((track) => track.stop());
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return btoa(binary);
+  });
+
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles({
+    name: "playwright-generated-clip.webm",
+    mimeType: "video/webm",
+    buffer: Buffer.from(base64, "base64"),
+  });
+
+  await expect(page.locator(".dravex-source-video-wrap video.dravex-preview")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Видео загружено · предпросмотр готов", { timeout: 15_000 });
+  const duration = await page.locator(".dravex-source-video-wrap video.dravex-preview").evaluate(
+    (video: HTMLVideoElement) => video.duration,
+  );
+  expect(duration).toBeGreaterThan(0.8);
+  expect(duration).toBeLessThan(3);
+});
+
 test("media picker explains unsupported file formats and mixed media selections", async ({ page }) => {
   await page.goto("/");
   const input = page.locator('input[accept="video/*,image/*"]');
