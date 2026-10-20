@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import type { SemanticProfile } from "./video/semantic-classifier";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
@@ -42,7 +43,7 @@ const montageVariants: MontageVariant[] = [
   { id: "4k-quality", title: "4K Quality", note: "Экспорт в разрешении 2160p", style: "story", transition: "cinematic", strength: "soft", quality: "4K", beatSync: false, previewClass: "story", icon: Clapperboard },
 ];
 
-function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
+function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string, contentProfile: SemanticProfile = "unknown"): VideoSegment[] {
   if (!Number.isFinite(sourceDuration) || sourceDuration <= 0 || !Number.isFinite(targetDuration) || targetDuration <= 0) return [];
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
@@ -63,10 +64,13 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
     const detail = Math.max(0, Math.min(1, moment.sharpness ?? 0.5));
     const contrast = Math.max(0, Math.min(1, moment.contrast));
     if (style === "velocity" || style === "glitch" || style === "anime") {
-      return moment.score * 0.62 + motion * 0.28 + detail * 0.1;
+      const actionBoost = contentProfile === "automotive" ? 0.08 : 0;
+      const calmPenalty = ["nature", "food", "people", "wildlife", "product-diy"].includes(contentProfile) ? 0.1 : 0;
+      return moment.score * 0.62 + motion * (0.28 + actionBoost - calmPenalty) + detail * (0.1 + calmPenalty) - actionBoost * detail;
     }
     if (style === "travel" || style === "story") {
-      return moment.score * 0.58 + detail * 0.24 + contrast * 0.18 - motion * 0.12;
+      const processBoost = ["food", "product-diy"].includes(contentProfile) ? 0.08 : 0;
+      return moment.score * 0.58 + detail * (0.24 + processBoost) + contrast * 0.18 - motion * (0.12 + processBoost);
     }
     return moment.score * 0.62 + detail * 0.22 + contrast * 0.16 - motion * 0.06;
   };
@@ -583,15 +587,23 @@ export default function App() {
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
         try {
-          const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+          const analysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
+            setScan(progress);
+            if (progress.phase === "semantic") setMessage("Распознаём содержание нескольких кадров…");
+          });
           sourceVideoDuration = analysis.duration;
           renderDuration = Math.min(duration, analysis.duration);
+          const contentProfile = analysis.semantic?.profile ?? "unknown";
           if (style === "auto") {
-            // Camera movement alone cannot tell action footage from a moving road, river or landscape.
-            // Prefer clean cinematic pacing until semantic scene analysis is available.
-            actualStyle = "cinematic";
+            // Semantic image labels provide a broad category, not action understanding.
+            // Keep a restrained fallback whenever the model is unavailable or uncertain.
+            actualStyle = contentProfile === "automotive" ? "velocity"
+              : contentProfile === "nature" ? "travel"
+              : contentProfile === "food" || contentProfile === "product-diy" ? "story"
+              : "cinematic";
+            if (contentProfile !== "unknown") setMessage(`Определено содержание: ${contentProfile}. Подбираем подходящий темп монтажа…`);
           }
-          segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+          segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
           sourceVideoDuration = await getVideoDuration(videoUrl);
