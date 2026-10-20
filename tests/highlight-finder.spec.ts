@@ -88,3 +88,32 @@ test("scene-aware candidates handle static footage without inventing event label
   expect(buildSceneAwareCandidates([], 16)).toEqual([]);
   expect(buildSceneAwareCandidates(samples, Number.NaN)).toEqual([]);
 });
+
+
+test("style variants preserve late-source coverage and produce different moment sequences", () => {
+  const candidates: HighlightMoment[] = Array.from({ length: 36 }, (_, index) => {
+    const time = index * 2 + 1;
+    return {
+      time,
+      start: Math.max(0, time - 0.5),
+      end: Math.min(72, time + 0.5),
+      score: 0.25 + ((index * 7) % 11) / 20,
+      motion: ((index * 5) % 13) / 12,
+      contrast: ((index * 3) % 9) / 8,
+      sharpness: ((index * 11) % 10) / 9,
+      saturation: 0.5,
+      brightness: 0.5,
+      exposure: 1
+    };
+  });
+  const variants = buildHighlightVariants(candidates, 72);
+  const aggressive = variants.find((variant) => variant.id === "aggressive")!;
+  const cinematic = variants.find((variant) => variant.id === "cinematic")!;
+  const slow = variants.find((variant) => variant.id === "slow")!;
+
+  for (const variant of variants) {
+    expect(variant.moments.some((moment) => moment.time >= 60)).toBe(true);
+  }
+  expect(aggressive.moments.map((moment) => moment.time)).not.toEqual(cinematic.moments.map((moment) => moment.time));
+  expect(cinematic.moments.map((moment) => moment.time)).not.toEqual(slow.moments.map((moment) => moment.time));
+});
