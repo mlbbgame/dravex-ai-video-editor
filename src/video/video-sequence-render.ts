@@ -51,15 +51,23 @@ export function getSpeedRampRate(style: SequenceRenderStyle, progress: number): 
     { at: 0.82, rate: 1.12 },
     { at: 1, rate: 1 }
   ];
+  // Smoothstep's mean over each interval equals the mean of its endpoint
+  // rates. Normalize the curve so it consumes approximately one source-second
+  // per output-second; otherwise the faster sections reach the trim end early
+  // and force the renderer to freeze a frame for the remainder of the shot.
+  const averageRate = stops.slice(1).reduce((sum, right, index) => {
+    const left = stops[index];
+    return sum + (right.at - left.at) * (left.rate + right.rate) / 2;
+  }, 0);
   for (let index = 1; index < stops.length; index += 1) {
     const left = stops[index - 1];
     const right = stops[index];
     if (t > right.at) continue;
     const linear = (t - left.at) / (right.at - left.at);
     const eased = linear * linear * (3 - 2 * linear);
-    return left.rate + (right.rate - left.rate) * eased;
+    return (left.rate + (right.rate - left.rate) * eased) / averageRate;
   }
-  return 1;
+  return 1 / 1.1255;
 }
 
 export type CameraMotionProfile = { zoom: number; pan: number };
