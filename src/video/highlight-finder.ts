@@ -264,7 +264,7 @@ export function buildSceneAwareCandidates(
     const motionPeak = normalizedMotion[index] >= leftMotion && normalizedMotion[index] >= rightMotion;
     const eventSignal = Math.max(
       motionPeak ? normalizedMotion[index] : 0,
-      normalizedChanges[index] * 0.9
+      motionChanges[index] > 0.015 ? normalizedChanges[index] * 0.9 : 0
     );
     const edgePenalty = Math.max(0, 0.35 - (sample.sharpness ?? 0.5)) * 0.3;
     const score = normalizedQuality[index] * 0.68 + eventSignal * 0.32 - edgePenalty;
