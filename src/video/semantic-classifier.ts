@@ -37,16 +37,16 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(car|sports car|race car|racing car|racer|convertible|limousine|truck|motorcycle|wheel|rally car|jeep)\b/i
   ],
   nature: [
-    /\b(mountain|valley|forest|waterfall|lakeside|seashore|volcano|cloud|beach|tree|flower|reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow)\b/i
+    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park)\b/i
   ],
   food: [
-    /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|hotdog|cheeseburger)\b/i
+    /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|ice lolly|popsicle|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|carbonara|hotdog|hot dog|cheeseburger|hamburger|rotisserie|roast chicken|potpie|trifle|taco|sushi|ramen|noodle|omelette|omelet|pancake|waffle|bakery|confectionery|menu|dining table)\b/i
   ],
   people: [
     /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask)\b/i
   ],
   wildlife: [
-    /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|squirrel|owl|eagle|butterfly|lizard|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua)\b/i
+    /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|hare|squirrel|owl|eagle|butterfly|lizard|frog|toad|tadpole|whale|dolphin|shark|seal|otter|raccoon|panda|giraffe|zebra|kangaroo|koala|parrot|macaw|flamingo|peacock|wood rabbit|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua)\b/i
   ],
   "product-diy": [
     /\b(tool|hammer|screwdriver|power drill|computer|laptop|phone|camera|device|chain saw|washer|remote control|screw|wrench|keyboard|monitor|vacuum|toaster|gadget)\b/i
