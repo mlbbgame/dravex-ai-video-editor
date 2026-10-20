@@ -4,6 +4,7 @@ import {
   findNearestDetectedObjects,
   getDirectorFrameBudget,
   inferMotionCues,
+  inferTemporalEventCues,
   inferSceneCategory,
   inferTrackedObjectCues,
   scoreDirectorMoment,
@@ -154,4 +155,28 @@ test("AI Director reports missing samples separately from invalid duration", asy
 
   expect(result.modelLoaded).toBe(false);
   expect(result.note).toContain("Недостаточно кадров");
+});
+
+
+test("temporal event cues distinguish motion build-up, peaks, and settling", () => {
+  expect(inferTemporalEventCues(0.03, 0.18, 0.04, [], [], [], 0.08)).toContain("Пик движения");
+  expect(inferTemporalEventCues(0.03, 0.07, 0.09, [], [], [], 0.08)).toContain("Нарастание движения");
+  expect(inferTemporalEventCues(0.18, 0.1, 0.09, [], [], [], 0.08)).toContain("Затухание движения");
+});
+
+test("temporal event cues flag likely scene changes without inventing an action", () => {
+  expect(inferTemporalEventCues(
+    0.04,
+    0.05,
+    0.04,
+    ["car", "person"],
+    ["dog", "tree"],
+    ["dog", "tree"],
+    0.08
+  )).toContain("Вероятная смена сцены");
+  expect(inferTemporalEventCues(0.04, 0.05, 0.04, [], [], [], 0.08)).toEqual([]);
+});
+
+test("temporal event cues ignore invalid motion values", () => {
+  expect(inferTemporalEventCues(Number.NaN, 0.2, 0.1)).toEqual([]);
 });
