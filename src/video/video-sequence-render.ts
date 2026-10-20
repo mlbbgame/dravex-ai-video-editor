@@ -450,6 +450,26 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // video) at once. A two-worker pool caps peak memory on Android while keeping
   // segment order stable in the resulting timeline.
   const loaded: LoadedSegment[] = new Array(segments.length);
+  // One idempotent release path prevents decoded media from lingering if any
+  // preparation stage fails before MediaRecorder's normal onstop cleanup runs.
+  const releaseLoadedVisuals = () => {
+    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
+      image.width = 1;
+      image.height = 1;
+    });
+  };
+  const releaseLoadedAudio = (items: { audio: HTMLAudioElement }[]) => {
+    items.forEach(({ audio }) => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    });
+  };
   let nextSegmentIndex = 0;
   let loadError: unknown = null;
   const loaderCount = Math.min(2, segments.length);
@@ -484,15 +504,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (loadError) {
     // A failed file must not leave already-decoded source media alive in the
     // background after the UI has reported the export error.
-    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    });
-    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
-      image.width = 1;
-      image.height = 1;
-    });
+    releaseLoadedVisuals();
     throw loadError instanceof Error ? loadError : new Error("Не удалось подготовить исходные файлы для монтажа.");
   }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
@@ -525,20 +537,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     .map((result) => result.value);
   const audioLoadFailure = audioResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (audioLoadFailure) {
-    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    });
-    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
-      image.width = 1;
-      image.height = 1;
-    });
-    loadedAudio.forEach(({ audio }) => {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    });
+    releaseLoadedVisuals();
+    releaseLoadedAudio(loadedAudio);
     throw audioLoadFailure.reason instanceof Error
       ? audioLoadFailure.reason
       : new Error("Не удалось загрузить одну из музыкальных дорожек.");
@@ -549,7 +549,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not initialize the video renderer.");
+  if (!context) {
+    releaseLoadedVisuals();
+    throw new Error("Could not initialize the video renderer.");
+  }
 
   const videoStream = canvas.captureStream(24);
   // Do not create an AudioContext for a no-music export. On some Android
