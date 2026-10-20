@@ -38,13 +38,13 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(car|sports car|race car|racing car|racer|convertible|limousine|truck|pickup|minivan|motorcycle|motor scooter|mountain bike|wheel|rally car|jeep|formula one|go-kart|tractor|tow truck)\b/i
   ],
   nature: [
-    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park|aurora|natural arch|rapids|seascape|water bird|wild flower|mushroom)\b/i
+    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park|aurora|natural arch|rapids|seascape|water bird|wild flower|mushroom|travel|tourist|sightseeing|landmark|historic site|cityscape|hiking|backpacking|camping|campsite|scenic route|road trip|national monument|travel photography)\b/i
   ],
   food: [
     /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|ice lolly|popsicle|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|carbonara|hotdog|hot dog|cheeseburger|hamburger|rotisserie|roast chicken|potpie|trifle|taco|sushi|ramen|noodle|omelette|omelet|pancake|waffle|bakery|confectionery|menu|dining table|frying pan|mixing bowl|baking sheet|dough|bread loaf|bagel|pretzel|cheese|egg|steak|grilled salmon|mashed potato|guacamole|dim sum|ice pop|cupcake|brownie|burrito)\b/i
   ],
   people: [
-    /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask|wedding|performer|musician|guitarist|drummer|singer|runner|cyclist|skier|snowboarder|weightlifter)\b/i
+    /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask|wedding|performer|musician|guitarist|drummer|singer|runner|cyclist|skier|snowboarder|weightlifter|vlog|vlogger|video blog|blogger|influencer|talking head|interview|podcast|selfie|livestream|live stream|content creator|social media|travel blogger)\b/i
   ],
   sports: [
     /\b(soccer ball|football|basketball|basketball hoop|tennis ball|tennis racket|baseball|baseball bat|volleyball|golf ball|golf club|hockey puck|ice hockey|cricket ball|badminton|ping-pong|table tennis|skateboard|skateboarding|surfboard|surfing|windsurfing|parachute|rock climbing|climbing wall|gymnastics|boxing glove|boxing|wrestling|martial arts|racing bike|track and field|skiing|snowboarding|sled|rowing boat|kayak|canoe|paddle|sports uniform|stadium|racket)\b/i
