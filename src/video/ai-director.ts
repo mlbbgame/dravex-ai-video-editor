@@ -281,6 +281,70 @@ export function scoreDirectorMoment(
     + change * changeWeight;
 }
 
+/**
+ * Infer temporal editing cues from adjacent samples. These describe visual rhythm,
+ * not verified semantic actions such as a goal, knockout, or completed cooking step.
+ */
+export function inferTemporalEventCues(
+  previousMotion: number,
+  currentMotion: number,
+  nextMotion: number,
+  previousLabels: string[] = [],
+  currentLabels: string[] = [],
+  nextLabels: string[] = [],
+  motionReference = 0.08
+): string[] {
+  const cues: string[] = [];
+  const values = [previousMotion, currentMotion, nextMotion];
+  if (values.some((value) => !Number.isFinite(value) || value < 0)) return cues;
+
+  const reference = Math.max(0.001, motionReference);
+  if (
+    currentMotion >= reference * 1.2 &&
+    currentMotion >= previousMotion * 1.25 &&
+    currentMotion >= nextMotion * 1.25
+  ) {
+    cues.push("Пик движения");
+  } else if (
+    currentMotion >= reference * 0.65 &&
+    currentMotion >= previousMotion * 1.2 &&
+    nextMotion >= currentMotion * 0.95
+  ) {
+    cues.push("Нарастание движения");
+  } else if (
+    previousMotion >= reference * 1.2 &&
+    currentMotion <= previousMotion * 0.75 &&
+    nextMotion <= currentMotion * 1.15
+  ) {
+    cues.push("Затухание движения");
+  }
+
+  const previous = new Set(previousLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
+  const current = new Set(currentLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
+  const next = new Set(nextLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
+  const overlapRatio = (left: Set<string>, right: Set<string>) => {
+    if (!left.size || !right.size) return 1;
+    const overlap = [...left].filter((label) => right.has(label)).length;
+    return overlap / Math.max(left.size, right.size);
+  };
+  if (previous.size && current.size && overlapRatio(previous, current) < 0.25) {
+    cues.push("Вероятная смена сцены");
+  } else if (current.size && next.size && overlapRatio(current, next) < 0.25) {
+    cues.push("Вероятная смена сцены");
+  }
+  return [...new Set(cues)];
+}
+
+function temporalEventBonus(cues: string[], style: DirectorStyle): number {
+  const actionFocused = style === "velocity" || style === "glitch";
+  let bonus = 0;
+  if (cues.includes("Пик движения")) bonus += actionFocused ? 0.1 : 0.035;
+  if (cues.includes("Нарастание движения")) bonus += actionFocused ? 0.055 : 0.025;
+  if (cues.includes("Затухание движения")) bonus += style === "cinematic" || style === "story" ? 0.055 : 0.015;
+  if (cues.includes("Вероятная смена сцены")) bonus += style === "story" || style === "cinematic" ? 0.06 : 0.025;
+  return Math.min(0.12, bonus);
+}
+
 function chooseSampleIndices(count: number, limit: number, includeEdges = true): number[] {
   if (count <= limit) return Array.from({ length: count }, (_, index) => index);
   if (limit <= 1) return [Math.round((count - 1) / 2)];
@@ -465,11 +529,32 @@ export async function analyzeWithAIDirector(
       ? labels.filter((label) => !previousLabels.includes(label)).length / Math.max(1, new Set([...labels, ...previousLabels]).size)
       : 0;
     const sample = samples.reduce((best, item) => Math.abs(item.time - candidate.time) < Math.abs(best.time - candidate.time) ? item : best, samples[0]);
+    const previousCandidate = candidates[index - 1];
+    const nextCandidate = candidates[index + 1];
+    const previousCandidateLabels = index > 0
+      ? (detectionsByCandidate.get(index - 1) ?? previousObjects).map((item) => item.label)
+      : previousLabels;
+    const nextCandidateLabels = index < candidates.length - 1
+      ? (detectionsByCandidate.get(index + 1) ?? []).map((item) => item.label)
+      : labels;
+    const temporalCues = previousCandidate && nextCandidate
+      ? inferTemporalEventCues(
+          previousCandidate.motion,
+          candidate.motion,
+          nextCandidate.motion,
+          previousCandidateLabels,
+          labels,
+          nextCandidateLabels,
+          Math.max(0.015, referenceMotion)
+        )
+      : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
-      ...(isModelSample ? inferTrackedObjectCues(previousObjects, objects) : [])
+      ...(isModelSample ? inferTrackedObjectCues(previousObjects, objects) : []),
+      ...temporalCues
     ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
-    const directorScore = scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty);
+    const directorScore = Math.min(1, scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty)
+      + temporalEventBonus(temporalCues, selectedStyle));
     return {
       ...candidate,
       score: directorScore,
