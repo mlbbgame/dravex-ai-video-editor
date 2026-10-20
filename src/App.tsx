@@ -43,46 +43,108 @@ const montageVariants: MontageVariant[] = [
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
-  // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
-  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
+  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0 || !Number.isFinite(targetDuration) || targetDuration <= 0) return [];
   const usableDuration = Math.min(sourceDuration, targetDuration);
-  const count = Math.max(1, Math.ceil(usableDuration / shotLength));
+  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
+  const count = Math.max(1, Math.min(200, Math.ceil(usableDuration / shotLength)));
+  const minimumSpacing = Math.max(0.65, shotLength * 0.72);
+  const valid = candidates.filter((moment) =>
+    Number.isFinite(moment.time) &&
+    Number.isFinite(moment.score) &&
+    Number.isFinite(moment.motion) &&
+    Number.isFinite(moment.start) &&
+    Number.isFinite(moment.end) &&
+    moment.time >= 0 &&
+    moment.time <= sourceDuration &&
+    moment.end > moment.start
+  );
   const styleScore = (moment: HighlightMoment) => {
-    // Calm edits should favour stable, readable shots instead of blindly chasing motion.
-    const motionPenalty = style === "travel" ? 0.62 : style === "story" ? 0.4 : style === "cinematic" ? 0.2 : 0;
-    return moment.score - Math.max(0, moment.motion) * motionPenalty;
+    const motion = Math.max(0, Math.min(1, moment.motion));
+    const detail = Math.max(0, Math.min(1, moment.sharpness ?? 0.5));
+    const contrast = Math.max(0, Math.min(1, moment.contrast));
+    if (style === "velocity" || style === "glitch" || style === "anime") {
+      return moment.score * 0.62 + motion * 0.28 + detail * 0.1;
+    }
+    if (style === "travel" || style === "story") {
+      return moment.score * 0.58 + detail * 0.24 + contrast * 0.18 - motion * 0.12;
+    }
+    return moment.score * 0.62 + detail * 0.22 + contrast * 0.16 - motion * 0.06;
   };
-  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
+  const ranked = [...valid].sort((a, b) => styleScore(b) - styleScore(a));
   const selected: HighlightMoment[] = [];
+
+  // First pass: take a strong moment from each timeline bucket. This preserves
+  // coverage of the whole source instead of collecting every cut from one action.
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 1.15)));
+    const best = ranked.find((moment) =>
+      moment.time >= from &&
+      (bucket === count - 1 ? moment.time <= to : moment.time < to) &&
+      selected.every((item) => Math.abs(item.time - moment.time) >= minimumSpacing)
+    );
     if (best) selected.push(best);
   }
-  for (const item of ranked) {
+
+  // Second pass: add high-scoring moments while avoiding near-duplicate cuts.
+  for (const moment of ranked) {
     if (selected.length >= count) break;
-    if (selected.every((existing) => Math.abs(existing.time - item.time) > Math.max(0.8, shotLength * 0.82))) selected.push(item);
+    if (selected.every((item) => Math.abs(item.time - moment.time) >= minimumSpacing)) selected.push(moment);
   }
+
+  // Sparse analysis (or a low-motion clip) must not make the editor repeat the
+  // same opening segment. Fill missing slots with evenly distributed source times.
+  if (selected.length < count) {
+    for (let index = 0; index < count && selected.length < count; index += 1) {
+      const time = Math.min(sourceDuration, (index + 0.5) * sourceDuration / count);
+      if (selected.some((item) => Math.abs(item.time - time) < Math.min(minimumSpacing * 0.55, sourceDuration / count * 0.45))) continue;
+      selected.push({
+        time,
+        start: Math.max(0, time - shotLength / 2),
+        end: Math.min(sourceDuration, time + shotLength / 2),
+        score: 0,
+        motion: 0,
+        contrast: 0,
+        sharpness: 0.5
+      });
+    }
+  }
+
+  // If candidate density is very low, finish filling distinct positions rather than
+  // looping through the same modulo-based timestamps.
+  for (let index = 0; selected.length < count && index < count * 2; index += 1) {
+    const time = Math.min(sourceDuration, (index + 0.5) * sourceDuration / (count * 2));
+    if (selected.some((item) => Math.abs(item.time - time) < 0.05)) continue;
+    selected.push({
+      time,
+      start: Math.max(0, time - shotLength / 2),
+      end: Math.min(sourceDuration, time + shotLength / 2),
+      score: 0,
+      motion: 0,
+      contrast: 0,
+      sharpness: 0.5
+    });
+  }
+
   selected.sort((a, b) => a.time - b.time);
-  if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
   const segments: VideoSegment[] = [];
   let remaining = usableDuration;
-  for (const moment of selected) {
-    if (remaining <= 0.15) break;
-    const duration = Math.min(shotLength, remaining, sourceDuration);
-    const start = Math.max(0, Math.min(sourceDuration - duration, moment.time - duration / 2));
-    segments.push({ name: file.name, url, trimStart: start, trimEnd: start + duration });
-    remaining -= duration;
+  for (const moment of selected.slice(0, count)) {
+    if (remaining <= 0.001) break;
+    const segmentDuration = Math.min(shotLength, remaining, sourceDuration);
+    const start = Math.max(0, Math.min(sourceDuration - segmentDuration, moment.time - segmentDuration / 2));
+    segments.push({ name: file.name, url, trimStart: start, trimEnd: start + segmentDuration });
+    remaining -= segmentDuration;
   }
-  if (remaining > 0.15) {
-    const step = Math.max(shotLength, sourceDuration / Math.max(1, Math.ceil(sourceDuration / shotLength)));
-    for (let start = 0; remaining > 0.15; start += step) {
-      const duration = Math.min(shotLength, remaining, sourceDuration);
-      const safeStart = Math.max(0, Math.min(sourceDuration - duration, start % Math.max(0.1, sourceDuration - duration + 0.1)));
-      segments.push({ name: file.name, url, trimStart: safeStart, trimEnd: safeStart + duration });
-      remaining -= duration;
-      if (segments.length > 200) break;
+
+  // Correct floating-point remainder without replaying an arbitrary previous cut.
+  if (remaining > 0.001) {
+    const fallback = buildFallbackVideoCuts(sourceDuration, remaining, Math.min(shotLength, remaining));
+    for (const cut of fallback) {
+      if (remaining <= 0.001 || segments.length >= 200) break;
+      const segmentDuration = Math.min(remaining, cut.trimEnd - cut.trimStart);
+      segments.push({ name: file.name, url, trimStart: cut.trimStart, trimEnd: cut.trimStart + segmentDuration });
+      remaining -= segmentDuration;
     }
   }
   return segments;
