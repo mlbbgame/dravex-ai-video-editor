@@ -102,6 +102,15 @@ test("recognizes popular mobile and PC games including PUBG and MLBB", () => {
   }
 });
 
+test("recognizes travel and social-video labels alongside people and landscapes", () => {
+  for (const label of ["travel", "tourist", "sightseeing", "hiking", "road trip", "cityscape"]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("nature");
+  }
+  for (const label of ["vlog", "vlogger", "video blog", "influencer", "talking head", "podcast", "interview", "content creator"]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("people");
+  }
+});
+
 test("semantic profile inference stays unknown for weak or ambiguous predictions", () => {
   expect(inferSemanticProfile([
     { label: "sports car", score: 0.12 },
