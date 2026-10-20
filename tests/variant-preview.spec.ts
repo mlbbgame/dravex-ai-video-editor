@@ -11,6 +11,16 @@ test("aggressive and music previews use short cuts from across the source", () =
   expect(music.cuts[0].trimStart).not.toBe(aggressive.cuts[0].trimStart);
 });
 
+test("aggressive and music previews use clearly different source moments", () => {
+  const aggressive = planVariantPreviewCuts(60, 3.8, "velocity");
+  const music = planVariantPreviewCuts(60, 3.8, "pulse");
+  expect(aggressive.cuts.map((cut) => cut.trimStart)).not.toEqual(
+    music.cuts.map((cut) => cut.trimStart),
+  );
+  expect(aggressive.cuts[1].trimStart).toBeLessThan(music.cuts[1].trimStart);
+  expect(music.cuts[3].trimStart).toBeGreaterThan(aggressive.cuts[3].trimStart);
+});
+
 test("cinematic preview uses fewer, longer shots", () => {
   const cinematic = planVariantPreviewCuts(30, 3.8, "cinema");
   expect(cinematic.cuts).toHaveLength(2);
@@ -31,6 +41,12 @@ test("short sources never produce trims outside their duration", () => {
     expect(cut.trimStart).toBeGreaterThanOrEqual(0);
     expect(cut.trimEnd).toBeLessThanOrEqual(1.2 + 1e-9);
   }
+});
+
+test("invalid source lengths produce an empty plan", () => {
+  expect(planVariantPreviewCuts(0, 3.8, "pulse")).toEqual({ duration: 0, cuts: [] });
+  expect(planVariantPreviewCuts(Number.NaN, 3.8, "story")).toEqual({ duration: 0, cuts: [] });
+  expect(planVariantPreviewCuts(60, Number.NaN, "cinema")).toEqual({ duration: 0, cuts: [] });
 });
 
 test("photo previews sample across the full collection", () => {

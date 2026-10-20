@@ -8,11 +8,14 @@ const CUT_COUNTS: Record<string, number> = {
   story: 4,
 };
 
+// Keep preview rhythms intentionally distinct: velocity front-loads punchy
+// moments, pulse samples the track's later payoff, cinema holds wider beats,
+// and story follows a calmer beginning-to-end progression.
 const CUT_CENTERS: Record<string, number[]> = {
   auto: [0.16, 0.5, 0.84],
-  velocity: [0.1, 0.34, 0.62, 0.88],
+  velocity: [0.06, 0.24, 0.49, 0.74],
   cinema: [0.3, 0.72],
-  pulse: [0.07, 0.3, 0.56, 0.82],
+  pulse: [0.12, 0.4, 0.68, 0.94],
   story: [0.18, 0.43, 0.68, 0.88],
 };
 
