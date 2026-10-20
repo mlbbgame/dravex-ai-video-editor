@@ -268,6 +268,13 @@ export function buildSceneAwareCandidates(
     return Math.abs(sample.motion - valid[index - 1].motion);
   });
   const normalizedChanges = normalize(motionChanges);
+  const brightnessChanges = valid.map((sample, index) => index === 0 ? 0 :
+    Math.abs((sample.brightness ?? 0.5) - (valid[index - 1].brightness ?? 0.5)));
+  const contrastChanges = valid.map((sample, index) => index === 0 ? 0 :
+    Math.abs(sample.contrast - valid[index - 1].contrast));
+  const normalizedVisualChanges = normalize(valid.map((_, index) =>
+    brightnessChanges[index] * 0.55 + contrastChanges[index] * 0.45
+  ));
   const ranked = valid.map((sample, index) => {
     const leftQuality = normalizedQuality[index - 1] ?? -1;
     const rightQuality = normalizedQuality[index + 1] ?? -1;
@@ -280,11 +287,18 @@ export function buildSceneAwareCandidates(
       normalizedMotion[index] >= rightMotion;
     const eventSignal = Math.max(
       motionPeak ? normalizedMotion[index] : 0,
-      motionChanges[index] > 0.015 ? normalizedChanges[index] * 0.9 : 0
+      motionChanges[index] > 0.015 ? normalizedChanges[index] * 0.9 : 0,
+      normalizedVisualChanges[index] > 0.75 ? normalizedVisualChanges[index] * 0.85 : 0
     );
     const edgePenalty = Math.max(0, 0.35 - (sample.sharpness ?? 0.5)) * 0.3;
-    const score = normalizedQuality[index] * 0.68 + eventSignal * 0.32 - edgePenalty;
-    return { sample, index, score, eligible: qualityPeak || motionPeak || normalizedChanges[index] > 0.75 };
+    const score = normalizedQuality[index] * 0.62 + eventSignal * 0.38 - edgePenalty;
+    return {
+      sample,
+      index,
+      score,
+      // Mark visual scene changes as useful events too, even in low-motion shots.
+      eligible: qualityPeak || motionPeak || normalizedChanges[index] > 0.75 || normalizedVisualChanges[index] > 0.75
+    };
   }).sort((a, b) => b.score - a.score);
 
   const bucketCount = Math.min(80, Math.max(1, Math.ceil(duration / Math.max(3, sampleInterval * 2))));
