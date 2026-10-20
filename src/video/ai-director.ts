@@ -548,13 +548,16 @@ export async function analyzeWithAIDirector(
           Math.max(0.015, referenceMotion)
         )
       : [];
+    const trackedTemporalCues = isModelSample
+      ? inferTrackedObjectCues(previousObjects, objects)
+      : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
-      ...(isModelSample ? inferTrackedObjectCues(previousObjects, objects) : []),
+      ...trackedTemporalCues,
       ...temporalCues
     ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
     const directorScore = Math.min(1, scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty)
-      + temporalEventBonus(temporalCues, selectedStyle));
+      + temporalEventBonus([...temporalCues, ...trackedTemporalCues], selectedStyle));
     return {
       ...candidate,
       score: directorScore,
