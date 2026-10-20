@@ -16,6 +16,12 @@ export type VideoSegment = {
   trimEnd: number;
 };
 
+/** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
+export function getSafeImageDuration(duration?: number): number {
+  if (typeof duration !== "number" || !Number.isFinite(duration)) return 3;
+  return Math.max(0.25, Math.min(duration, 30));
+}
+
 export type ImageSegment = {
   kind: "image";
   name: string;
@@ -488,7 +494,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
-      return { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration) };
     }
     const videoSegment = segment as VideoSegment;
     let pendingVideo = videoCache.get(videoSegment.url);
