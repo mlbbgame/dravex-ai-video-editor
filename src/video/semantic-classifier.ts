@@ -47,7 +47,7 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask|wedding|performer|musician|guitarist|drummer|singer|runner|cyclist|skier|snowboarder|weightlifter)\b/i
   ],
   sports: [
-    /\\b(soccer ball|football|basketball|basketball hoop|tennis ball|tennis racket|baseball|baseball bat|volleyball|golf ball|golf club|hockey puck|ice hockey|cricket ball|badminton|ping-pong|table tennis|skateboard|surfboard|windsurfing|parachute|rock climbing|climbing wall|gymnastics|boxing glove|boxing|wrestling|martial arts|racing bike|track and field|skiing|snowboarding|sled|rowing boat|kayak|canoe|paddle|sports uniform|stadium|racket)\\b/i
+    /\b(soccer ball|football|basketball|basketball hoop|tennis ball|tennis racket|baseball|baseball bat|volleyball|golf ball|golf club|hockey puck|ice hockey|cricket ball|badminton|ping-pong|table tennis|skateboard|skateboarding|surfboard|surfing|windsurfing|parachute|rock climbing|climbing wall|gymnastics|boxing glove|boxing|wrestling|martial arts|racing bike|track and field|skiing|snowboarding|sled|rowing boat|kayak|canoe|paddle|sports uniform|stadium|racket)\b/i
   ],
   wildlife: [
     /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|hare|squirrel|owl|eagle|butterfly|lizard|frog|toad|tadpole|whale|dolphin|shark|seal|otter|raccoon|panda|giraffe|zebra|kangaroo|koala|parrot|macaw|flamingo|peacock|wood rabbit|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua|kitten|puppy|sea lion|starfish|jellyfish|crab|lobster|swan|swanling|woodpecker|hummingbird|wild boar|hedgehog|ferret|guinea pig|hamster)\b/i
