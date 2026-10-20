@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   getCameraMotionProfile,
   getOutputDimensions,
+  getSafeImageDuration,
   getSpeedRampRate,
   shouldContainSource
 } from "../src/video/video-sequence-render";
@@ -33,6 +34,16 @@ test("preview export dimensions stay small enough for mobile preview", () => {
   expect(getOutputDimensions("16:9", "preview")).toEqual({ width: 480, height: 270 });
   expect(getOutputDimensions("1:1", "preview")).toEqual({ width: 360, height: 360 });
   expect(getOutputDimensions("4:5", "preview")).toEqual({ width: 360, height: 450 });
+});
+
+test("photo durations stay finite and within safe render bounds", () => {
+  expect(getSafeImageDuration()).toBe(3);
+  expect(getSafeImageDuration(Number.NaN)).toBe(3);
+  expect(getSafeImageDuration(Number.POSITIVE_INFINITY)).toBe(3);
+  expect(getSafeImageDuration(-10)).toBe(0.25);
+  expect(getSafeImageDuration(0)).toBe(0.25);
+  expect(getSafeImageDuration(12)).toBe(12);
+  expect(getSafeImageDuration(300)).toBe(30);
 });
 
 test("speed ramp rates remain finite and bounded for every progress input", () => {
