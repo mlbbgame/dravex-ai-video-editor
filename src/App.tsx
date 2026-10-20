@@ -468,8 +468,27 @@ export default function App() {
     setPreviewStatus(`Готовим ${pendingVariants.length} реальных вариантов по очереди — это может занять немного времени на телефоне…`);
     setError("");
     try {
-      const sourceDurationForPreviews = isImageMode ? 0 : await getVideoDuration(videoUrl);
-      const previewOffsets: Record<string, number> = { aggressive: 0.68, cinematic: 0.28, "music-sync": 0.48, atmosphere: 0.82, "4k-quality": 0.08 };
+      let sourceDurationForPreviews = 0;
+      let previewAnalysis: Awaited<ReturnType<typeof analyzeVideoForHighlights>> | null = null;
+      if (!isImageMode) {
+        sourceDurationForPreviews = await getVideoDuration(videoUrl);
+        try {
+          // Analyze once and reuse the same candidates for all styles. Each video
+          // preview then selects its own cuts instead of showing a single arbitrary
+          // continuous excerpt from a different part of the source.
+          previewAnalysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
+            if (generation === previewGeneration.current) {
+              setPreviewStatus(progress.phase === "semantic"
+                ? "Распознаём содержание для вариантов монтажа…"
+                : "Анализируем видео перед созданием вариантов…");
+            }
+          });
+          sourceDurationForPreviews = previewAnalysis.duration;
+        } catch {
+          // Keep previews available for formats where frame analysis fails.
+          previewAnalysis = null;
+        }
+      }
       for (let index = 0; index < pendingVariants.length; index += 1) {
         if (generation !== previewGeneration.current) return;
         const variant = pendingVariants[index];
@@ -484,11 +503,20 @@ export default function App() {
               url: mediaUrls[segmentIndex],
               duration: previewDuration / Math.min(mediaFiles.length, 6)
             }))
-          : (() => {
-              const maxStart = Math.max(0, sourceDurationForPreviews - previewDuration);
-              const trimStart = maxStart * (previewOffsets[variant.id] ?? 0);
-              return [{ name: videoFile!.name, url: videoUrl, trimStart, trimEnd: Math.min(sourceDurationForPreviews, trimStart + previewDuration) }];
-            })();
+          : previewAnalysis?.candidates.length
+            ? makeSegments(
+                previewAnalysis.candidates,
+                sourceDurationForPreviews,
+                previewDuration,
+                previewStyle,
+                videoFile!,
+                videoUrl,
+                previewAnalysis.semantic?.profile ?? "unknown"
+              )
+            : (() => {
+                const fallbackCuts = buildFallbackVideoCuts(sourceDurationForPreviews, previewDuration, previewStyle === "velocity" ? 1.05 : 2.2);
+                return fallbackCuts.map((cut) => ({ name: videoFile!.name, url: videoUrl, trimStart: cut.trimStart, trimEnd: cut.trimEnd }));
+              })();
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
