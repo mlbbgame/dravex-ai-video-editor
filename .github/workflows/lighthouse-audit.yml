@@ -90,6 +90,7 @@ jobs:
               bodyText: (await page.locator('body').innerText().catch(() => '')).slice(0, 2000),
               rootChildren: await page.locator('#root').evaluate((root) => root.childElementCount).catch(() => -1),
               errors,
+              failedResources,
             };
             fs.writeFileSync('lighthouse-reports/preflight.json', JSON.stringify(details, null, 2));
             console.log(JSON.stringify(details, null, 2));
