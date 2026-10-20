@@ -71,3 +71,25 @@ test("photo previews sample across the full collection", () => {
   expect(selectVariantPreviewIndices(0, "cinema")).toEqual([]);
   expect(selectVariantPreviewIndices(1, "cinema")).toEqual([0]);
 });
+
+test("each edit variant samples a different photo rhythm while retaining unique, spread-out frames", () => {
+  const variants = ["velocity", "cinema", "pulse", "story"];
+  const samples = variants.map((variant) => selectVariantPreviewIndices(12, variant));
+  for (const indices of samples) {
+    expect(new Set(indices).size).toBe(indices.length);
+    expect(indices[0]).toBe(0);
+    expect(indices[indices.length - 1]).toBe(11);
+  }
+  expect(new Set(samples.map((indices) => indices.join(","))).size).toBe(4);
+  expect(selectVariantPreviewIndices(8, "pulse")).toEqual([0, 1, 6, 7]);
+});
+
+test("small photo collections never repeat a selected index", () => {
+  for (const total of [1, 2, 3, 4, 5]) {
+    for (const variant of ["velocity", "cinema", "pulse", "story"]) {
+      const indices = selectVariantPreviewIndices(total, variant);
+      expect(new Set(indices).size).toBe(indices.length);
+      expect(indices.every((index) => index >= 0 && index < total)).toBe(true);
+    }
+  }
+});
