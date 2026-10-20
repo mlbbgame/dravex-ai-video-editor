@@ -59,7 +59,7 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(anime|manga|comic book|cartoon|animation|animated cartoon|fictional character)\b/i
   ],
   gaming: [
-    /\b(video game|computer game|arcade game|joystick|game controller|gaming console)\b/i
+    /\b(video game|computer game|arcade game|mobile game|gameplay|game screen|game screenshot|gaming|gamer|joystick|game controller|gaming console|battle royale|first-person shooter|third-person shooter|moba|multiplayer online battle arena|esports|e-sports|in-game hud|game interface|game minimap|pubg|pubg mobile|playerunknown|mobile legends|mobile legends bang bang|mlbb|free fire|fortnite|call of duty|cod mobile|minecraft|roblox|genshin impact|valorant|league of legends|dota 2|apex legends|counter-strike|cs2|overwatch|brawl stars|clash royale|clash of clans|standoff 2|warzone|rocket league|world of tanks|world of warcraft|pokemon unite|wild rift)\b/i
   ]
 };
 
