@@ -82,7 +82,7 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
   const margin = best[1] - (second?.[1] ?? 0);
   // Ambiguous scenes should not force an inappropriate edit profile.
   if (margin < 0.12 && best[1] < 0.8) return { profile: "unknown", confidence: 0 };
-  return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, labels.length)) };
+  return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(labels.length / 5))) };
 }
 
 async function loadClassifier(): Promise<ImageClassifier> {
