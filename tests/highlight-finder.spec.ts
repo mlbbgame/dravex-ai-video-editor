@@ -150,3 +150,35 @@ test("scene-aware candidates detect visual scene cuts even when motion stays low
   expect(candidates.some((candidate) => candidate.time >= 18 && candidate.time <= 22)).toBe(true);
   expect(candidates.every((candidate) => candidate.start >= 0 && candidate.end <= 40)).toBe(true);
 });
+
+
+test("variant selection keeps timeline coverage when top bucket picks violate spacing", () => {
+  const candidates: HighlightMoment[] = Array.from({ length: 72 }, (_, index) => {
+    const time = index + 0.5;
+    // Peaks near bucket boundaries can be too close to a previous selection.
+    // Keep lower-scored alternatives available throughout every source region.
+    const boundaryPeak = index % 8 === 0;
+    return {
+      time,
+      start: Math.max(0, time - 0.5),
+      end: Math.min(72, time + 0.5),
+      score: boundaryPeak ? 1 : 0.55 + ((index * 7) % 10) / 100,
+      motion: boundaryPeak ? 1 : ((index * 3) % 10) / 10,
+      contrast: ((index * 5) % 10) / 10,
+      sharpness: 0.4 + ((index * 11) % 6) / 10,
+      saturation: 0.5,
+      brightness: 0.5,
+      exposure: 1
+    };
+  });
+
+  const variants = buildHighlightVariants(candidates, 72);
+  for (const variant of variants) {
+    expect(variant.moments.length).toBeGreaterThan(3);
+    const times = variant.moments.map((moment) => moment.time);
+    expect(times.some((time) => time < 24)).toBe(true);
+    expect(times.some((time) => time >= 24 && time < 48)).toBe(true);
+    expect(times.some((time) => time >= 48)).toBe(true);
+    expect(new Set(times).size).toBe(times.length);
+  }
+});
