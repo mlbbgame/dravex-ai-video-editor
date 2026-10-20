@@ -31,6 +31,33 @@ test("recognizes common classifier synonyms for landscapes and prepared food", (
   expect(inferSemanticProfile([{ label: "dolphin", score: 0.88 }]).profile).toBe("wildlife");
 });
 
+test("recognizes more varied real-world subjects from common classifier labels", () => {
+  expect(inferSemanticProfile([
+    { label: "motor scooter", score: 0.86 },
+    { label: "sports car", score: 0.7 },
+  ]).profile).toBe("automotive");
+
+  expect(inferSemanticProfile([
+    { label: "frying pan", score: 0.82 },
+    { label: "dough", score: 0.73 },
+  ]).profile).toBe("food");
+
+  expect(inferSemanticProfile([
+    { label: "jellyfish", score: 0.83 },
+    { label: "sea lion", score: 0.72 },
+  ]).profile).toBe("wildlife");
+
+  expect(inferSemanticProfile([
+    { label: "aurora", score: 0.84 },
+    { label: "glacier", score: 0.75 },
+  ]).profile).toBe("nature");
+
+  expect(inferSemanticProfile([
+    { label: "electric guitar", score: 0.81 },
+    { label: "microphone", score: 0.72 },
+  ]).profile).toBe("product-diy");
+});
+
 test("semantic profile inference stays unknown for weak or ambiguous predictions", () => {
   expect(inferSemanticProfile([
     { label: "sports car", score: 0.12 },
