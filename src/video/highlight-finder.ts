@@ -67,6 +67,14 @@ export type HighlightProgress = {
  * Longer short-form clips should sample real frames so montage selection can respond
  * to motion and contrast instead of assigning synthetic, nearly identical scores.
  */
+/** Choose a bounded sample count that gives long sources better temporal coverage without unbounded mobile work. */
+export function getHighlightSampleLimit(duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 12;
+  if (duration >= 120) return 24;
+  if (duration >= 30) return 18;
+  return 60;
+}
+
 export function shouldUseQuickVideoCandidates(duration: number): boolean {
   return Number.isFinite(duration) && duration >= 0.25 && duration <= 3;
 }
@@ -341,7 +349,7 @@ export async function analyzeVideoForHighlights(
     // Long sources are sampled across the entire timeline with a strict mobile budget.
     // A dozen representative frames are preferable to leaving the editor blocked for minutes.
     const isLongSource = duration >= 30;
-    const sampleLimit = isLongSource ? 12 : 60;
+    const sampleLimit = getHighlightSampleLimit(duration);
     const interval = Math.max(2, duration / sampleLimit);
     const total = Math.max(2, Math.min(sampleLimit, Math.ceil(duration / interval)));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; brightness: number; detail: number }> = [];
