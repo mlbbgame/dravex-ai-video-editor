@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
+import { getCameraMotionProfile, getOutputDimensions, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
@@ -148,6 +148,23 @@ test("mobile layout does not create horizontal page overflow", async ({ page }) 
     page: document.documentElement.scrollWidth,
   }));
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
+});
+
+test("output quality presets use the expected dimensions for every supported aspect ratio", () => {
+  expect(getOutputDimensions("9:16", "720p")).toEqual({ width: 720, height: 1280 });
+  expect(getOutputDimensions("16:9", "720p")).toEqual({ width: 1280, height: 720 });
+  expect(getOutputDimensions("1:1", "720p")).toEqual({ width: 720, height: 720 });
+  expect(getOutputDimensions("4:5", "720p")).toEqual({ width: 720, height: 900 });
+
+  expect(getOutputDimensions("9:16", "1080p")).toEqual({ width: 1080, height: 1920 });
+  expect(getOutputDimensions("16:9", "1080p")).toEqual({ width: 1920, height: 1080 });
+  expect(getOutputDimensions("1:1", "1080p")).toEqual({ width: 1080, height: 1080 });
+  expect(getOutputDimensions("4:5", "1080p")).toEqual({ width: 1080, height: 1350 });
+
+  expect(getOutputDimensions("9:16", "4K")).toEqual({ width: 2160, height: 3840 });
+  expect(getOutputDimensions("16:9", "4K")).toEqual({ width: 3840, height: 2160 });
+  expect(getOutputDimensions("1:1", "4K")).toEqual({ width: 2160, height: 2160 });
+  expect(getOutputDimensions("4:5", "4K")).toEqual({ width: 2160, height: 2700 });
 });
 
 test("source framing fills matching aspect ratios and preserves mismatched sources", () => {
