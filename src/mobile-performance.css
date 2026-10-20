@@ -45,3 +45,16 @@
   outline: 2px solid currentColor;
   outline-offset: 3px;
 }
+
+
+/* Give the active edit preview more of the phone viewport without forcing
+   the rest of the editor below the fold on shorter devices. */
+.dravex-preview {
+  max-height: min(56dvh, 520px);
+}
+
+@media (max-width: 420px) {
+  .dravex-preview {
+    max-height: min(58dvh, 520px);
+  }
+}
