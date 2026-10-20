@@ -229,6 +229,107 @@ export function scoreVisualSamples(
 }
 
 /**
+ * Select moments using both visual quality peaks and changes in motion.
+ * Motion changes are only a visual event proxy, not semantic action recognition.
+ * Candidates are spread over the source so one busy section cannot dominate.
+ */
+export function buildSceneAwareCandidates(
+  samples: HighlightSample[],
+  duration: number,
+  sampleInterval = 2
+): HighlightMoment[] {
+  if (!Number.isFinite(duration) || duration <= 0 || samples.length === 0) return [];
+  const valid = samples.filter((sample) =>
+    Number.isFinite(sample.time) &&
+    sample.time >= 0 &&
+    sample.time <= duration &&
+    Number.isFinite(sample.score) &&
+    Number.isFinite(sample.motion)
+  ).sort((a, b) => a.time - b.time);
+  if (!valid.length) return [];
+
+  const normalizedMotion = normalize(valid.map((sample) => sample.motion));
+  const normalizedQuality = normalize(valid.map((sample) => sample.score));
+  const motionChanges = valid.map((sample, index) => {
+    if (index === 0) return 0;
+    return Math.abs(sample.motion - valid[index - 1].motion);
+  });
+  const normalizedChanges = normalize(motionChanges);
+  const ranked = valid.map((sample, index) => {
+    const leftQuality = normalizedQuality[index - 1] ?? -1;
+    const rightQuality = normalizedQuality[index + 1] ?? -1;
+    const qualityPeak = normalizedQuality[index] >= leftQuality && normalizedQuality[index] >= rightQuality;
+    const leftMotion = normalizedMotion[index - 1] ?? -1;
+    const rightMotion = normalizedMotion[index + 1] ?? -1;
+    const motionPeak = normalizedMotion[index] >= leftMotion && normalizedMotion[index] >= rightMotion;
+    const eventSignal = Math.max(
+      motionPeak ? normalizedMotion[index] : 0,
+      normalizedChanges[index] * 0.9
+    );
+    const edgePenalty = Math.max(0, 0.35 - (sample.sharpness ?? 0.5)) * 0.3;
+    const score = normalizedQuality[index] * 0.68 + eventSignal * 0.32 - edgePenalty;
+    return { sample, index, score, eligible: qualityPeak || motionPeak || normalizedChanges[index] > 0.75 };
+  }).sort((a, b) => b.score - a.score);
+
+  const bucketCount = Math.min(80, Math.max(1, Math.ceil(duration / Math.max(3, sampleInterval * 2))));
+  const bucketWidth = duration / bucketCount;
+  const minimumGap = Math.max(1.25, Math.min(5, sampleInterval * 1.4));
+  const desiredCount = Math.min(100, Math.max(1, Math.ceil(duration / Math.max(3, sampleInterval * 1.5))));
+  const selected: typeof ranked = [];
+
+  // Prefer one high-value candidate from each part of the timeline.
+  for (let bucket = 0; bucket < bucketCount && selected.length < desiredCount; bucket += 1) {
+    const from = bucket * bucketWidth;
+    const to = (bucket + 1) * bucketWidth;
+    const best = ranked.find((item) =>
+      item.eligible &&
+      item.sample.time >= from &&
+      (bucket === bucketCount - 1 ? item.sample.time <= to : item.sample.time < to) &&
+      selected.every((chosen) => Math.abs(chosen.sample.time - item.sample.time) >= minimumGap)
+    );
+    if (best) selected.push(best);
+  }
+
+  // Add strong local moments if a timeline bucket was quiet.
+  for (const item of ranked) {
+    if (selected.length >= desiredCount) break;
+    if (selected.every((chosen) => Math.abs(chosen.sample.time - item.sample.time) >= minimumGap)) selected.push(item);
+  }
+
+  // Very static videos still need useful coverage; evenly spaced samples are safer
+  // than repeating a single detected moment or fabricating a semantic label.
+  for (let index = 0; selected.length < desiredCount && index < valid.length; index += 1) {
+    const targetTime = duration * (index + 0.5) / Math.min(desiredCount, valid.length);
+    const nearest = valid.reduce((best, sample) =>
+      Math.abs(sample.time - targetTime) < Math.abs(best.time - targetTime) ? sample : best
+    );
+    if (selected.some((chosen) => Math.abs(chosen.sample.time - nearest.time) < 0.05)) continue;
+    selected.push({
+      sample: nearest,
+      index: valid.indexOf(nearest),
+      score: nearest.score * 0.5,
+      eligible: false
+    });
+  }
+
+  const halfWindow = Math.max(0.35, Math.min(2.4, sampleInterval * 0.8));
+  return selected
+    .sort((a, b) => a.sample.time - b.sample.time)
+    .map(({ sample, score }) => ({
+      time: sample.time,
+      start: Math.max(0, sample.time - halfWindow),
+      end: Math.min(duration, Math.max(sample.time + 0.05, sample.time + halfWindow)),
+      score: Math.max(0, Math.min(1, score)),
+      motion: sample.motion,
+      contrast: sample.contrast,
+      sharpness: sample.sharpness,
+      saturation: sample.saturation,
+      brightness: sample.brightness,
+      exposure: sample.exposure
+    }));
+}
+
+/**
  * A lightweight browser-only visual scan. It estimates motion, contrast, colour,
  * edge detail, and exposure. It does not identify objects or understand actions.
  */
