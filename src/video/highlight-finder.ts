@@ -465,7 +465,10 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
     if (selected.length >= count) break;
     if (!selected.some((existing) => existing.time === item.time)) selected.push(item);
   }
-  return selected.sort((a, b) => a.time - b.time).slice(0, count);
+  // The bucket pass already caps selection at `count`. Slicing after sorting
+  // by timeline would silently discard later selected moments and bias edits
+  // toward the beginning of the source.
+  return selected.sort((a, b) => a.time - b.time);
 }
 
 export function buildHighlightVariants(candidates: HighlightMoment[], sourceDuration: number): HighlightVariant[] {
