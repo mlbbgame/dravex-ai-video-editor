@@ -132,6 +132,9 @@ test("montage variants never reuse overlapping source windows when sample center
   ];
   const variants = buildHighlightVariants(overlapping, 20);
   for (const variant of variants) {
+    const selectedTimes = variant.moments.map((moment) => moment.time);
+    expect(selectedTimes).not.toContain(2);
+    expect(selectedTimes).not.toContain(4);
     for (let index = 1; index < variant.moments.length; index += 1) {
       expect(variant.moments[index].start).toBeGreaterThanOrEqual(variant.moments[index - 1].end);
     }
