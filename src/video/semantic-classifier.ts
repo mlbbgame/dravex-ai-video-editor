@@ -44,7 +44,7 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask)\b/i
   ],
   wildlife: [
-    /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|squirrel|owl|eagle|butterfly|lizard)\b/i
+    /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|squirrel|owl|eagle|butterfly|lizard|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua)\b/i
   ],
   "product-diy": [
     /\b(tool|hammer|screwdriver|power drill|computer|laptop|phone|camera|device|chain saw|washer|remote control|screw|wrench|keyboard|monitor|vacuum|toaster|gadget)\b/i
