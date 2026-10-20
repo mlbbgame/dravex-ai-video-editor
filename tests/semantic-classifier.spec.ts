@@ -176,3 +176,25 @@ test("recognizes anime and gaming labels as distinct broad content profiles", ()
     { label: "game controller", score: 0.78 },
   ]).profile).toBe("gaming");
 });
+
+test("semantic profile inference remains conservative for low-confidence sports and gaming labels", () => {
+  expect(inferSemanticProfile([
+    { label: "skateboarding", score: 0.14 },
+    { label: "PUBG Mobile", score: 0.12 },
+  ]).profile).toBe("unknown");
+
+  expect(inferSemanticProfile([
+    { label: "skateboarding", score: 0.88 },
+    { label: "PUBG Mobile", score: 0.86 },
+  ]).profile).toBe("unknown");
+});
+
+test("recognizes additional outdoor activities without misclassifying cooking or travel", () => {
+  for (const label of ["rock climbing", "boxing", "skiing", "rowing", "soccer"]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("sports");
+  }
+
+  expect(inferSemanticProfile([{ label: "camping", score: 0.9 }]).profile).toBe("nature");
+  expect(inferSemanticProfile([{ label: "food preparation", score: 0.9 }]).profile).toBe("food");
+});
+
