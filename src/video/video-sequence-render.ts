@@ -67,7 +67,7 @@ export function getSpeedRampRate(style: SequenceRenderStyle, progress: number): 
     const eased = linear * linear * (3 - 2 * linear);
     return (left.rate + (right.rate - left.rate) * eased) / averageRate;
   }
-  return 1 / 1.1255;
+  return 1 / averageRate;
 }
 
 export type CameraMotionProfile = { zoom: number; pan: number };
