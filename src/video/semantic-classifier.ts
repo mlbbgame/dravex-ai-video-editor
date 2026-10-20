@@ -5,6 +5,8 @@ export type SemanticProfile =
   | "people"
   | "wildlife"
   | "product-diy"
+  | "anime"
+  | "gaming"
   | "unknown";
 
 export type SemanticFrameInput = {
@@ -48,6 +50,12 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
   ],
   "product-diy": [
     /\b(tool|hammer|screwdriver|power drill|computer|laptop|phone|camera|device|chain saw|washer|remote control|screw|wrench|keyboard|monitor|vacuum|toaster|gadget)\b/i
+  ],
+  anime: [
+    /\b(anime|manga|comic book|cartoon|animation|animated cartoon|fictional character)\b/i
+  ],
+  gaming: [
+    /\b(video game|computer game|arcade game|joystick|game controller|gaming console)\b/i
   ]
 };
 
@@ -62,7 +70,9 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
     food: 0,
     people: 0,
     wildlife: 0,
-    "product-diy": 0
+    "product-diy": 0,
+    anime: 0,
+    gaming: 0
   };
 
   for (const item of labels) {

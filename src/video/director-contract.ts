@@ -5,7 +5,7 @@
  * upload media, or render video. Keep it independent of any model vendor.
  */
 
-export type DirectorProfileId = "aggressive-car" | "cinematic-travel" | "nature-wildlife" | "food-cooking" | "people-everyday" | "product-diy";
+export type DirectorProfileId = "aggressive-car" | "cinematic-travel" | "nature-wildlife" | "food-cooking" | "people-everyday" | "product-diy" | "anime-edit" | "gaming-highlights";
 export type DirectorVariantId = "hype" | "cinematic" | "emotion" | "signature";
 export type DirectorTransition = "cut" | "short-impact" | "smooth" | "match-motion";
 export type DirectorEffect = "speed-ramp" | "motion-blur" | "flash" | "camera-motion" | "color-grade";
@@ -116,6 +116,26 @@ export const directorProfiles: Record<DirectorProfileId, DirectorProfile> = {
     eventPriorities: ["finished-result-teaser", "overview-shot", "tools-materials", "detail-close-up", "step-start", "step-completion", "before-after", "final-result"],
     pacing: "measured",
   },
+  "anime-edit": {
+    id: "anime-edit",
+    title: "Anime & Animation Edit",
+    summary: "Emphasize expressive action, scene changes, character reveals, and visual impacts without forcing flashes onto every cut.",
+    preferredMusic: ["phonk", "bass", "melodic-electronic", "orchestral-impact"],
+    preferredTransitions: ["cut", "short-impact", "match-motion"],
+    preferredEffects: ["speed-ramp", "motion-blur", "color-grade"],
+    eventPriorities: ["anime-action", "character-reveal", "impact-frame", "scene-change", "expression-close-up", "power-up", "motion-peak"],
+    pacing: "aggressive",
+  },
+  "gaming-highlights": {
+    id: "gaming-highlights",
+    title: "Gaming Highlights",
+    summary: "Prioritize meaningful gameplay events while preserving readable HUD elements, minimap, and kill-feed context.",
+    preferredMusic: ["phonk", "bass", "aggressive-electronic", "cinematic-impact"],
+    preferredTransitions: ["cut", "short-impact", "match-motion"],
+    preferredEffects: ["speed-ramp", "motion-blur", "color-grade"],
+    eventPriorities: ["team-fight", "objective-secured", "elimination", "clutch-play", "skill-combo", "victory", "camera-change"],
+    pacing: "aggressive",
+  },
 };
 
 /**
@@ -133,6 +153,23 @@ export function suggestDirectorProfile(eventLabels: readonly string[]): Director
   if (!candidates.length || candidates[0].score === 0) return "cinematic-travel";
   if (candidates.length > 1 && candidates[0].score === candidates[1].score) return "cinematic-travel";
   return candidates[0].id;
+}
+
+/** Map broad on-device frame classifications to a safe editing profile. */
+export function directorProfileForSemanticProfile(
+  profile: "automotive" | "nature" | "food" | "people" | "wildlife" | "product-diy" | "anime" | "gaming" | "unknown",
+): DirectorProfileId {
+  switch (profile) {
+    case "automotive": return "aggressive-car";
+    case "nature": return "nature-wildlife";
+    case "food": return "food-cooking";
+    case "people": return "people-everyday";
+    case "wildlife": return "nature-wildlife";
+    case "product-diy": return "product-diy";
+    case "anime": return "anime-edit";
+    case "gaming": return "gaming-highlights";
+    default: return "cinematic-travel";
+  }
 }
 
 export type DirectorSceneCandidate = {

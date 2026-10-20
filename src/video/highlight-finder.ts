@@ -482,22 +482,34 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   };
   const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
   const selected: HighlightMoment[] = [];
+  // Distinct timestamps can still refer to the same source footage when candidate
+  // windows are wide. Reject both near-duplicate centres and overlapping source ranges.
+  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment) =>
+    Math.abs(existing.time - candidate.time) < spacing
+    || (candidate.start < existing.end + 0.08 && candidate.end > existing.start - 0.08);
+  const canAdd = (candidate: HighlightMoment) => selected.every((item) => !conflicts(candidate, item));
   // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
   // This prevents long sources from collapsing into one action-heavy stretch.
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((item) => item.time >= from && (bucket === count - 1 ? item.time <= to : item.time < to));
-    if (best && selected.every((item) => Math.abs(item.time - best.time) >= spacing)) selected.push(best);
+    const best = ranked.find((item) => item.time >= from
+      && (bucket === count - 1 ? item.time <= to : item.time < to)
+      && canAdd(item));
+    if (best) selected.push(best);
   }
   for (const item of ranked) {
     if (selected.length >= count) break;
-    if (selected.every((existing) => Math.abs(existing.time - item.time) >= spacing)) selected.push(item);
+    if (canAdd(item)) selected.push(item);
   }
-  // If spacing is too strict for a short source, fill with the best remaining distinct candidates.
+  // If spacing is too strict for a short source, only relax timestamp spacing;
+  // never reuse overlapping footage, since that creates visibly repeated shots.
   for (const item of ranked) {
     if (selected.length >= count) break;
-    if (!selected.some((existing) => existing.time === item.time)) selected.push(item);
+    if (selected.every((existing) =>
+      existing.time !== item.time
+      && !(item.start < existing.end + 0.08 && item.end > existing.start - 0.08)
+    )) selected.push(item);
   }
   return selected.sort((a, b) => a.time - b.time).slice(0, count);
 }

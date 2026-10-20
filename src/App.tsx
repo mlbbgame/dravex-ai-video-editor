@@ -52,6 +52,9 @@ function styleForSemanticProfile(profile: SemanticProfile | undefined, fallback:
     case "wildlife": return "cinematic";
     case "people": return "story";
     case "product-diy": return "cinematic";
+    case "anime": return "anime";
+    // Gameplay benefits from energetic pacing, while crop safety is handled separately.
+    case "gaming": return "velocity";
     default: return fallback;
   }
 }

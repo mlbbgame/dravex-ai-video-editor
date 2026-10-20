@@ -17,3 +17,31 @@
   .dravex-more-content { gap: 14px; }
   .dravex-duration select, .dravex-music button { font-size: 12px; }
 }
+
+
+/* Respect OS-level reduced-motion preferences, including desktop touch hybrids. */
+@media (prefers-reduced-motion: reduce) {
+  .dravex-variant-preview > img,
+  .dravex-variant-preview > video,
+  .dravex-variant,
+  .dravex-variant-preview > img *,
+  .dravex-variant-preview > video * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Make keyboard focus visible without changing the layout or touch target size. */
+.dravex-file-row button:focus-visible,
+.dravex-duration select:focus-visible,
+.dravex-music button:focus-visible,
+.dravex-project-actions button:focus-visible,
+.dravex-image-tools button:focus-visible,
+.dravex-track-card > button:focus-visible,
+.dravex-music-categories button:focus-visible,
+.dravex-tabs button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}

@@ -64,3 +64,16 @@ test("automatic edit profile requires agreement across representative frames", (
     { profile: "nature", confidence: 0.8 }
   ])).toEqual({ profile: "unknown", confidence: 0 });
 });
+
+
+test("recognizes anime and gaming labels as distinct broad content profiles", () => {
+  expect(inferSemanticProfile([
+    { label: "comic book", score: 0.92 },
+    { label: "animated cartoon", score: 0.81 },
+  ]).profile).toBe("anime");
+
+  expect(inferSemanticProfile([
+    { label: "video game", score: 0.91 },
+    { label: "game controller", score: 0.78 },
+  ]).profile).toBe("gaming");
+});
