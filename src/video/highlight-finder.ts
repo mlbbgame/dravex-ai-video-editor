@@ -75,6 +75,17 @@ export function getHighlightSampleLimit(duration: number): number {
   return 60;
 }
 
+/** Place samples across the full timeline, including the final moments of long sources. */
+export function getHighlightSampleTime(index: number, total: number, duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  if (!Number.isFinite(total) || total <= 1) return Math.max(0, Math.min(duration, duration / 2));
+  const count = Math.max(2, Math.floor(total));
+  const safeIndex = Number.isFinite(index) ? Math.max(0, Math.min(count - 1, Math.floor(index))) : 0;
+  const start = Math.min(0.12, duration / 2);
+  const end = Math.max(start, duration - 0.08);
+  return start + (end - start) * safeIndex / (count - 1);
+}
+
 export function shouldUseQuickVideoCandidates(duration: number): boolean {
   return Number.isFinite(duration) && duration >= 0.25 && duration <= 3;
 }
@@ -369,7 +380,7 @@ export async function analyzeVideoForHighlights(
       if (performance.now() - analysisStartedAt > analysisBudgetMs) {
         throw new Error("Анализ длинного видео занял слишком много времени — используем равномерный монтаж.");
       }
-      const time = Math.min(duration - 0.08, index * interval + Math.min(0.12, interval * 0.08));
+      const time = getHighlightSampleTime(index, total, duration);
       await seekTo(video, time, isLongSource ? 2200 : 12000);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getHighlightSampleLimit, shouldUseQuickVideoCandidates } from "../src/video/highlight-finder";
+import { getHighlightSampleLimit, getHighlightSampleTime, shouldUseQuickVideoCandidates } from "../src/video/highlight-finder";
 
 test("uses deterministic cuts only for very short clips", () => {
   expect(shouldUseQuickVideoCandidates(0.25)).toBe(true);
@@ -32,4 +32,19 @@ test("uses a safe fallback sample limit for invalid durations", () => {
   expect(getHighlightSampleLimit(Number.NaN)).toBe(12);
   expect(getHighlightSampleLimit(Number.POSITIVE_INFINITY)).toBe(12);
   expect(getHighlightSampleLimit(0)).toBe(12);
+});
+
+test("spreads long-video samples through the final seconds of the source", () => {
+  const first = getHighlightSampleTime(0, 24, 300);
+  const last = getHighlightSampleTime(23, 24, 300);
+  expect(first).toBeCloseTo(0.12, 2);
+  expect(last).toBeCloseTo(299.92, 2);
+  expect(last - first).toBeGreaterThan(299);
+});
+
+test("keeps sample timestamps finite and within the source duration", () => {
+  expect(getHighlightSampleTime(-5, 4, 12)).toBeCloseTo(0.12, 2);
+  expect(getHighlightSampleTime(99, 4, 12)).toBeCloseTo(11.92, 2);
+  expect(getHighlightSampleTime(0, 0, 12)).toBe(6);
+  expect(getHighlightSampleTime(0, 4, Number.NaN)).toBe(0);
 });
