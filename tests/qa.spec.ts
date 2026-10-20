@@ -663,7 +663,7 @@ for (const sourceDuration of [60, 300]) {
   const fixturePath = `/tmp/dravex-test-long-source-${process.pid}.webm`;
   execFileSync("ffmpeg", [
     "-hide_banner", "-loglevel", "error",
-    "-f", "lavfi", "-i", "color=c=red:s=64x64:r=2",
+    "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=2",
     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
     "-t", String(sourceDuration), "-c:v", "libvpx", "-deadline", "realtime",
     "-cpu-used", "8", "-b:v", "20k", "-g", "2", "-pix_fmt", "yuv420p",
