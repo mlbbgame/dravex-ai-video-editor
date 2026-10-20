@@ -300,8 +300,10 @@ export function getDirectorFrameBudget(duration: number): DirectorFrameBudget {
   if (!Number.isFinite(duration) || duration <= 0) {
     return { maxFrames: 0, inferenceBudgetMs: 0, includeEdges: false };
   }
+  // Long clips need more than a start/end-adjacent pair to avoid missing a
+  // meaningful middle scene, but keep the extra work tightly bounded on phones.
   return duration >= 30
-    ? { maxFrames: 2, inferenceBudgetMs: 5_000, includeEdges: false }
+    ? { maxFrames: 3, inferenceBudgetMs: 6_500, includeEdges: false }
     : { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
 }
 
