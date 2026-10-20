@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createBeatAnalysisContext, snapCutBoundariesToBeats } from "../src/video/beat-sync";
+import { createBeatAnalysisContext, getOrCreateCachedAnalysis, snapCutBoundariesToBeats } from "../src/video/beat-sync";
 
 test("beat snapping returns safe boundaries for zero or invalid segment counts", () => {
   expect(snapCutBoundariesToBeats([0, 1, 2], 5, 0, 1)).toEqual([0]);
@@ -51,4 +51,38 @@ test("audio analysis falls back to the device default when a low sample rate is 
 
   expect(context).toBeInstanceOf(FakeAudioContext);
   expect(optionsSeen).toEqual([{ sampleRate: 11_025 }, undefined]);
+});
+
+
+test("beat analysis cache shares concurrent work and refreshes recently used entries", async () => {
+  const cache = new Map<string, Promise<number>>();
+  let calls = 0;
+  const create = () => {
+    calls += 1;
+    return Promise.resolve(calls);
+  };
+
+  const first = getOrCreateCachedAnalysis(cache, "track-a", create, 2);
+  const sameWork = getOrCreateCachedAnalysis(cache, "track-a", create, 2);
+  expect(first).toBe(sameWork);
+  expect(await first).toBe(1);
+  await getOrCreateCachedAnalysis(cache, "track-b", create, 2);
+  await getOrCreateCachedAnalysis(cache, "track-a", create, 2); // Refresh A before adding C.
+  await getOrCreateCachedAnalysis(cache, "track-c", create, 2);
+
+  expect(cache.has("track-a")).toBe(true);
+  expect(cache.has("track-b")).toBe(false);
+  expect(cache.has("track-c")).toBe(true);
+  expect(calls).toBe(3);
+});
+
+test("beat analysis cache evicts rejected work so the user can retry", async () => {
+  const cache = new Map<string, Promise<string>>();
+  await expect(getOrCreateCachedAnalysis(cache, "bad-track", () => Promise.reject(new Error("decode failed"))))
+    .rejects.toThrow("decode failed");
+  await Promise.resolve();
+  expect(cache.has("bad-track")).toBe(false);
+
+  const retry = getOrCreateCachedAnalysis(cache, "bad-track", () => Promise.resolve("recovered"));
+  await expect(retry).resolves.toBe("recovered");
 });
