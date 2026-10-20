@@ -35,11 +35,11 @@ type RenderedVariant = {
 };
 
 const montageVariants: MontageVariant[] = [
-  { id: "aggressive", title: "Aggressive Edit", note: "Быстрые склейки и speed ramp", style: "velocity", transition: "action", strength: "strong", beatSync: false, previewClass: "velocity", icon: WandSparkles },
+  { id: "aggressive", title: "Aggressive Edit", note: "Быстрые склейки и акцентные переходы", style: "velocity", transition: "action", strength: "strong", beatSync: false, previewClass: "velocity", icon: WandSparkles },
   { id: "cinematic", title: "Cinematic", note: "Плавный киношный монтаж", style: "cinematic", transition: "cinematic", strength: "soft", beatSync: false, previewClass: "cinema", icon: Film },
-  { id: "music-sync", title: "Music Sync", note: "Смена кадров в ритм музыки", style: "velocity", transition: "auto", strength: "balanced", beatSync: true, previewClass: "pulse", icon: Music2 },
+  { id: "music-sync", title: "Music Sync", note: "Склейки по найденным музыкальным акцентам", style: "velocity", transition: "auto", strength: "balanced", beatSync: true, previewClass: "pulse", icon: Music2 },
   { id: "atmosphere", title: "Atmosphere", note: "Природа, еда и путешествия", style: "travel", transition: "cinematic", strength: "soft", beatSync: false, previewClass: "travel", icon: Sparkles },
-  { id: "4k-quality", title: "4K Quality", note: "Детализация и экспорт 2160p", style: "story", transition: "cinematic", strength: "soft", quality: "4K", beatSync: false, previewClass: "story", icon: Clapperboard },
+  { id: "4k-quality", title: "4K Quality", note: "Экспорт в разрешении 2160p", style: "story", transition: "cinematic", strength: "soft", quality: "4K", beatSync: false, previewClass: "story", icon: Clapperboard },
 ];
 
 function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
