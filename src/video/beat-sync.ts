@@ -23,7 +23,7 @@ export type BeatAnalysis = {
  * Detects likely musical onsets locally with Web Audio energy-flux analysis.
  * This is a lightweight rhythm estimate, not a trained music-understanding model.
  */
-export async function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> {
+async function analyzeMusicBeats(audioUrl: string): Promise<BeatAnalysis> {
   const AudioContextConstructor = window.AudioContext
     ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextConstructor) throw new Error("Этот браузер не поддерживает анализ музыки.");
@@ -150,4 +150,40 @@ export function snapCutBoundariesToBeats(
 
   boundaries.push(targetDuration);
   return boundaries;
+}
+
+/** Share in-flight rhythm analysis between montage variants and final export. */
+export function getOrCreateCachedAnalysis<T>(
+  cache: Map<string, Promise<T>>,
+  key: string,
+  create: () => Promise<T>,
+  maxEntries = 6,
+): Promise<T> {
+  const existing = cache.get(key);
+  if (existing) {
+    // Refresh insertion order so frequently reused tracks remain in the small LRU cache.
+    cache.delete(key);
+    cache.set(key, existing);
+    return existing;
+  }
+
+  const pending = Promise.resolve().then(create);
+  cache.set(key, pending);
+  const capacity = Number.isFinite(maxEntries) ? Math.max(1, Math.floor(maxEntries)) : 6;
+  while (cache.size > capacity) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+  // Do not keep failures cached; a later retry may succeed after a transient mobile decode error.
+  void pending.catch(() => {
+    if (cache.get(key) === pending) cache.delete(key);
+  });
+  return pending;
+}
+
+const beatAnalysisCache = new Map<string, Promise<BeatAnalysis>>();
+
+export function detectMusicBeats(audioUrl: string): Promise<BeatAnalysis> {
+  return getOrCreateCachedAnalysis(beatAnalysisCache, audioUrl, () => analyzeMusicBeats(audioUrl));
 }
