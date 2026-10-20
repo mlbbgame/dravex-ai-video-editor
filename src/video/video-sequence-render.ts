@@ -36,6 +36,7 @@ export type AudioSegment = {
 };
 
 export type SequenceRenderStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
+export type FramingMode = "auto" | "fit" | "fill";
 
 export type SequenceSegment = VideoSegment | ImageSegment;
 
@@ -44,7 +45,9 @@ export type SequenceSegment = VideoSegment | ImageSegment;
  * When ratios match, fill the frame instead of needlessly shrinking photos over
  * a blurred duplicate background.
  */
-export function shouldContainSource(sourceAspect: number, outputAspect: number): boolean {
+export function shouldContainSource(sourceAspect: number, outputAspect: number, framingMode: FramingMode = "auto"): boolean {
+  if (framingMode === "fit") return true;
+  if (framingMode === "fill") return false;
   if (!Number.isFinite(sourceAspect) || !Number.isFinite(outputAspect) || sourceAspect <= 0 || outputAspect <= 0) {
     return true;
   }
@@ -72,6 +75,7 @@ type SequenceOptions = {
   audioTracks?: AudioSegment[];
   title: string;
   aspectRatio: string;
+  framingMode?: FramingMode;
   quality?: string;
   style?: SequenceRenderStyle;
   effectStrength?: "soft" | "balanced" | "strong";
@@ -532,7 +536,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -801,7 +805,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // Use a blurred fill behind a contained foreground whenever source/output framing differs noticeably.
     const sourceAspect = sourceWidth / sourceHeight;
     const outputAspect = width / height;
-    const useContain = shouldContainSource(sourceAspect, outputAspect);
+    const useContain = shouldContainSource(sourceAspect, outputAspect, framingMode);
     const scale = (useContain ? Math.min(width / sourceWidth, height / sourceHeight) : Math.max(width / sourceWidth, height / sourceHeight)) * zoom;
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
