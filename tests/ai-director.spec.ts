@@ -33,6 +33,15 @@ test("motion cues separate stable shots from sharp movement", () => {
   expect(inferMotionCues(0.01, 0.1, [], [], 0.08)).toContain("Стабильный кадр");
 });
 
+test("motion cues normalize labels so casing and whitespace do not invent scene changes", () => {
+  expect(inferMotionCues(0.08, 0.1, [" Car "], ["car"], 0.08))
+    .not.toContain("Объект входит в сцену");
+  expect(inferMotionCues(0.08, 0.1, ["Car"], [" CAR "], 0.08))
+    .not.toContain("Смена объектов в сцене");
+  expect(inferMotionCues(0.08, 0.1, [" ", ""], ["  "], 0.08))
+    .not.toContain("Объект входит в сцену");
+});
+
 test("object tracking detects screen movement and apparent approach", () => {
   expect(inferTrackedObjectCues([personLeft], [personRight])).toContain("Объект перемещается по кадру");
   expect(inferTrackedObjectCues([personLeft], [personNear])).toContain("Объект приближается");
