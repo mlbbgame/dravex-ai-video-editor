@@ -269,7 +269,7 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
   }
 }
 
-const dimensionsFor = (aspectRatio: string, quality = "720p") => {
+export const getOutputDimensions = (aspectRatio: string, quality = "720p") => {
   const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
   let base: { width: number; height: number };
   if (quality === "preview") base = aspectRatio === "16:9" ? { width: 480, height: 270 } : aspectRatio === "1:1" ? { width: 360, height: 360 } : aspectRatio === "4:5" ? { width: 360, height: 450 } : { width: 360, height: 640 };
@@ -480,7 +480,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     audio: await loadAudio(segment)
   })));
 
-  const { width, height } = dimensionsFor(aspectRatio, quality);
+  const { width, height } = getOutputDimensions(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
