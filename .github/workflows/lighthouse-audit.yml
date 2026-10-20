@@ -55,11 +55,11 @@ jobs:
       - name: Verify the page paints and capture browser diagnostics
         run: |
           mkdir -p lighthouse-reports
-          node --input-type=module <<'NODE'
+          CHROME_PATH="$(which chrome)" node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import { chromium } from '@playwright/test';
           const browser = await chromium.launch({
-            executablePath: process.env.CHROME_PATH || '/opt/hostedtoolcache/setup-chrome/chromium/1723140/x64/chrome',
+            executablePath: process.env.CHROME_PATH,
             headless: true,
             args: ['--no-sandbox', '--disable-dev-shm-usage'],
           });
