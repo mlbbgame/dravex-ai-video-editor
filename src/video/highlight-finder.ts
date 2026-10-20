@@ -309,10 +309,10 @@ export function buildSceneAwareCandidates(
     };
   }).sort((a, b) => b.score - a.score);
 
-  const bucketCount = Math.min(80, Math.max(1, Math.ceil(duration / Math.max(3, sampleInterval * 2))));
+  const bucketCount = Math.min(80, Math.max(1, Math.ceil(duration / Math.max(3, safeSampleInterval * 2))));
   const bucketWidth = duration / bucketCount;
-  const minimumGap = Math.max(1.25, Math.min(5, sampleInterval * 1.4));
-  const desiredCount = Math.min(100, Math.max(1, Math.ceil(duration / Math.max(3, sampleInterval * 1.5))));
+  const minimumGap = Math.max(1.25, Math.min(5, safeSampleInterval * 1.4));
+  const desiredCount = Math.min(100, Math.max(1, Math.ceil(duration / Math.max(3, safeSampleInterval * 1.5))));
   const selected: typeof ranked = [];
 
   // Prefer one high-value candidate from each part of the timeline.
