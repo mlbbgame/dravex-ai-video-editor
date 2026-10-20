@@ -5,7 +5,7 @@
  * upload media, or render video. Keep it independent of any model vendor.
  */
 
-export type DirectorProfileId = "aggressive-car" | "cinematic-travel" | "nature-wildlife" | "food-cooking" | "people-everyday" | "product-diy";
+export type DirectorProfileId = "aggressive-car" | "cinematic-travel" | "nature-wildlife" | "food-cooking" | "people-everyday" | "product-diy" | "anime-edit" | "gaming-highlights";
 export type DirectorVariantId = "hype" | "cinematic" | "emotion" | "signature";
 export type DirectorTransition = "cut" | "short-impact" | "smooth" | "match-motion";
 export type DirectorEffect = "speed-ramp" | "motion-blur" | "flash" | "camera-motion" | "color-grade";
@@ -115,6 +115,26 @@ export const directorProfiles: Record<DirectorProfileId, DirectorProfile> = {
     preferredEffects: ["camera-motion", "color-grade"],
     eventPriorities: ["finished-result-teaser", "overview-shot", "tools-materials", "detail-close-up", "step-start", "step-completion", "before-after", "final-result"],
     pacing: "measured",
+  },
+  "anime-edit": {
+    id: "anime-edit",
+    title: "Anime & Animation Edit",
+    summary: "Emphasize expressive action, scene changes, character reveals, and visual impacts without forcing flashes onto every cut.",
+    preferredMusic: ["phonk", "bass", "melodic-electronic", "orchestral-impact"],
+    preferredTransitions: ["cut", "short-impact", "match-motion"],
+    preferredEffects: ["speed-ramp", "motion-blur", "color-grade"],
+    eventPriorities: ["anime-action", "character-reveal", "impact-frame", "scene-change", "expression-close-up", "power-up", "motion-peak"],
+    pacing: "aggressive",
+  },
+  "gaming-highlights": {
+    id: "gaming-highlights",
+    title: "Gaming Highlights",
+    summary: "Prioritize meaningful gameplay events while preserving readable HUD elements, minimap, and kill-feed context.",
+    preferredMusic: ["phonk", "bass", "aggressive-electronic", "cinematic-impact"],
+    preferredTransitions: ["cut", "short-impact", "match-motion"],
+    preferredEffects: ["speed-ramp", "motion-blur", "color-grade"],
+    eventPriorities: ["team-fight", "objective-secured", "elimination", "clutch-play", "skill-combo", "victory", "camera-change"],
+    pacing: "aggressive",
   },
 };
 
