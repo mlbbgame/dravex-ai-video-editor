@@ -65,9 +65,20 @@ jobs:
           });
           const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 1 });
           const errors = [];
+          const failedResources = [];
           page.on('pageerror', (error) => errors.push(error.message));
           page.on('console', (message) => {
             if (message.type() === 'error') errors.push(message.text());
+          });
+          page.on('requestfailed', (request) => failedResources.push({
+            url: request.url(),
+            failure: request.failure()?.errorText ?? 'unknown',
+          }));
+          page.on('response', (response) => {
+            if (response.status() >= 400) failedResources.push({
+              url: response.url(),
+              status: response.status(),
+            });
           });
           try {
             const response = await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded', timeout: 30000 });
