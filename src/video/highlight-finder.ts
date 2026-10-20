@@ -1,4 +1,4 @@
-import { classifySemanticFrames, type SemanticAnalysis, type SemanticProfile } from "./semantic-classifier";
+import { classifySemanticFrames, type SemanticAnalysis } from "./semantic-classifier";
 
 export type HighlightSample = {
   time: number;
