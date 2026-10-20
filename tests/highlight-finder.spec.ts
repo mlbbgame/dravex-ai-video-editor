@@ -132,3 +132,21 @@ test("analysis sampling adapts to clip duration without exploding on long videos
     expect(Math.ceil(duration / interval)).toBeLessThanOrEqual(120);
   }
 });
+
+
+test("scene-aware candidates detect visual scene cuts even when motion stays low", () => {
+  const samples = Array.from({ length: 20 }, (_, index) => ({
+    time: index * 2,
+    score: 0.55,
+    motion: 0.005,
+    contrast: index < 10 ? 0.08 : 0.78,
+    sharpness: index === 10 ? 0.9 : 0.55,
+    saturation: index < 10 ? 0.2 : 0.85,
+    brightness: index < 10 ? 0.18 : 0.82,
+    exposure: 0.95
+  }));
+  const candidates = buildSceneAwareCandidates(samples, 40, 2);
+  expect(candidates.length).toBeGreaterThan(2);
+  expect(candidates.some((candidate) => candidate.time >= 18 && candidate.time <= 22)).toBe(true);
+  expect(candidates.every((candidate) => candidate.start >= 0 && candidate.end <= 40)).toBe(true);
+});
