@@ -8,6 +8,16 @@ const CUT_COUNTS: Record<string, number> = {
   story: 4,
 };
 
+// Each style samples a different visual rhythm across a photo collection.
+// Endpoints remain represented, while the middle samples differ by style.
+const PHOTO_SAMPLE_RATIOS: Record<string, number[]> = {
+  auto: [0, 0.5, 1],
+  velocity: [0, 0.28, 0.62, 1],
+  cinema: [0, 1],
+  pulse: [0, 0.18, 0.82, 1],
+  story: [0, 0.28, 0.72, 1],
+};
+
 // Keep preview rhythms intentionally distinct: velocity front-loads punchy
 // moments, pulse samples the track's later payoff, cinema holds wider beats,
 // and story follows a calmer beginning-to-end progression.
@@ -37,9 +47,8 @@ export function planVariantPreviewCuts(
   const shotDuration = duration / count;
   let previousEnd = 0;
   const cuts = Array.from({ length: count }, (_, index) => {
-    // If the whole source is shorter than the requested preview, partition it
-    // chronologically. Clamping style-specific centers near zero can otherwise
-    // select the exact same opening frames more than once on short clips.
+    // A source shorter than the requested preview is partitioned chronologically
+    // so short clips never repeat their opening frames.
     if (sourceDuration <= requestedDuration) {
       const trimStart = index * shotDuration;
       return { trimStart, trimEnd: index === count - 1 ? sourceDuration : trimStart + shotDuration };
@@ -47,8 +56,8 @@ export function planVariantPreviewCuts(
 
     const centerRatio = centers[Math.min(index, centers.length - 1)] ?? (index + 0.5) / count;
     const desiredStart = Math.max(0, Math.min(sourceDuration - shotDuration, sourceDuration * centerRatio - shotDuration / 2));
-    // Distinct target centers can still produce overlapping footage on clips
-    // only slightly longer than the preview. Move each cut forward as needed.
+    // Keep cuts ordered and non-overlapping even when a short source forces
+    // style-specific target centers to collapse near the same point.
     const trimStart = Math.min(sourceDuration - shotDuration, Math.max(previousEnd, desiredStart));
     const trimEnd = trimStart + shotDuration;
     previousEnd = trimEnd;
@@ -58,12 +67,38 @@ export function planVariantPreviewCuts(
   return { duration, cuts };
 }
 
-/** Spread preview images through the whole photo set so later images are represented too. */
+/**
+ * Pick style-specific representative photos. A nearest-unused fallback prevents
+ * rounded ratios from selecting the same photo twice in small collections.
+ */
 export function selectVariantPreviewIndices(totalCount: number, variantId: string): number[] {
   if (!Number.isFinite(totalCount) || totalCount <= 0) return [];
-  const count = Math.min(Math.floor(totalCount), CUT_COUNTS[variantId] ?? CUT_COUNTS.auto);
+  const total = Math.floor(totalCount);
+  const count = Math.min(total, CUT_COUNTS[variantId] ?? CUT_COUNTS.auto);
   if (count <= 1) return [0];
-  return Array.from({ length: count }, (_, index) =>
-    Math.round(index * (Math.floor(totalCount) - 1) / (count - 1)),
-  );
+  const ratios = PHOTO_SAMPLE_RATIOS[variantId] ?? PHOTO_SAMPLE_RATIOS.auto;
+  const selected: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const ratio = ratios[Math.min(index, ratios.length - 1)] ?? index / (count - 1);
+    const target = Math.round(ratio * (total - 1));
+    let candidate = target;
+    if (selected.includes(candidate)) {
+      let distance = 1;
+      while (distance < total) {
+        const left = target - distance;
+        const right = target + distance;
+        if (left >= 0 && !selected.includes(left)) {
+          candidate = left;
+          break;
+        }
+        if (right < total && !selected.includes(right)) {
+          candidate = right;
+          break;
+        }
+        distance += 1;
+      }
+    }
+    if (!selected.includes(candidate) && candidate >= 0 && candidate < total) selected.push(candidate);
+  }
+  return selected.sort((a, b) => a - b);
 }
