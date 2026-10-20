@@ -304,6 +304,12 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
   }
 }
 
+/** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
+export function getSafeImageDuration(duration?: number): number {
+  if (typeof duration !== "number" || !Number.isFinite(duration)) return 3;
+  return Math.max(0.25, Math.min(duration, 30));
+}
+
 export const getOutputDimensions = (aspectRatio: string, quality = "720p") => {
   const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
   let base: { width: number; height: number };
@@ -516,7 +522,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       try {
         if (segment.kind === "image") {
           const image = await loadImage(segment, quality === "4K" ? 3840 : quality === "1080p" ? 1920 : 1280);
-          loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+          loaded[index] = { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration) };
           continue;
         }
         const videoSegment = segment as VideoSegment;
