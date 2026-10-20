@@ -522,14 +522,7 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
     )
     .sort((a, b) => a.time - b.time)
     .filter((candidate, index, sorted) => index === 0 || candidate.time !== sorted[index - 1].time);
-  if (!validCandidates.length) return configs.map((config) => ({
-    id: config.id,
-    title: config.title,
-    description: config.description,
-    shotLength: config.shotLength,
-    duration: 0,
-    moments: []
-  }));
+  if (!validCandidates.length) return [];
   return configs.map((config) => {
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
     const count = Math.min(config.desired, availableCount, validCandidates.length);
