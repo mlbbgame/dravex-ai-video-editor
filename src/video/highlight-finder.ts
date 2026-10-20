@@ -4,6 +4,7 @@ export type HighlightSample = {
   motion: number;
   contrast: number;
   sharpness?: number;
+  saturation?: number;
   brightness?: number;
   exposure?: number;
 };
@@ -212,7 +213,7 @@ export function scoreVisualSamples(
   const motion = normalize(samples.map((item) => item.motion));
   const contrast = normalize(samples.map((item) => item.contrast));
   const sharpness = normalize(samples.map((item) => item.sharpness ?? 0.5));
-  const saturation = normalize(samples.map((item) => Math.max(0, Math.min(1, item.score ?? 0.5))));
+  const saturation = normalize(samples.map((item) => Math.max(0, Math.min(1, item.saturation ?? 0.5)));
   const exposure = normalize(samples.map((item) => item.exposure ?? 1));
   return samples.map((item, index) => ({
     ...item,
@@ -282,11 +283,7 @@ export async function analyzeVideoForHighlights(
     }
 
     const scored = scoreVisualSamples(raw);
-    const samples: HighlightSample[] = scored.map((sample, index) => ({
-      ...sample,
-      // Saturation is retained as a feature, not used as a proxy for quality on its own.
-      score: sample.score * 0.92 + Math.max(0, Math.min(1, raw[index].saturation)) * 0.08
-    }));
+    const samples: HighlightSample[] = scored.map((sample) => ({ ...sample }));
 
     const peaks = samples.filter((sample, index) => {
       const left = samples[index - 1]?.score ?? -1;
@@ -316,6 +313,7 @@ export async function analyzeVideoForHighlights(
         motion: peak.motion,
         contrast: peak.contrast,
         sharpness: peak.sharpness,
+        saturation: peak.saturation,
         brightness: peak.brightness,
         exposure: peak.exposure
       };
@@ -334,6 +332,7 @@ export async function analyzeVideoForHighlights(
           motion: sample.motion,
           contrast: sample.contrast,
           sharpness: sample.sharpness,
+          saturation: sample.saturation,
           brightness: sample.brightness,
           exposure: sample.exposure
         }))
