@@ -35,6 +35,33 @@ export function shouldContainSource(sourceAspect: number, outputAspect: number):
   return Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
 }
 
+/**
+ * A restrained action-edit speed ramp. Values are source playback speed, while
+ * the output timeline keeps each shot's requested duration. Other styles stay
+ * at normal speed so calm footage is not unintentionally sped up.
+ */
+export function getSpeedRampRate(style: SequenceRenderStyle, progress: number): number {
+  if (style !== "velocity") return 1;
+  const t = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+  const stops = [
+    { at: 0, rate: 0.82 },
+    { at: 0.2, rate: 1.02 },
+    { at: 0.42, rate: 1.65 },
+    { at: 0.62, rate: 0.9 },
+    { at: 0.82, rate: 1.12 },
+    { at: 1, rate: 1 }
+  ];
+  for (let index = 1; index < stops.length; index += 1) {
+    const left = stops[index - 1];
+    const right = stops[index];
+    if (t > right.at) continue;
+    const linear = (t - left.at) / (right.at - left.at);
+    const eased = linear * linear * (3 - 2 * linear);
+    return left.rate + (right.rate - left.rate) * eased;
+  }
+  return 1;
+}
+
 export type CameraMotionProfile = { zoom: number; pan: number };
 
 /** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
@@ -955,19 +982,32 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         continue;
       }
 
-      const { video, start, duration } = item;
+      const { video, start, end, duration } = item;
       video.pause();
+      video.playbackRate = 1;
+      if ("preservesPitch" in video) video.preservesPitch = true;
       await seek(video, start);
       await video.play();
       const clipStartedAt = performance.now();
+      let sourceEnded = false;
       while (performance.now() - clipStartedAt < duration * 1000) {
         const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
         const clipProgress = Math.min(1, elapsedSeconds / duration);
+        // Speed changes are limited to action/velocity edits. If a speed-up
+        // reaches the selected trim end early, freeze that last frame rather
+        // than accidentally revealing footage outside the user's chosen range.
+        video.playbackRate = sourceEnded ? 1 : getSpeedRampRate(style, clipProgress);
+        if (!sourceEnded && video.currentTime >= end - 0.04) {
+          video.pause();
+          sourceEnded = true;
+          video.playbackRate = 1;
+        }
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       video.pause();
+      video.playbackRate = 1;
       savePreviousFrame();
       completed += duration;
     }
