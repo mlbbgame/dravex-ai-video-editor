@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { getHighlightSampleLimit, getHighlightSampleTime, shouldUseQuickVideoCandidates } from "../src/video/highlight-finder";
+import { getBoundedSeekTimeoutMs, getHighlightSampleLimit, getHighlightSampleTime, shouldUseQuickVideoCandidates } from "../src/video/highlight-finder";
+
+test("keeps individual seeks within the remaining analysis budget", () => {
+  expect(getBoundedSeekTimeoutMs(0, 18_000, 2_200)).toBe(2_200);
+  expect(getBoundedSeekTimeoutMs(16_500, 18_000, 2_200)).toBe(1_500);
+  expect(getBoundedSeekTimeoutMs(18_000, 18_000, 2_200)).toBe(0);
+  expect(getBoundedSeekTimeoutMs(-100, 1_000, 800)).toBe(800);
+  expect(getBoundedSeekTimeoutMs(0, Number.NaN, 800)).toBe(0);
+});
 
 test("uses deterministic cuts only for very short clips", () => {
   expect(shouldUseQuickVideoCandidates(0.25)).toBe(true);

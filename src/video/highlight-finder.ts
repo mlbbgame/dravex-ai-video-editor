@@ -75,6 +75,17 @@ export function getHighlightSampleLimit(duration: number): number {
   return 60;
 }
 
+/** Keep each frame seek inside the overall analysis deadline on slow mobile decoders. */
+export function getBoundedSeekTimeoutMs(
+  elapsedMs: number,
+  analysisBudgetMs: number,
+  maxSeekTimeoutMs: number,
+): number {
+  if (![elapsedMs, analysisBudgetMs, maxSeekTimeoutMs].every(Number.isFinite)
+    || analysisBudgetMs <= 0 || maxSeekTimeoutMs <= 0) return 0;
+  return Math.max(0, Math.min(maxSeekTimeoutMs, analysisBudgetMs - Math.max(0, elapsedMs)));
+}
+
 /** Place samples across the full timeline, including the final moments of long sources. */
 export function getHighlightSampleTime(index: number, total: number, duration: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
@@ -381,7 +392,16 @@ export async function analyzeVideoForHighlights(
         throw new Error("Анализ длинного видео занял слишком много времени — используем равномерный монтаж.");
       }
       const time = getHighlightSampleTime(index, total, duration);
-      await seekTo(video, time, isLongSource ? 2200 : 12000);
+      const elapsedMs = performance.now() - analysisStartedAt;
+      const seekTimeoutMs = getBoundedSeekTimeoutMs(
+        elapsedMs,
+        analysisBudgetMs,
+        isLongSource ? 2200 : 12000,
+      );
+      if (seekTimeoutMs <= 0) {
+        throw new Error("Анализ достиг лимита времени — используем быстрый резервный монтаж.");
+      }
+      await seekTo(video, time, seekTimeoutMs);
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       const features = frameFeatures(pixels, canvas.width, canvas.height);
