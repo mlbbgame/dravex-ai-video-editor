@@ -52,6 +52,44 @@ jobs:
           cat /tmp/dravex-preview.log
           exit 1
 
+      - name: Verify the page paints and capture browser diagnostics
+        run: |
+          mkdir -p lighthouse-reports
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { chromium } from '@playwright/test';
+          const browser = await chromium.launch({
+            executablePath: process.env.CHROME_PATH || '/opt/hostedtoolcache/setup-chrome/chromium/1723140/x64/chrome',
+            headless: true,
+            args: ['--no-sandbox', '--disable-dev-shm-usage'],
+          });
+          const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 1 });
+          const errors = [];
+          page.on('pageerror', (error) => errors.push(error.message));
+          page.on('console', (message) => {
+            if (message.type() === 'error') errors.push(message.text());
+          });
+          try {
+            const response = await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(2500);
+            await page.screenshot({ path: 'lighthouse-reports/preflight.png', fullPage: true });
+            const details = {
+              status: response?.status() ?? null,
+              title: await page.title(),
+              bodyText: (await page.locator('body').innerText().catch(() => '')).slice(0, 2000),
+              rootChildren: await page.locator('#root').evaluate((root) => root.childElementCount).catch(() => -1),
+              errors,
+            };
+            fs.writeFileSync('lighthouse-reports/preflight.json', JSON.stringify(details, null, 2));
+            console.log(JSON.stringify(details, null, 2));
+            if (!response?.ok() || details.rootChildren < 1) {
+              throw new Error('DRAVEX page failed browser preflight; inspect preflight.json and preflight.png.');
+            }
+          } finally {
+            await browser.close();
+          }
+          NODE
+
       - name: Run Lighthouse mobile audit
         run: |
           mkdir -p lighthouse-reports
