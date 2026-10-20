@@ -1,0 +1,147 @@
+name: DRAVEX Lighthouse mobile audit
+
+on:
+  push:
+    branches:
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dravex-lighthouse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    name: Build and audit mobile web performance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build production app
+        run: npm run build:qa
+
+      - name: Start local preview server
+        run: |
+          npm run preview:qa -- --host 127.0.0.1 > /tmp/dravex-preview.log 2>&1 &
+          echo $! > /tmp/dravex-preview.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/dravex-preview.log
+          exit 1
+
+      - name: Verify the page paints and capture browser diagnostics
+        run: |
+          mkdir -p lighthouse-reports
+          CHROME_PATH="$(which chrome)" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { chromium } from '@playwright/test';
+          const browser = await chromium.launch({
+            executablePath: process.env.CHROME_PATH,
+            headless: true,
+            args: ['--no-sandbox', '--disable-dev-shm-usage'],
+          });
+          const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 1 });
+          const errors = [];
+          const failedResources = [];
+          page.on('pageerror', (error) => errors.push(error.message));
+          page.on('console', (message) => {
+            if (message.type() === 'error') errors.push(message.text());
+          });
+          page.on('requestfailed', (request) => failedResources.push({
+            url: request.url(),
+            failure: request.failure()?.errorText ?? 'unknown',
+          }));
+          page.on('response', (response) => {
+            if (response.status() >= 400) failedResources.push({
+              url: response.url(),
+              status: response.status(),
+            });
+          });
+          try {
+            const response = await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(2500);
+            await page.screenshot({ path: 'lighthouse-reports/preflight.png', fullPage: true });
+            const details = {
+              status: response?.status() ?? null,
+              title: await page.title(),
+              bodyText: (await page.locator('body').innerText().catch(() => '')).slice(0, 2000),
+              rootChildren: await page.locator('#root').evaluate((root) => root.childElementCount).catch(() => -1),
+              errors,
+              failedResources,
+            };
+            fs.writeFileSync('lighthouse-reports/preflight.json', JSON.stringify(details, null, 2));
+            console.log(JSON.stringify(details, null, 2));
+            if (!response?.ok() || details.rootChildren < 1) {
+              throw new Error('DRAVEX page failed browser preflight; inspect preflight.json and preflight.png.');
+            }
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+      - name: Run Lighthouse mobile audit
+        run: |
+          mkdir -p lighthouse-reports
+          # Headless Chrome can occasionally miss the first paint on a cold start.
+          # Use the current headless implementation, allow a longer page-load window,
+          # and retry once. Persistent NO_FCP errors still fail the workflow.
+          for attempt in 1 2; do
+            if npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/ \
+              --chrome-path="$(which chrome)" \
+              --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling --window-size=412,915" \
+              --max-wait-for-load=45000 \
+              --only-categories=performance,accessibility,best-practices,seo \
+              --output=html,json \
+              --output-path=lighthouse-reports/dravex \
+              --quiet; then
+              break
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              echo "Lighthouse failed after retry; inspect Chrome/page startup logs and the uploaded reports."
+              exit 1
+            fi
+            echo "Lighthouse did not complete on attempt $attempt; retrying after a short pause."
+            sleep 3
+          done
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('lighthouse-reports/dravex.report.json', 'utf8'));
+          const categories = report.categories;
+          for (const name of ['performance', 'accessibility', 'best-practices', 'seo']) {
+            const item = categories[name];
+            if (item) console.log(`${item.title}: ${Math.round(item.score * 100)}/100`);
+          }
+          console.log('Detailed report saved as a workflow artifact.');
+          NODE
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dravex-lighthouse-report
+          path: lighthouse-reports/
+          if-no-files-found: warn
+          retention-days: 14
