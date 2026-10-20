@@ -1,0 +1,19 @@
+/* Keep Android touch-device previews light: thumbnails do not need continuous motion. */
+@media (hover: none), (pointer: coarse) {
+  .dravex-variant-preview > img { animation: none !important; transform: none !important; will-change: auto; }
+  .dravex-variant:hover .dravex-variant-preview > img,
+  .dravex-variant:hover .dravex-variant-preview > video { transform: none; }
+  .dravex-variant, .dravex-variant-preview > img, .dravex-variant-preview > video { transition: none; }
+}
+
+/* Larger touch targets reduce mis-taps on phones. */
+.dravex-file-row button, .dravex-duration select, .dravex-music button,
+.dravex-project-actions button, .dravex-image-tools button, .dravex-track-card > button,
+.dravex-music-categories button, .dravex-tabs button { min-height: 44px; }
+.dravex-image-tools button { min-width: 36px; width: 36px; }
+.dravex-more summary { min-height: 46px; }
+@media (max-width: 420px) {
+  .dravex-section-title { margin-top: 21px; }
+  .dravex-more-content { gap: 14px; }
+  .dravex-duration select, .dravex-music button { font-size: 12px; }
+}
