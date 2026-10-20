@@ -40,6 +40,14 @@ export type HighlightProgress = {
   phase?: "sampling" | "semantic";
 };
 
+/** Bound analysis cost while sampling short and medium clips more densely. */
+export function getAnalysisSampleInterval(duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 2;
+  // Target up to 120 samples per source; keep a floor to avoid excessive seeking.
+  // Very long sources use a wider minimum interval, but remain capped near 120 samples.
+  return Math.max(1.25, duration / 120, duration > 1800 ? 6 : 0);
+}
+
 /** Build deterministic cut points for short clips without seeking through every frame. */
 export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
   if (!Number.isFinite(duration) || duration < 0.25) return [];
@@ -372,7 +380,7 @@ export async function analyzeVideoForHighlights(
     semanticCanvas.height = 126;
     const semanticContext = semanticCanvas.getContext("2d");
 
-    const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
+    const interval = getAnalysisSampleInterval(duration);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; sharpness: number; brightness: number; exposure: number }> = [];
     let previous: Uint8ClampedArray | null = null;
