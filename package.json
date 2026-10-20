@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "preview:qa": "vite preview --config vite.config.qa.ts",
     "test:qa": "playwright test",
     "build:qa": "vite build --config vite.config.qa.ts"
   },
