@@ -54,12 +54,50 @@ jobs:
             echo "No test:qa script on this revision; build check completed."
           fi
 
-      - name: Upload representative rendered videos for visual review
+      - name: Extract review frames from actual montage exports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/dravex-review-frames
+          shopt -s nullglob
+          video_count=0
+          frame_count=0
+          for video in test-results/dravex-*.webm; do
+            video_count=$((video_count + 1))
+            name="$(basename "${video%.webm}")"
+            duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video" 2>/dev/null || true)"
+            if [[ -z "$duration" ]]; then
+              echo "Could not read duration for $video" >&2
+              continue
+            fi
+            for point in 0 0.5 0.9; do
+              timestamp="$(awk -v d="$duration" -v p="$point" 'BEGIN { t=d*p; if (t<0) t=0; if (t>d-0.1) t=(d>0.1 ? d-0.1 : 0); printf "%.3f", t }')"
+              if ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/dravex-review-frames/${name}-${point}.png"; then
+                frame_count=$((frame_count + 1))
+              else
+                echo "Frame extraction failed: $video at $timestamp" >&2
+              fi
+            done
+          done
+          {
+            echo "## DRAVEX visual export review"
+            echo "- Exported WebM files found: $video_count"
+            echo "- Review PNG frames extracted: $frame_count"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$video_count" -gt 0 && "$frame_count" -lt "$video_count" ]]; then
+            echo "Expected at least one review frame per exported video, but extracted $frame_count frames for $video_count videos." >&2
+            exit 1
+          fi
+
+      - name: Upload representative rendered videos and review frames
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dravex-rendered-samples
-          path: test-results/dravex-*.webm
+          path: |
+            test-results/dravex-*.webm
+            test-results/dravex-review-frames/
           if-no-files-found: ignore
           retention-days: 14
 
