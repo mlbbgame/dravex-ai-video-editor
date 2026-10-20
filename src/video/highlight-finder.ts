@@ -1,3 +1,5 @@
+import { classifySemanticFrames, type SemanticAnalysis, type SemanticFrameInput } from "./semantic-classifier";
+
 export type HighlightSample = {
   time: number;
   score: number;
@@ -57,6 +59,7 @@ export type HighlightProgress = {
   current: number;
   total: number;
   time: number;
+  phase?: "semantic";
 };
 
 /**
@@ -306,7 +309,7 @@ export function ensureCandidateCoverage(
 export async function analyzeVideoForHighlights(
   url: string,
   onProgress?: (progress: HighlightProgress) => void
-): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[] }> {
+): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[]; semantic?: SemanticAnalysis | null }> {
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
@@ -342,6 +345,12 @@ export async function analyzeVideoForHighlights(
     const interval = Math.max(2, duration / sampleLimit);
     const total = Math.max(2, Math.min(sampleLimit, Math.ceil(duration / interval)));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; brightness: number; detail: number }> = [];
+    const semanticCanvas = document.createElement("canvas");
+    semanticCanvas.width = 224;
+    semanticCanvas.height = 126;
+    const semanticContext = semanticCanvas.getContext("2d");
+    const semanticFrameIndices = new Set([0, Math.floor((total - 1) / 3), Math.floor(2 * (total - 1) / 3), total - 1]);
+    const semanticFrames: SemanticFrameInput[] = [];
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     // Never let frame scanning monopolize a phone for several minutes. The caller
@@ -357,6 +366,14 @@ export async function analyzeVideoForHighlights(
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       const features = frameFeatures(pixels, canvas.width, canvas.height);
+      if (semanticFrameIndices.has(index) && semanticContext) {
+        try {
+          semanticContext.drawImage(video, 0, 0, semanticCanvas.width, semanticCanvas.height);
+          semanticFrames.push({ time, imageDataUrl: semanticCanvas.toDataURL("image/jpeg", 0.78) });
+        } catch {
+          // Semantic recognition is optional; keep the visual montage usable if frame extraction fails.
+        }
+      }
       let motion = 0;
       if (previous) {
         for (let i = 0; i < pixels.length; i += 4) {
@@ -434,7 +451,10 @@ export async function analyzeVideoForHighlights(
     // Keep them usable by ranking the sampled frames instead of rejecting the file.
     candidates = ensureCandidateCoverage(samples, candidates, duration);
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
-    return { duration, samples, candidates };
+    onProgress?.({ current: total, total, time: duration, phase: "semantic" });
+    // Optional on-device classification: a short timeout prevents model download from blocking editing.
+    const semantic = await classifySemanticFrames(semanticFrames, 8_000);
+    return { duration, samples, candidates, semantic };
   } finally {
     video.pause();
     video.removeAttribute("src");
