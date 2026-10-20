@@ -86,6 +86,12 @@ export function getBoundedSeekTimeoutMs(
   return Math.max(0, Math.min(maxSeekTimeoutMs, analysisBudgetMs - Math.max(0, elapsedMs)));
 }
 
+/** Return only the time left for optional analysis stages inside the original deadline. */
+export function getRemainingAnalysisBudgetMs(elapsedMs: number, analysisBudgetMs: number): number {
+  if (!Number.isFinite(elapsedMs) || !Number.isFinite(analysisBudgetMs) || analysisBudgetMs <= 0) return 0;
+  return Math.max(0, analysisBudgetMs - Math.max(0, elapsedMs));
+}
+
 /** Place samples across the full timeline, including the final moments of long sources. */
 export function getHighlightSampleTime(index: number, total: number, duration: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
@@ -491,8 +497,12 @@ export async function analyzeVideoForHighlights(
     candidates = ensureCandidateCoverage(samples, candidates, duration);
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
     onProgress?.({ current: total, total, time: duration, phase: "semantic" });
-    // Optional on-device classification: a short timeout prevents model download from blocking editing.
-    const semantic = await classifySemanticFrames(semanticFrames, 8_000);
+    // Semantic classification shares the same end-to-end deadline as frame scanning.
+    // On slower phones, skip it rather than extending the user's wait after visual analysis.
+    const semanticBudgetMs = getRemainingAnalysisBudgetMs(performance.now() - analysisStartedAt, analysisBudgetMs);
+    const semantic = semanticBudgetMs > 0
+      ? await classifySemanticFrames(semanticFrames, Math.min(8_000, semanticBudgetMs))
+      : null;
     return { duration, samples, candidates, semantic };
   } finally {
     video.pause();
