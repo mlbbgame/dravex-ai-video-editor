@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { getBoundedSeekTimeoutMs, getHighlightSampleLimit, getHighlightSampleTime, shouldUseQuickVideoCandidates } from "../src/video/highlight-finder";
+import { getBoundedSeekTimeoutMs, getHighlightSampleLimit, getHighlightSampleTime, getRemainingAnalysisBudgetMs, shouldUseQuickVideoCandidates } from "../src/video/highlight-finder";
+
+test("keeps optional semantic analysis inside the overall deadline", () => {
+  expect(getRemainingAnalysisBudgetMs(0, 18_000)).toBe(18_000);
+  expect(getRemainingAnalysisBudgetMs(15_500, 18_000)).toBe(2_500);
+  expect(getRemainingAnalysisBudgetMs(18_000, 18_000)).toBe(0);
+  expect(getRemainingAnalysisBudgetMs(-100, 1_000)).toBe(1_000);
+  expect(getRemainingAnalysisBudgetMs(0, Number.NaN)).toBe(0);
+});
 
 test("keeps individual seeks within the remaining analysis budget", () => {
   expect(getBoundedSeekTimeoutMs(0, 18_000, 2_200)).toBe(2_200);
