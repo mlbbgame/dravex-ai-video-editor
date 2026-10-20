@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { getCameraMotionProfile, getOutputDimensions, shouldContainSource } from "../src/video/video-sequence-render";
+import { getCameraMotionProfile, getOutputDimensions, getSpeedRampRate, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildHighlightVariants, buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
@@ -239,6 +239,18 @@ test("fallback video planner covers short, medium, and long sources without inva
   }
   expect(buildFallbackVideoCuts(Number.NaN, 5)).toHaveLength(0);
   expect(buildFallbackVideoCuts(5, 0)).toHaveLength(0);
+});
+
+test("action speed ramp changes source speed while calm styles remain at normal speed", () => {
+  expect(getSpeedRampRate("velocity", 0)).toBeCloseTo(0.82, 3);
+  expect(getSpeedRampRate("velocity", 0.42)).toBeCloseTo(1.65, 3);
+  expect(getSpeedRampRate("velocity", 0.62)).toBeCloseTo(0.9, 3);
+  expect(getSpeedRampRate("velocity", 1)).toBeCloseTo(1, 3);
+  expect(getSpeedRampRate("cinematic", 0.42)).toBe(1);
+  expect(getSpeedRampRate("travel", 0.62)).toBe(1);
+  expect(getSpeedRampRate("velocity", Number.NaN)).toBeCloseTo(0.82, 3);
+  expect(getSpeedRampRate("velocity", -1)).toBeCloseTo(0.82, 3);
+  expect(getSpeedRampRate("velocity", 2)).toBeCloseTo(1, 3);
 });
 
 test("camera motion profiles provide visible but controlled movement", () => {
