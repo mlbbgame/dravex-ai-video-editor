@@ -3,6 +3,21 @@ import { rankHighlightMomentsForStyle } from "./highlight-finder";
 
 export type MontageSelectionStyle = HighlightRankingStyle;
 
+function conflictsWithSelection(
+  candidate: HighlightMoment,
+  selected: HighlightMoment[],
+  minimumGap: number,
+): boolean {
+  return selected.some((existing) => {
+    const tooClose = Math.abs(existing.time - candidate.time) < minimumGap;
+    // Different sample centres can still point to the same source footage when
+    // sampled intervals are wide. Keep a small safety gap between source ranges.
+    const intervalsOverlap = candidate.start < existing.end + 0.08 &&
+      candidate.end > existing.start - 0.08;
+    return tooClose || intervalsOverlap;
+  });
+}
+
 /**
  * Select a style-aware set of distinct moments while preserving source chronology.
  * Scores are editing hints from lightweight visual analysis, not semantic truth.
@@ -24,7 +39,9 @@ export function selectDiverseHighlightMoments(
     Number.isFinite(item.contrast) &&
     item.time >= 0 &&
     item.time <= sourceDuration &&
-    item.end > item.start
+    item.start >= 0 &&
+    item.end > item.start &&
+    item.end <= sourceDuration
   );
   if (!safe.length) return [];
 
@@ -45,16 +62,16 @@ export function selectDiverseHighlightMoments(
     const to = bucket === bucketCount - 1 ? sourceDuration + Number.EPSILON : (bucket + 1) * bucketWidth;
     const best = ranked.find((item) =>
       item.time >= from && item.time < to &&
-      selected.every((existing) => Math.abs(existing.time - item.time) >= minimumGap)
+      !conflictsWithSelection(item, selected, minimumGap)
     );
     if (best) selected.push(best);
   }
 
-  // Fill any gaps with the best remaining moments, applying a novelty penalty
-  // for near-duplicates rather than repeatedly selecting the same visual beat.
+  // Fill any gaps with the best remaining moments, rejecting overlapping source
+  // intervals as well as near-identical timestamps.
   for (const item of ranked) {
     if (selected.length >= target) break;
-    if (selected.some((existing) => Math.abs(existing.time - item.time) < minimumGap)) continue;
+    if (conflictsWithSelection(item, selected, minimumGap)) continue;
     selected.push(item);
   }
 
