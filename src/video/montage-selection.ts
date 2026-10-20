@@ -27,6 +27,7 @@ export function selectDiverseHighlightMoments(
   count: number,
   sourceDuration: number,
   style: MontageSelectionStyle,
+  minimumGapOverride = 0,
 ): HighlightMoment[] {
   if (!Number.isFinite(count) || count <= 0 || !Number.isFinite(sourceDuration) || sourceDuration <= 0) return [];
 
@@ -58,7 +59,12 @@ export function selectDiverseHighlightMoments(
   const bucketCount = Math.min(target, Math.max(3, Math.ceil(target * (style === "story" || style === "cinematic" ? 1.35 : 1.15))));
   const ranked = rankHighlightMomentsForStyle(safe, style);
   const selected: HighlightMoment[] = [];
-  const minimumGap = Math.max(0.35, Math.min(sourceDuration / Math.max(2, target * 1.5), style === "velocity" || style === "glitch" ? 1.1 : 2.0));
+  const baseMinimumGap = Math.max(0.35, Math.min(sourceDuration / Math.max(2, target * 1.5), style === "velocity" || style === "glitch" ? 1.1 : 2.0));
+  // Match source spacing to the planned shot duration so fixed-length cuts do not
+  // replay overlapping footage just because their sample centers were distinct.
+  const minimumGap = Number.isFinite(minimumGapOverride) && minimumGapOverride > 0
+    ? Math.max(baseMinimumGap, minimumGapOverride)
+    : baseMinimumGap;
   const bucketWidth = sourceDuration / bucketCount;
 
   for (let bucket = 0; bucket < bucketCount && selected.length < target; bucket += 1) {
