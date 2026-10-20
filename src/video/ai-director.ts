@@ -531,11 +531,11 @@ export async function analyzeWithAIDirector(
     const sample = samples.reduce((best, item) => Math.abs(item.time - candidate.time) < Math.abs(best.time - candidate.time) ? item : best, samples[0]);
     const previousCandidate = candidates[index - 1];
     const nextCandidate = candidates[index + 1];
-    const previousCandidateLabels = index > 0
-      ? (detectionsByCandidate.get(index - 1) ?? previousObjects).map((item) => item.label)
+    const previousCandidateLabels = previousCandidate
+      ? findNearestDetectedObjects(previousCandidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius).map((item) => item.label)
       : previousLabels;
-    const nextCandidateLabels = index < candidates.length - 1
-      ? (detectionsByCandidate.get(index + 1) ?? []).map((item) => item.label)
+    const nextCandidateLabels = nextCandidate
+      ? findNearestDetectedObjects(nextCandidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius).map((item) => item.label)
       : labels;
     const temporalCues = previousCandidate && nextCandidate
       ? inferTemporalEventCues(
