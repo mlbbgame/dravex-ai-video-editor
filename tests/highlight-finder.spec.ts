@@ -83,6 +83,7 @@ test("scene-aware candidates handle static footage without inventing event label
   const candidates = buildSceneAwareCandidates(samples, 16, 2);
   expect(candidates.length).toBeGreaterThan(0);
   expect(candidates.every((item) => item.score >= 0 && item.score <= 1)).toBe(true);
+  expect(Math.max(...candidates.map((item) => item.score))).toBeLessThan(0.5);
   expect(new Set(candidates.map((item) => item.time)).size).toBe(candidates.length);
   expect(buildSceneAwareCandidates([], 16)).toEqual([]);
   expect(buildSceneAwareCandidates(samples, Number.NaN)).toEqual([]);
