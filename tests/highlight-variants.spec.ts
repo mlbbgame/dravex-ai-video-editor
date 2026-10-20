@@ -120,3 +120,20 @@ test("frame quality scoring rewards detail without allowing invalid measurements
     detail: Number.NaN,
   }))).toBe(true);
 });
+
+
+test("montage variants never reuse overlapping source windows when sample centers differ", () => {
+  const overlapping: HighlightMoment[] = [
+    { time: 2, start: 0, end: 5, score: 0.99, motion: 0.9, contrast: 0.6 },
+    { time: 4, start: 1, end: 6, score: 0.98, motion: 0.85, contrast: 0.65 },
+    { time: 8, start: 7, end: 9, score: 0.8, motion: 0.6, contrast: 0.4 },
+    { time: 13, start: 12, end: 14, score: 0.75, motion: 0.4, contrast: 0.5 },
+    { time: 18, start: 17, end: 19, score: 0.7, motion: 0.3, contrast: 0.3 },
+  ];
+  const variants = buildHighlightVariants(overlapping, 20);
+  for (const variant of variants) {
+    for (let index = 1; index < variant.moments.length; index += 1) {
+      expect(variant.moments[index].start).toBeGreaterThanOrEqual(variant.moments[index - 1].end);
+    }
+  }
+});
