@@ -58,6 +58,28 @@ test("recognizes more varied real-world subjects from common classifier labels",
   ]).profile).toBe("product-diy");
 });
 
+test("recognizes common sports and outdoor-action labels separately from general people", () => {
+  expect(inferSemanticProfile([
+    { label: "basketball", score: 0.86 },
+    { label: "basketball hoop", score: 0.72 },
+  ]).profile).toBe("sports");
+
+  expect(inferSemanticProfile([
+    { label: "tennis racket", score: 0.82 },
+    { label: "tennis ball", score: 0.77 },
+  ]).profile).toBe("sports");
+
+  expect(inferSemanticProfile([
+    { label: "skateboard", score: 0.84 },
+    { label: "skateboarding", score: 0.74 },
+  ]).profile).toBe("sports");
+
+  expect(inferSemanticProfile([
+    { label: "surfboard", score: 0.84 },
+    { label: "windsurfing", score: 0.72 },
+  ]).profile).toBe("sports");
+});
+
 test("semantic profile inference stays unknown for weak or ambiguous predictions", () => {
   expect(inferSemanticProfile([
     { label: "sports car", score: 0.12 },
