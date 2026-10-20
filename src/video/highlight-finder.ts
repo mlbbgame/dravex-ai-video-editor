@@ -290,10 +290,27 @@ export async function analyzeVideoForHighlights(
 }
 
 function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
+  const normalize = (value: number, values: number[]) => {
+    const finite = values.filter(Number.isFinite);
+    if (!finite.length) return 0.5;
+    const minimum = Math.min(...finite);
+    const maximum = Math.max(...finite);
+    if (maximum - minimum < 1e-6) return 0.5;
+    return Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)));
+  };
+  const motions = candidates.map((item) => item.motion);
+  const contrasts = candidates.map((item) => item.contrast);
   const ranked = [...candidates].sort((a, b) => {
-    const scoreA = a.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
-    const scoreB = b.score * (mode === "aggressive" ? 1.2 : mode === "slow" ? 0.78 : 1);
-    return scoreB - scoreA;
+    const scoreFor = (item: HighlightMoment) => {
+      const motion = normalize(item.motion, motions);
+      const contrast = normalize(item.contrast, contrasts);
+      // Each style must rank the actual visual features differently. Multiplying
+      // every candidate's score by the same style constant cannot change ordering.
+      if (mode === "aggressive") return item.score * 0.55 + motion * 0.45;
+      if (mode === "slow") return item.score * 0.4 + contrast * 0.4 + (1 - motion) * 0.2;
+      return item.score * 0.55 + contrast * 0.3 + (1 - motion) * 0.15;
+    };
+    return scoreFor(b) - scoreFor(a);
   });
   const selected: HighlightMoment[] = [];
   // Seed the cut with the strongest moment from evenly spaced time buckets so a long source
