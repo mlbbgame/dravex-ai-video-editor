@@ -248,7 +248,9 @@ export function buildSceneAwareCandidates(
   ).sort((a, b) => a.time - b.time);
   if (!valid.length) return [];
 
-  const normalizedMotion = normalize(valid.map((sample) => sample.motion));
+  const motionValues = valid.map((sample) => sample.motion);
+  const normalizedMotion = normalize(motionValues);
+  const motionRange = Math.max(...motionValues) - Math.min(...motionValues);
   const normalizedQuality = normalize(valid.map((sample) => sample.score));
   const motionChanges = valid.map((sample, index) => {
     if (index === 0) return 0;
@@ -261,7 +263,10 @@ export function buildSceneAwareCandidates(
     const qualityPeak = normalizedQuality[index] >= leftQuality && normalizedQuality[index] >= rightQuality;
     const leftMotion = normalizedMotion[index - 1] ?? -1;
     const rightMotion = normalizedMotion[index + 1] ?? -1;
-    const motionPeak = normalizedMotion[index] >= leftMotion && normalizedMotion[index] >= rightMotion;
+    const motionPeak = motionRange > 0.015 &&
+      sample.motion > 0.015 &&
+      normalizedMotion[index] >= leftMotion &&
+      normalizedMotion[index] >= rightMotion;
     const eventSignal = Math.max(
       motionPeak ? normalizedMotion[index] : 0,
       motionChanges[index] > 0.015 ? normalizedChanges[index] * 0.9 : 0
