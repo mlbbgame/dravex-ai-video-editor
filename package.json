@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:qa": "playwright test",
-    "build:qa": "vite build --base=/"
+    "build:qa": "vite build --config vite.config.qa.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.7.2",
