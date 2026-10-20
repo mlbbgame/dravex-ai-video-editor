@@ -43,6 +43,14 @@ test("short sources never produce trims outside their duration", () => {
   }
 });
 
+test("short clips are partitioned without repeating the same opening frames", () => {
+  const plan = planVariantPreviewCuts(1.2, 3.8, "velocity");
+  expect(plan.cuts).toHaveLength(2);
+  expect(plan.cuts[0].trimStart).toBeCloseTo(0);
+  expect(plan.cuts[0].trimEnd).toBeCloseTo(plan.cuts[1].trimStart);
+  expect(plan.cuts[1].trimEnd).toBeCloseTo(1.2);
+});
+
 test("invalid source lengths produce an empty plan", () => {
   expect(planVariantPreviewCuts(0, 3.8, "pulse")).toEqual({ duration: 0, cuts: [] });
   expect(planVariantPreviewCuts(Number.NaN, 3.8, "story")).toEqual({ duration: 0, cuts: [] });
