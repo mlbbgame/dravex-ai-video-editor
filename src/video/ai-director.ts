@@ -163,6 +163,13 @@ function normalized(value: number, values: number[]): number {
   return Math.max(0, Math.min(1, (value - low) / (high - low)));
 }
 
+function normalizeSceneLabels(labels: readonly string[]): Set<string> {
+  return new Set(labels
+    .filter((label): label is string => typeof label === "string")
+    .map((label) => label.trim().toLowerCase())
+    .filter(Boolean));
+}
+
 export function inferMotionCues(
   motion: number,
   contrast: number,
@@ -176,8 +183,8 @@ export function inferMotionCues(
   else cues.push("Плавное движение");
 
   if (contrast >= 0.24) cues.push("Высокая визуальная выразительность");
-  const previous = new Set(previousLabels);
-  const current = new Set(currentLabels);
+  const previous = normalizeSceneLabels(previousLabels);
+  const current = normalizeSceneLabels(currentLabels);
   if ([...current].some((label) => !previous.has(label)) && previous.size > 0) cues.push("Объект входит в сцену");
   if ([...previous].some((label) => !current.has(label)) && current.size > 0) cues.push("Смена объектов в сцене");
   return cues;
@@ -319,9 +326,9 @@ export function inferTemporalEventCues(
     cues.push("Затухание движения");
   }
 
-  const previous = new Set(previousLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
-  const current = new Set(currentLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
-  const next = new Set(nextLabels.map((label) => label.trim().toLowerCase()).filter(Boolean));
+  const previous = normalizeSceneLabels(previousLabels);
+  const current = normalizeSceneLabels(currentLabels);
+  const next = normalizeSceneLabels(nextLabels);
   const overlapRatio = (left: Set<string>, right: Set<string>) => {
     if (!left.size || !right.size) return 1;
     const overlap = [...left].filter((label) => right.has(label)).length;
