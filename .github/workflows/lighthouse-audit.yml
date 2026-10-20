@@ -61,7 +61,7 @@ jobs:
           for attempt in 1 2; do
             if npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/ \
               --chrome-path="$(which chrome)" \
-              --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+              --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling --window-size=412,915" \
               --max-wait-for-load=45000 \
               --only-categories=performance,accessibility,best-practices,seo \
               --output=html,json \
