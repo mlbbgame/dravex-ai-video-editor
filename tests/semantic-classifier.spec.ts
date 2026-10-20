@@ -80,6 +80,28 @@ test("recognizes common sports and outdoor-action labels separately from general
   ]).profile).toBe("sports");
 });
 
+test("recognizes popular mobile and PC games including PUBG and MLBB", () => {
+  for (const label of [
+    "PUBG Mobile",
+    "Mobile Legends Bang Bang",
+    "MLBB",
+    "battle royale",
+    "gameplay",
+    "game minimap",
+    "Fortnite",
+    "Free Fire",
+    "Call of Duty",
+    "Minecraft",
+    "Valorant",
+    "League of Legends",
+    "Dota 2",
+    "Genshin Impact",
+    "Roblox",
+  ]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("gaming");
+  }
+});
+
 test("semantic profile inference stays unknown for weak or ambiguous predictions", () => {
   expect(inferSemanticProfile([
     { label: "sports car", score: 0.12 },
