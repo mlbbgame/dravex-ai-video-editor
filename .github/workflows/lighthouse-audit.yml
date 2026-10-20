@@ -55,7 +55,7 @@ jobs:
       - name: Run Lighthouse mobile audit
         run: |
           mkdir -p lighthouse-reports
-          npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/             --chrome-path="$(which chrome)"             --chrome-flags="--headless --no-sandbox"             --preset=desktop             --only-categories=performance,accessibility,best-practices,seo             --output=html,json             --output-path=lighthouse-reports/dravex             --quiet
+          npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/             --chrome-path="$(which chrome)"             --chrome-flags="--headless --no-sandbox"             --only-categories=performance,accessibility,best-practices,seo             --output=html,json             --output-path=lighthouse-reports/dravex             --quiet
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const report = JSON.parse(fs.readFileSync('lighthouse-reports/dravex.report.json', 'utf8'));
