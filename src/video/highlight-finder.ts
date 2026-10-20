@@ -507,10 +507,33 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
     { id: "slow", title: "Плавный / атмосферный", description: "Длиннее держит выразительные кадры, меньше резких смен", shotLength: 3.5, desired: 16, spacing: 5.5 }
   ];
   if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return [];
+  // Ignore malformed or out-of-range detections before variant selection. Without
+  // this guard the fallback ranking could reuse a timestamp beyond the source,
+  // then clamp it to the final frame and create misleading duplicate trims.
+  const validCandidates = candidates
+    .filter((candidate) =>
+      Number.isFinite(candidate.time) &&
+      candidate.time >= 0 &&
+      candidate.time <= sourceDuration &&
+      Number.isFinite(candidate.score) &&
+      Number.isFinite(candidate.start) &&
+      Number.isFinite(candidate.end) &&
+      candidate.end > candidate.start
+    )
+    .sort((a, b) => a.time - b.time)
+    .filter((candidate, index, sorted) => index === 0 || candidate.time !== sorted[index - 1].time);
+  if (!validCandidates.length) return configs.map((config) => ({
+    id: config.id,
+    title: config.title,
+    description: config.description,
+    shotLength: config.shotLength,
+    duration: 0,
+    moments: []
+  }));
   return configs.map((config) => {
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
-    const count = Math.min(config.desired, availableCount, candidates.length);
-    const moments = chooseSpread(candidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
+    const count = Math.min(config.desired, availableCount, validCandidates.length);
+    const moments = chooseSpread(validCandidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
       const shotLength = Math.min(config.shotLength, sourceDuration);
       const start = Math.max(0, Math.min(sourceDuration - shotLength, moment.time - shotLength / 2));
       return {
