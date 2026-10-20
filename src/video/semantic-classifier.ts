@@ -34,22 +34,22 @@ let classifierPromise: Promise<ImageClassifier> | null = null;
 
 const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
   automotive: [
-    /\b(car|sports car|race car|racing car|racer|convertible|limousine|truck|motorcycle|wheel|rally car|jeep)\b/i
+    /\b(car|sports car|race car|racing car|racer|convertible|limousine|truck|pickup|minivan|motorcycle|motor scooter|mountain bike|wheel|rally car|jeep|formula one|go-kart|tractor|tow truck)\b/i
   ],
   nature: [
-    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park)\b/i
+    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park|aurora|natural arch|rapids|seascape|water bird|wild flower|mushroom)\b/i
   ],
   food: [
-    /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|ice lolly|popsicle|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|carbonara|hotdog|hot dog|cheeseburger|hamburger|rotisserie|roast chicken|potpie|trifle|taco|sushi|ramen|noodle|omelette|omelet|pancake|waffle|bakery|confectionery|menu|dining table)\b/i
+    /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|ice lolly|popsicle|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|carbonara|hotdog|hot dog|cheeseburger|hamburger|rotisserie|roast chicken|potpie|trifle|taco|sushi|ramen|noodle|omelette|omelet|pancake|waffle|bakery|confectionery|menu|dining table|frying pan|mixing bowl|baking sheet|dough|bread loaf|bagel|pretzel|cheese|egg|steak|grilled salmon|mashed potato|guacamole|dim sum|ice pop|cupcake|brownie|burrito)\b/i
   ],
   people: [
-    /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask)\b/i
+    /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask|wedding|performer|musician|guitarist|drummer|singer|runner|cyclist|skier|snowboarder|weightlifter)\b/i
   ],
   wildlife: [
-    /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|hare|squirrel|owl|eagle|butterfly|lizard|frog|toad|tadpole|whale|dolphin|shark|seal|otter|raccoon|panda|giraffe|zebra|kangaroo|koala|parrot|macaw|flamingo|peacock|wood rabbit|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua)\b/i
+    /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|hare|squirrel|owl|eagle|butterfly|lizard|frog|toad|tadpole|whale|dolphin|shark|seal|otter|raccoon|panda|giraffe|zebra|kangaroo|koala|parrot|macaw|flamingo|peacock|wood rabbit|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua|kitten|puppy|sea lion|starfish|jellyfish|crab|lobster|swan|swanling|woodpecker|hummingbird|wild boar|hedgehog|ferret|guinea pig|hamster)\b/i
   ],
   "product-diy": [
-    /\b(tool|hammer|screwdriver|power drill|computer|laptop|phone|camera|device|chain saw|washer|remote control|screw|wrench|keyboard|monitor|vacuum|toaster|gadget)\b/i
+    /\b(tool|hammer|screwdriver|power drill|computer|laptop|phone|camera|device|chain saw|washer|remote control|screw|wrench|keyboard|monitor|vacuum|toaster|gadget|3d printer|electric guitar|sewing machine|plumbing|power tool|workbench|circuit board|microphone|headphones|smartphone|tablet computer)\b/i
   ],
   anime: [
     /\b(anime|manga|comic book|cartoon|animation|animated cartoon|fictional character)\b/i
