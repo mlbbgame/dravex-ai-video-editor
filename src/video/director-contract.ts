@@ -155,6 +155,23 @@ export function suggestDirectorProfile(eventLabels: readonly string[]): Director
   return candidates[0].id;
 }
 
+/** Map broad on-device frame classifications to a safe editing profile. */
+export function directorProfileForSemanticProfile(
+  profile: "automotive" | "nature" | "food" | "people" | "wildlife" | "product-diy" | "anime" | "gaming" | "unknown",
+): DirectorProfileId {
+  switch (profile) {
+    case "automotive": return "aggressive-car";
+    case "nature": return "nature-wildlife";
+    case "food": return "food-cooking";
+    case "people":
+    case "wildlife": return "people-everyday";
+    case "product-diy": return "product-diy";
+    case "anime": return "anime-edit";
+    case "gaming": return "gaming-highlights";
+    default: return "cinematic-travel";
+  }
+}
+
 export type DirectorSceneCandidate = {
   sourceStart: number;
   sourceEnd: number;
