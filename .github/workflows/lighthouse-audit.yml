@@ -1,0 +1,77 @@
+name: DRAVEX Lighthouse mobile audit
+
+on:
+  push:
+    branches:
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dravex-lighthouse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    name: Build and audit mobile web performance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build production app
+        run: npm run build:qa
+
+      - name: Start local preview server
+        run: |
+          npm run preview -- --host 127.0.0.1 > /tmp/dravex-preview.log 2>&1 &
+          echo $! > /tmp/dravex-preview.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/dravex-preview.log
+          exit 1
+
+      - name: Run Lighthouse mobile audit
+        run: |
+          mkdir -p lighthouse-reports
+          npx --yes lighthouse@12.8.2 http://127.0.0.1:4173/             --chrome-path="$(which chrome)"             --chrome-flags="--headless --no-sandbox"             --preset=desktop             --only-categories=performance,accessibility,best-practices,seo             --output=html,json             --output-path=lighthouse-reports/dravex             --quiet
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('lighthouse-reports/dravex.report.json', 'utf8'));
+          const categories = report.categories;
+          for (const name of ['performance', 'accessibility', 'best-practices', 'seo']) {
+            const item = categories[name];
+            if (item) console.log(`${item.title}: ${Math.round(item.score * 100)}/100`);
+          }
+          console.log('Detailed report saved as a workflow artifact.');
+          NODE
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dravex-lighthouse-report
+          path: lighthouse-reports/
+          if-no-files-found: warn
+          retention-days: 14
