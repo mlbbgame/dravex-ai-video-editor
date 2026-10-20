@@ -36,6 +36,14 @@ export function planVariantPreviewCuts(
   const centers = CUT_CENTERS[variantId] ?? CUT_CENTERS.auto;
   const shotDuration = duration / count;
   const cuts = Array.from({ length: count }, (_, index) => {
+    // If the whole source is shorter than the requested preview, partition it
+    // chronologically. Clamping style-specific centers near zero can otherwise
+    // select the exact same opening frames more than once on short clips.
+    if (sourceDuration <= requestedDuration) {
+      const trimStart = index * shotDuration;
+      return { trimStart, trimEnd: index === count - 1 ? sourceDuration : trimStart + shotDuration };
+    }
+
     const centerRatio = centers[Math.min(index, centers.length - 1)] ?? (index + 0.5) / count;
     const trimStart = Math.max(0, Math.min(sourceDuration - shotDuration, sourceDuration * centerRatio - shotDuration / 2));
     return { trimStart, trimEnd: trimStart + shotDuration };
