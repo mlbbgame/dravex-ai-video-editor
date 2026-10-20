@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { getCameraMotionProfile, getOutputDimensions, shouldContainSource } from "../src/video/video-sequence-render";
-import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
+import { buildHighlightVariants, buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 
@@ -199,6 +199,28 @@ test("quick video cut points stay valid across the full duration range", () => {
   }
   expect(buildQuickVideoCandidates(Number.NaN)).toHaveLength(0);
   expect(buildQuickVideoCandidates(0.1)).toHaveLength(0);
+});
+
+test("highlight variants rank motion and contrast differently", () => {
+  const candidates = Array.from({ length: 60 }, (_, index) => {
+    const time = index + 0.5;
+    return {
+      time,
+      start: Math.max(0, time - 0.4),
+      end: Math.min(60, time + 0.4),
+      score: 0.4,
+      motion: index % 3 === 0 ? 1 : 0.1,
+      contrast: index % 3 === 1 ? 1 : 0.1,
+    };
+  });
+  const variants = buildHighlightVariants(candidates, 60);
+  expect(variants.map((variant) => variant.id)).toEqual(["aggressive", "cinematic", "slow"]);
+  expect(variants[0].shotLength).toBeLessThan(variants[1].shotLength);
+  expect(variants[1].shotLength).toBeLessThan(variants[2].shotLength);
+  const averageMotion = (variant: typeof variants[number]) =>
+    variant.moments.reduce((sum, moment) => sum + moment.motion, 0) / Math.max(1, variant.moments.length);
+  expect(averageMotion(variants[0])).toBeGreaterThan(averageMotion(variants[2]));
+  expect(variants[0].moments.map((moment) => moment.time)).not.toEqual(variants[2].moments.map((moment) => moment.time));
 });
 
 test("fallback video planner covers short, medium, and long sources without invalid trims", () => {
