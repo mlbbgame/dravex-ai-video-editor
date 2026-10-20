@@ -288,59 +288,8 @@ export async function analyzeVideoForHighlights(
     const scored = scoreVisualSamples(raw);
     const samples: HighlightSample[] = scored.map((sample) => ({ ...sample }));
 
-    const peaks = samples.filter((sample, index) => {
-      const left = samples[index - 1]?.score ?? -1;
-      const right = samples[index + 1]?.score ?? -1;
-      return sample.score >= left && sample.score >= right && sample.time > Math.min(1, duration * 0.1) && sample.time < duration - Math.min(1, duration * 0.1);
-    }).sort((a, b) => b.score - a.score);
+    const candidates = buildSceneAwareCandidates(samples, duration, interval);
 
-    const minimumGap = Math.max(2.5, Math.min(8, duration / 70));
-    const bucketCount = Math.min(80, Math.max(8, Math.ceil(duration / 90)));
-    const bucketWidth = duration / bucketCount;
-    const selectedPeaks: HighlightSample[] = [];
-    for (const peak of peaks) {
-      const bucket = Math.min(bucketCount - 1, Math.floor(peak.time / bucketWidth));
-      const sameBucket = selectedPeaks.some((item) => Math.min(bucketCount - 1, Math.floor(item.time / bucketWidth)) === bucket);
-      const tooClose = selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap);
-      if (!sameBucket && !tooClose) selectedPeaks.push(peak);
-      if (selectedPeaks.length >= 100) break;
-    }
-
-    let candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
-      const half = Math.max(0.35, Math.min(2.4, interval * 0.8));
-      return {
-        time: peak.time,
-        start: Math.max(0, peak.time - half),
-        end: Math.min(duration, peak.time + half),
-        score: peak.score,
-        motion: peak.motion,
-        contrast: peak.contrast,
-        sharpness: peak.sharpness,
-        saturation: peak.saturation,
-        brightness: peak.brightness,
-        exposure: peak.exposure
-      };
-    }).sort((a, b) => a.time - b.time);
-
-    // If no local peak exists, retain the strongest sampled frames, spread across time.
-    if (!candidates.length) {
-      candidates = [...samples]
-        .sort((a, b) => b.score - a.score)
-        .slice(0, Math.min(4, samples.length))
-        .map((sample) => ({
-          time: sample.time,
-          start: Math.max(0, sample.time - Math.min(0.8, duration / 3)),
-          end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
-          score: sample.score,
-          motion: sample.motion,
-          contrast: sample.contrast,
-          sharpness: sample.sharpness,
-          saturation: sample.saturation,
-          brightness: sample.brightness,
-          exposure: sample.exposure
-        }))
-        .sort((a, b) => a.time - b.time);
-    }
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
     return { duration, samples, candidates };
   } finally {
