@@ -35,6 +35,41 @@ export function shouldContainSource(sourceAspect: number, outputAspect: number):
   return Math.abs(Math.log(sourceAspect / outputAspect)) > 0.18;
 }
 
+/**
+ * A restrained action-edit speed ramp. Values are source playback speed, while
+ * the output timeline keeps each shot's requested duration. Other styles stay
+ * at normal speed so calm footage is not unintentionally sped up.
+ */
+export function getSpeedRampRate(style: SequenceRenderStyle, progress: number): number {
+  if (style !== "velocity") return 1;
+  const t = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+  const stops = [
+    { at: 0, rate: 0.82 },
+    { at: 0.2, rate: 1.02 },
+    { at: 0.42, rate: 1.65 },
+    { at: 0.62, rate: 0.9 },
+    { at: 0.82, rate: 1.12 },
+    { at: 1, rate: 1 }
+  ];
+  // Smoothstep's mean over each interval equals the mean of its endpoint
+  // rates. Normalize the curve so it consumes approximately one source-second
+  // per output-second; otherwise the faster sections reach the trim end early
+  // and force the renderer to freeze a frame for the remainder of the shot.
+  const averageRate = stops.slice(1).reduce((sum, right, index) => {
+    const left = stops[index];
+    return sum + (right.at - left.at) * (left.rate + right.rate) / 2;
+  }, 0);
+  for (let index = 1; index < stops.length; index += 1) {
+    const left = stops[index - 1];
+    const right = stops[index];
+    if (t > right.at) continue;
+    const linear = (t - left.at) / (right.at - left.at);
+    const eased = linear * linear * (3 - 2 * linear);
+    return (left.rate + (right.rate - left.rate) * eased) / averageRate;
+  }
+  return 1 / averageRate;
+}
+
 export type CameraMotionProfile = { zoom: number; pan: number };
 
 /** Consistent motion tuning for cinematic photo/video moves, scaled by the chosen intensity. */
@@ -269,7 +304,13 @@ export function prepareAudioContextForUserGesture(): AudioContext | null {
   }
 }
 
-const dimensionsFor = (aspectRatio: string, quality = "720p") => {
+/** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
+export function getSafeImageDuration(duration?: number): number {
+  if (typeof duration !== "number" || !Number.isFinite(duration)) return 3;
+  return Math.max(0.25, Math.min(duration, 30));
+}
+
+export const getOutputDimensions = (aspectRatio: string, quality = "720p") => {
   const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
   let base: { width: number; height: number };
   if (quality === "preview") base = aspectRatio === "16:9" ? { width: 480, height: 270 } : aspectRatio === "1:1" ? { width: 360, height: 360 } : aspectRatio === "4:5" ? { width: 360, height: 450 } : { width: 360, height: 640 };
@@ -298,6 +339,12 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     };
     const failed = () => {
       cleanup();
+      // Release a broken or unsupported source immediately. This element is not
+      // added to the loaded-segment cache when loading fails, so the outer cleanup
+      // cannot otherwise release its decoder and object URL reference.
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
       reject(new Error(`Could not read video: ${segment.name}. Try MP4 (H.264) or WebM.`));
     };
     timeoutId = window.setTimeout(() => {
@@ -364,10 +411,41 @@ function loadImage(segment: ImageSegment, maxEdge: number): Promise<HTMLCanvasEl
 function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
   return new Promise((resolve, reject) => {
     const audio = document.createElement("audio");
-    audio.preload = "auto";
+    audio.preload = "metadata";
+    let timeoutId = 0;
+    let settled = false;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      audio.removeEventListener("loadedmetadata", loaded);
+      audio.removeEventListener("error", failed);
+    };
+    const failed = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      reject(new Error(`Не удалось прочитать аудиофайл «${segment.name}». Попробуй MP3, WAV или другой файл.`));
+    };
+    const loaded = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(audio);
+    };
+    timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      reject(new Error(`Аудиофайл «${segment.name}» не открылся за 15 секунд. Попробуй MP3/WAV или другой файл.`));
+    }, 15_000);
+    audio.addEventListener("loadedmetadata", loaded, { once: true });
+    audio.addEventListener("error", failed, { once: true });
     audio.src = segment.url;
-    audio.onloadedmetadata = () => resolve(audio);
-    audio.onerror = () => reject(new Error(`Could not read audio file: ${segment.name}`));
     audio.load();
   });
 }
@@ -413,6 +491,26 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // video) at once. A two-worker pool caps peak memory on Android while keeping
   // segment order stable in the resulting timeline.
   const loaded: LoadedSegment[] = new Array(segments.length);
+  // One idempotent release path prevents decoded media from lingering if any
+  // preparation stage fails before MediaRecorder's normal onstop cleanup runs.
+  const releaseLoadedVisuals = () => {
+    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
+      image.width = 1;
+      image.height = 1;
+    });
+  };
+  const releaseLoadedAudio = (items: { audio: HTMLAudioElement }[]) => {
+    items.forEach(({ audio }) => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    });
+  };
   let nextSegmentIndex = 0;
   let loadError: unknown = null;
   const loaderCount = Math.min(2, segments.length);
@@ -423,8 +521,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const segment = segments[index];
       try {
         if (segment.kind === "image") {
-          const image = await loadImage(segment, quality === "1080p" ? 1920 : 1280);
-          loaded[index] = { kind: "image", name: segment.name, image, duration: Math.max(0.25, Math.min(segment.duration ?? 3, 30)) };
+          const image = await loadImage(segment, quality === "4K" ? 3840 : quality === "1080p" ? 1920 : 1280);
+          loaded[index] = { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration) };
           continue;
         }
         const videoSegment = segment as VideoSegment;
@@ -447,15 +545,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   if (loadError) {
     // A failed file must not leave already-decoded source media alive in the
     // background after the UI has reported the export error.
-    new Set(loaded.filter((item): item is LoadedVideo => item?.kind === "video").map((item) => item.video)).forEach((video) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    });
-    loaded.filter((item): item is LoadedImage => item?.kind === "image").forEach(({ image }) => {
-      image.width = 1;
-      image.height = 1;
-    });
+    releaseLoadedVisuals();
     throw loadError instanceof Error ? loadError : new Error("Не удалось подготовить исходные файлы для монтажа.");
   }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
@@ -475,17 +565,35 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
+  // Load music with explicit failure cleanup. Promise.all rejects as soon as
+  // one track fails, but other tracks may already have decoded metadata and
+  // source videos are already resident; release all fulfilled media before
+  // reporting the import error to the UI.
+  const audioResults = await Promise.allSettled(audioTracks.map(async (segment) => ({
     segment,
     audio: await loadAudio(segment)
   })));
+  const loadedAudio = audioResults
+    .filter((result): result is PromiseFulfilledResult<{ segment: AudioSegment; audio: HTMLAudioElement }> => result.status === "fulfilled")
+    .map((result) => result.value);
+  const audioLoadFailure = audioResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (audioLoadFailure) {
+    releaseLoadedVisuals();
+    releaseLoadedAudio(loadedAudio);
+    throw audioLoadFailure.reason instanceof Error
+      ? audioLoadFailure.reason
+      : new Error("Не удалось загрузить одну из музыкальных дорожек.");
+  }
 
-  const { width, height } = dimensionsFor(aspectRatio, quality);
+  const { width, height } = getOutputDimensions(aspectRatio, quality);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not initialize the video renderer.");
+  if (!context) {
+    releaseLoadedVisuals();
+    throw new Error("Could not initialize the video renderer.");
+  }
 
   const videoStream = canvas.captureStream(24);
   // Do not create an AudioContext for a no-music export. On some Android
@@ -888,19 +996,35 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         continue;
       }
 
-      const { video, start, duration } = item;
+      const { video, start, end, duration } = item;
       video.pause();
+      video.playbackRate = 1;
+      if ("preservesPitch" in video) video.preservesPitch = true;
       await seek(video, start);
       await video.play();
       const clipStartedAt = performance.now();
+      let sourceEnded = false;
       while (performance.now() - clipStartedAt < duration * 1000) {
         const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
         const clipProgress = Math.min(1, elapsedSeconds / duration);
+        // Speed changes are limited to action/velocity edits. If a speed-up
+        // reaches the selected trim end early, freeze that last frame rather
+        // than accidentally revealing footage outside the user's chosen range.
+        video.playbackRate = sourceEnded ? 1 : getSpeedRampRate(style, clipProgress);
+        if (!sourceEnded && video.currentTime >= end - 0.04) {
+          video.pause();
+          // Playback-rate changes can step past the trim boundary between
+          // animation frames; seek back inside the selected range before holding.
+          await seek(video, Math.max(start, end - 0.06));
+          sourceEnded = true;
+          video.playbackRate = 1;
+        }
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       video.pause();
+      video.playbackRate = 1;
       savePreviousFrame();
       completed += duration;
     }

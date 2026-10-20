@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, ScanLine, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import type { SemanticProfile } from "./video/semantic-classifier";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { loadLocalProject, saveLocalProject } from "./video/project-storage";
@@ -23,6 +24,8 @@ type MontageVariant = {
   transition: TransitionPreset;
   strength: EffectPreset;
   previewClass: string;
+  quality?: "720p" | "1080p" | "4K";
+  beatSync?: boolean;
   icon: typeof Sparkles;
 };
 
@@ -33,58 +36,119 @@ type RenderedVariant = {
 };
 
 const montageVariants: MontageVariant[] = [
-  { id: "auto", title: "Умный авто", note: "Подберём по материалу", style: "auto", transition: "auto", strength: "balanced", previewClass: "auto", icon: Sparkles },
-  { id: "velocity", title: "Velocity", note: "Резко и динамично", style: "velocity", transition: "action", strength: "strong", previewClass: "velocity", icon: WandSparkles },
-  { id: "cinema", title: "Cinematic", note: "Мягкое движение", style: "cinematic", transition: "cinematic", strength: "soft", previewClass: "cinema", icon: Film },
-  { id: "anime", title: "Anime Impact", note: "Ярко и контрастно", style: "anime", transition: "action", strength: "strong", previewClass: "anime", icon: Sparkles },
-  { id: "glitch", title: "Glitch Rush", note: "Цифровые вспышки", style: "glitch", transition: "action", strength: "strong", previewClass: "glitch", icon: ScanLine },
-  { id: "story", title: "Soft Story", note: "Спокойная история", style: "story", transition: "cinematic", strength: "soft", previewClass: "story", icon: Play },
-  { id: "travel", title: "Travel Flow", note: "Плавно · природа · дороги", style: "travel", transition: "cinematic", strength: "soft", previewClass: "travel", icon: Film },
-  { id: "pulse", title: "Beat Pulse", note: "Ритмичные склейки", style: "velocity", transition: "auto", strength: "balanced", previewClass: "pulse", icon: Music2 },
-  { id: "neon", title: "Neon Action", note: "Неон и резкий темп", style: "glitch", transition: "auto", strength: "balanced", previewClass: "neon", icon: ScanLine },
+  { id: "aggressive", title: "Aggressive Edit", note: "Быстрые склейки и акцентные переходы", style: "velocity", transition: "action", strength: "strong", beatSync: false, previewClass: "velocity", icon: WandSparkles },
+  { id: "cinematic", title: "Cinematic", note: "Плавный киношный монтаж", style: "cinematic", transition: "cinematic", strength: "soft", beatSync: false, previewClass: "cinema", icon: Film },
+  { id: "music-sync", title: "Music Sync", note: "Склейки по найденным музыкальным акцентам", style: "velocity", transition: "auto", strength: "balanced", beatSync: true, previewClass: "pulse", icon: Music2 },
+  { id: "atmosphere", title: "Atmosphere", note: "Природа, еда и путешествия", style: "travel", transition: "cinematic", strength: "soft", beatSync: false, previewClass: "travel", icon: Sparkles },
+  { id: "4k-quality", title: "4K Quality", note: "Экспорт в разрешении 2160p", style: "story", transition: "cinematic", strength: "soft", quality: "4K", beatSync: false, previewClass: "story", icon: Clapperboard },
 ];
 
-function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
-  // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
-  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
+function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string, contentProfile: SemanticProfile = "unknown"): VideoSegment[] {
+  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0 || !Number.isFinite(targetDuration) || targetDuration <= 0) return [];
   const usableDuration = Math.min(sourceDuration, targetDuration);
-  const count = Math.max(1, Math.ceil(usableDuration / shotLength));
+  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "travel" ? 4.2 : style === "story" ? 3.2 : 2.2;
+  const count = Math.max(1, Math.min(200, Math.ceil(usableDuration / shotLength)));
+  const minimumSpacing = Math.max(0.65, shotLength * 0.72);
+  const valid = candidates.filter((moment) =>
+    Number.isFinite(moment.time) &&
+    Number.isFinite(moment.score) &&
+    Number.isFinite(moment.motion) &&
+    Number.isFinite(moment.start) &&
+    Number.isFinite(moment.end) &&
+    moment.time >= 0 &&
+    moment.time <= sourceDuration &&
+    moment.end > moment.start
+  );
   const styleScore = (moment: HighlightMoment) => {
-    // Calm edits should favour stable, readable shots instead of blindly chasing motion.
-    const motionPenalty = style === "travel" ? 0.62 : style === "story" ? 0.4 : style === "cinematic" ? 0.2 : 0;
-    return moment.score - Math.max(0, moment.motion) * motionPenalty;
+    const motion = Math.max(0, Math.min(1, moment.motion));
+    const detail = Math.max(0, Math.min(1, moment.sharpness ?? 0.5));
+    const contrast = Math.max(0, Math.min(1, moment.contrast));
+    if (style === "velocity" || style === "glitch" || style === "anime") {
+      const actionBoost = contentProfile === "automotive" ? 0.08 : 0;
+      const calmPenalty = ["nature", "food", "people", "wildlife", "product-diy"].includes(contentProfile) ? 0.1 : 0;
+      return moment.score * 0.62 + motion * (0.28 + actionBoost - calmPenalty) + detail * (0.1 + calmPenalty) - actionBoost * detail;
+    }
+    if (style === "travel" || style === "story") {
+      const processBoost = ["food", "product-diy"].includes(contentProfile) ? 0.08 : 0;
+      return moment.score * 0.58 + detail * (0.24 + processBoost) + contrast * 0.18 - motion * (0.12 + processBoost);
+    }
+    return moment.score * 0.62 + detail * 0.22 + contrast * 0.16 - motion * 0.06;
   };
-  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
+  const ranked = [...valid].sort((a, b) => styleScore(b) - styleScore(a));
   const selected: HighlightMoment[] = [];
+
+  // First pass: take a strong moment from each timeline bucket. This preserves
+  // coverage of the whole source instead of collecting every cut from one action.
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((moment) => moment.time >= from && moment.time < to && selected.every((item) => Math.abs(item.time - moment.time) > Math.max(1.5, shotLength * 1.15)));
+    const best = ranked.find((moment) =>
+      moment.time >= from &&
+      (bucket === count - 1 ? moment.time <= to : moment.time < to) &&
+      selected.every((item) => Math.abs(item.time - moment.time) >= minimumSpacing)
+    );
     if (best) selected.push(best);
   }
-  for (const item of ranked) {
+
+  // Second pass: add high-scoring moments while avoiding near-duplicate cuts.
+  for (const moment of ranked) {
     if (selected.length >= count) break;
-    if (selected.every((existing) => Math.abs(existing.time - item.time) > Math.max(0.8, shotLength * 0.82))) selected.push(item);
+    if (selected.every((item) => Math.abs(item.time - moment.time) >= minimumSpacing)) selected.push(moment);
   }
+
+  // Sparse analysis (or a low-motion clip) must not make the editor repeat the
+  // same opening segment. Fill missing slots with evenly distributed source times.
+  if (selected.length < count) {
+    for (let index = 0; index < count && selected.length < count; index += 1) {
+      const time = Math.min(sourceDuration, (index + 0.5) * sourceDuration / count);
+      if (selected.some((item) => Math.abs(item.time - time) < Math.min(minimumSpacing * 0.55, sourceDuration / count * 0.45))) continue;
+      selected.push({
+        time,
+        start: Math.max(0, time - shotLength / 2),
+        end: Math.min(sourceDuration, time + shotLength / 2),
+        score: 0,
+        motion: 0,
+        contrast: 0,
+        sharpness: 0.5
+      });
+    }
+  }
+
+  // If candidate density is very low, finish filling distinct positions rather than
+  // looping through the same modulo-based timestamps.
+  for (let index = 0; selected.length < count && index < count * 2; index += 1) {
+    const time = Math.min(sourceDuration, (index + 0.5) * sourceDuration / (count * 2));
+    if (selected.some((item) => Math.abs(item.time - time) < 0.05)) continue;
+    selected.push({
+      time,
+      start: Math.max(0, time - shotLength / 2),
+      end: Math.min(sourceDuration, time + shotLength / 2),
+      score: 0,
+      motion: 0,
+      contrast: 0,
+      sharpness: 0.5
+    });
+  }
+
   selected.sort((a, b) => a.time - b.time);
-  if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
   const segments: VideoSegment[] = [];
   let remaining = usableDuration;
-  for (const moment of selected) {
-    if (remaining <= 0.15) break;
-    const duration = Math.min(shotLength, remaining, sourceDuration);
-    const start = Math.max(0, Math.min(sourceDuration - duration, moment.time - duration / 2));
-    segments.push({ name: file.name, url, trimStart: start, trimEnd: start + duration });
-    remaining -= duration;
+  for (const moment of selected.slice(0, count)) {
+    if (remaining <= 0.001) break;
+    const segmentDuration = Math.min(shotLength, remaining, sourceDuration);
+    const start = Math.max(0, Math.min(sourceDuration - segmentDuration, moment.time - segmentDuration / 2));
+    segments.push({ name: file.name, url, trimStart: start, trimEnd: start + segmentDuration });
+    remaining -= segmentDuration;
   }
-  if (remaining > 0.15) {
-    const step = Math.max(shotLength, sourceDuration / Math.max(1, Math.ceil(sourceDuration / shotLength)));
-    for (let start = 0; remaining > 0.15; start += step) {
-      const duration = Math.min(shotLength, remaining, sourceDuration);
-      const safeStart = Math.max(0, Math.min(sourceDuration - duration, start % Math.max(0.1, sourceDuration - duration + 0.1)));
-      segments.push({ name: file.name, url, trimStart: safeStart, trimEnd: safeStart + duration });
-      remaining -= duration;
-      if (segments.length > 200) break;
+
+  // Correct floating-point remainder without replaying an arbitrary previous cut.
+  if (remaining > 0.001) {
+    const fallback = buildFallbackVideoCuts(sourceDuration, remaining, Math.min(shotLength, remaining));
+    for (const cut of fallback) {
+      if (remaining <= 0.001 || segments.length >= 200) break;
+      const segmentDuration = Math.min(remaining, cut.trimEnd - cut.trimStart);
+      segments.push({ name: file.name, url, trimStart: cut.trimStart, trimEnd: cut.trimStart + segmentDuration });
+      remaining -= segmentDuration;
     }
   }
   return segments;
@@ -102,12 +166,12 @@ export default function App() {
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
-  const [style, setStyle] = useState<EditStyle>("auto");
-  const [quality, setQuality] = useState<"720p" | "1080p">("720p");
-  const [beatSync, setBeatSync] = useState(true);
-  const [effectStrength, setEffectStrength] = useState<EffectPreset>("balanced");
+  const [style, setStyle] = useState<EditStyle>("velocity");
+  const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
+  const [beatSync, setBeatSync] = useState(false);
+  const [effectStrength, setEffectStrength] = useState<EffectPreset>("strong");
   const [musicVolume, setMusicVolume] = useState(0.72);
-  const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
+  const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("action");
   const [projectMessage, setProjectMessage] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
   const [scan, setScan] = useState<HighlightProgress>({ current: 0, total: 0, time: 0 });
@@ -158,14 +222,14 @@ export default function App() {
     setMediaUrls([]);
     setMusicFile(null);
     setMusicUrl("");
-    setStyle("auto");
+    setStyle("velocity");
     setDuration(30);
     setAspectRatio("9:16");
     setQuality("720p");
-    setBeatSync(true);
-    setEffectStrength("balanced");
+    setBeatSync(false);
+    setEffectStrength("strong");
     setMusicVolume(0.72);
-    setTransitionMode("auto");
+    setTransitionMode("action");
     setStage("empty");
     setScan({ current: 0, total: 0, time: 0 });
     setRenderProgress(0);
@@ -337,6 +401,8 @@ export default function App() {
     setStyle(variant.style);
     setTransitionMode(variant.transition);
     setEffectStrength(variant.strength);
+    if (variant.quality) setQuality(variant.quality);
+    if (variant.beatSync !== undefined) setBeatSync(variant.beatSync);
     setOutputUrl("");
     setError("");
     setMessage("");
@@ -402,6 +468,27 @@ export default function App() {
     setPreviewStatus(`Готовим ${pendingVariants.length} реальных вариантов по очереди — это может занять немного времени на телефоне…`);
     setError("");
     try {
+      let sourceDurationForPreviews = 0;
+      let previewAnalysis: Awaited<ReturnType<typeof analyzeVideoForHighlights>> | null = null;
+      if (!isImageMode) {
+        sourceDurationForPreviews = await getVideoDuration(videoUrl);
+        try {
+          // Analyze once and reuse the same candidates for all styles. Each video
+          // preview then selects its own cuts instead of showing a single arbitrary
+          // continuous excerpt from a different part of the source.
+          previewAnalysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
+            if (generation === previewGeneration.current) {
+              setPreviewStatus(progress.phase === "semantic"
+                ? "Распознаём содержание для вариантов монтажа…"
+                : "Анализируем видео перед созданием вариантов…");
+            }
+          });
+          sourceDurationForPreviews = previewAnalysis.duration;
+        } catch {
+          // Keep previews available for formats where frame analysis fails.
+          previewAnalysis = null;
+        }
+      }
       for (let index = 0; index < pendingVariants.length; index += 1) {
         if (generation !== previewGeneration.current) return;
         const variant = pendingVariants[index];
@@ -416,7 +503,20 @@ export default function App() {
               url: mediaUrls[segmentIndex],
               duration: previewDuration / Math.min(mediaFiles.length, 6)
             }))
-          : [{ name: videoFile!.name, url: videoUrl, trimStart: 0, trimEnd: previewDuration }];
+          : previewAnalysis?.candidates.length
+            ? makeSegments(
+                previewAnalysis.candidates,
+                sourceDurationForPreviews,
+                previewDuration,
+                previewStyle,
+                videoFile!,
+                videoUrl,
+                previewAnalysis.semantic?.profile ?? "unknown"
+              )
+            : (() => {
+                const fallbackCuts = buildFallbackVideoCuts(sourceDurationForPreviews, previewDuration, previewStyle === "velocity" ? 1.05 : 2.2);
+                return fallbackCuts.map((cut) => ({ name: videoFile!.name, url: videoUrl, trimStart: cut.trimStart, trimEnd: cut.trimEnd }));
+              })();
         const audioTracks: AudioSegment[] = musicUrl && musicFile
           ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }]
           : [];
@@ -515,15 +615,23 @@ export default function App() {
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
       } else {
         try {
-          const analysis = await analyzeVideoForHighlights(videoUrl, setScan);
+          const analysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
+            setScan(progress);
+            if (progress.phase === "semantic") setMessage("Распознаём содержание нескольких кадров…");
+          });
           sourceVideoDuration = analysis.duration;
           renderDuration = Math.min(duration, analysis.duration);
+          const contentProfile = analysis.semantic?.profile ?? "unknown";
           if (style === "auto") {
-            // Camera movement alone cannot tell action footage from a moving road, river or landscape.
-            // Prefer clean cinematic pacing until semantic scene analysis is available.
-            actualStyle = "cinematic";
+            // Semantic image labels provide a broad category, not action understanding.
+            // Keep a restrained fallback whenever the model is unavailable or uncertain.
+            actualStyle = contentProfile === "automotive" ? "velocity"
+              : contentProfile === "nature" ? "travel"
+              : contentProfile === "food" || contentProfile === "product-diy" ? "story"
+              : "cinematic";
+            if (contentProfile !== "unknown") setMessage(`Определено содержание: ${contentProfile}. Подбираем подходящий темп монтажа…`);
           }
-          segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+          segments = makeSegments(analysis.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
           sourceVideoDuration = await getVideoDuration(videoUrl);
@@ -621,6 +729,8 @@ export default function App() {
 
   const activeVariant = montageVariants.find((variant) =>
     style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength
+      && (variant.quality === undefined || quality === variant.quality)
+      && (variant.beatSync === undefined || beatSync === variant.beatSync)
   );
   const styleBase = montageVariants.find((variant) => variant.style === style) ?? montageVariants[0];
   const selectedVariant: MontageVariant = activeVariant ?? {
@@ -787,7 +897,9 @@ export default function App() {
         <div className="dravex-variant-rail" aria-label="Варианты автоматического монтажа">
           {montageVariants.map((variant) => {
             const Icon = variant.icon;
-            const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength;
+            const selected = style === variant.style && transitionMode === variant.transition && effectStrength === variant.strength
+              && (variant.quality === undefined || quality === variant.quality)
+              && (variant.beatSync === undefined || beatSync === variant.beatSync);
             const rendered = renderedVariants.find((item) => item.id === variant.id);
             return <button key={variant.id} type="button" className={`dravex-variant ${selected ? "is-selected" : ""}`} onClick={() => chooseMontageVariant(variant)} aria-pressed={selected}>
               <span className={`dravex-variant-preview preview-${variant.previewClass} ${rendered ? "has-rendered" : ""}`}>
@@ -823,7 +935,7 @@ export default function App() {
           <div className="dravex-more-content">
             <label className="dravex-duration dravex-duration-slider"><span>Длительность ролика <strong>{duration} сек.</strong></span><input aria-label="Длительность ролика в секундах" type="range" min={5} max={60} step={1} value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }} /><span className="dravex-range-limits"><span>5 сек.</span><span>60 сек.</span></span></label>
             <label className="dravex-duration"><span>Формат кадра</span><select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as "9:16" | "16:9" | "1:1" | "4:5"); invalidateOutput(); }}><option value="9:16">9:16 · TikTok / Shorts</option><option value="16:9">16:9 · YouTube</option><option value="1:1">1:1 · квадрат</option><option value="4:5">4:5 · лента</option></select></label>
-            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
+            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p" | "4K"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option><option value="4K">4K · 2160p · максимальное качество</option></select></label>
             <div className="dravex-music"><span>Музыка (необязательно)</span><div className="dravex-music-actions"><button type="button" onClick={() => setActiveTab("music")}><Music2 size={16} />{musicFile ? musicFile.name : "Открыть музыкальную библиотеку"}</button>{musicFile && <button className="dravex-clear-music" type="button" aria-label="Убрать музыку" title="Убрать музыку" onClick={clearMusic}><X size={16} /></button>}</div></div>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
@@ -839,7 +951,7 @@ export default function App() {
         </details>
 
         <button className="dravex-create" type="button" disabled={!mediaFiles.length || busy || previewBusy} onClick={createMontage}>{busy ? <LoaderCircle className="dravex-spin" size={20} /> : <WandSparkles size={20} />}{stage === "rendering" ? "Создаём видео…" : stage === "analyzing" ? "Анализируем материал…" : "Автомонтаж"}</button>
-        <p className="dravex-privacy">Обработка происходит в твоём браузере. Файлы не загружаются на наш сервер. Сохранённые проекты открываются только по кнопке «Восстановить проект».</p>
+        <p className="dravex-privacy">Видео и фото обрабатываются в браузере и не загружаются на наш сервер. Для расширенного распознавания может скачиваться файл AI-модели с Hugging Face; если модель недоступна, DRAVEX продолжит визуальный анализ. Сохранённые проекты открываются только по кнопке «Восстановить проект».</p>
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}

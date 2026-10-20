@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { getCameraMotionProfile, shouldContainSource } from "../src/video/video-sequence-render";
-import { buildQuickVideoCandidates } from "../src/video/highlight-finder";
+import { getCameraMotionProfile, getOutputDimensions, getSpeedRampRate, shouldContainSource } from "../src/video/video-sequence-render";
+import { buildHighlightVariants, buildQuickVideoCandidates } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
 
@@ -63,22 +63,33 @@ test("choosing a montage style highlights exactly one matching variant", async (
 
   const variants = page.locator(".dravex-variant");
   const selected = page.locator(".dravex-variant[aria-pressed='true']");
-  await expect(variants).toHaveCount(9);
+  await expect(variants).toHaveCount(5);
   await expect(selected).toHaveCount(1);
 
-  await variants.filter({ hasText: "Velocity" }).click();
-  await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "true");
-  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "false");
+  const aggressive = variants.filter({ hasText: "Aggressive Edit" });
+  const cinematic = variants.filter({ hasText: "Cinematic" });
+  const musicSync = variants.filter({ hasText: "Music Sync" });
+  const atmosphere = variants.filter({ hasText: "Atmosphere" });
+  const quality4k = variants.filter({ hasText: "4K Quality" });
 
-  await variants.filter({ hasText: "Beat Pulse" }).click();
+  await expect(aggressive).toHaveAttribute("aria-pressed", "true");
+  await musicSync.click();
   await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Beat Pulse" })).toHaveAttribute("aria-pressed", "true");
-  await expect(variants.filter({ hasText: "Velocity" })).toHaveAttribute("aria-pressed", "false");
+  await expect(musicSync).toHaveAttribute("aria-pressed", "true");
+  await expect(aggressive).toHaveAttribute("aria-pressed", "false");
 
-  await variants.filter({ hasText: "Travel Flow" }).click();
+  await atmosphere.click();
   await expect(selected).toHaveCount(1);
-  await expect(variants.filter({ hasText: "Travel Flow" })).toHaveAttribute("aria-pressed", "true");
+  await expect(atmosphere).toHaveAttribute("aria-pressed", "true");
+
+  await quality4k.click();
+  await expect(selected).toHaveCount(1);
+  await expect(quality4k).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Качество экспорта")).toHaveValue("4K");
+
+  await cinematic.click();
+  await expect(selected).toHaveCount(1);
+  await expect(cinematic).toHaveAttribute("aria-pressed", "true");
 
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -139,6 +150,23 @@ test("mobile layout does not create horizontal page overflow", async ({ page }) 
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
 });
 
+test("output quality presets use the expected dimensions for every supported aspect ratio", () => {
+  expect(getOutputDimensions("9:16", "720p")).toEqual({ width: 720, height: 1280 });
+  expect(getOutputDimensions("16:9", "720p")).toEqual({ width: 1280, height: 720 });
+  expect(getOutputDimensions("1:1", "720p")).toEqual({ width: 720, height: 720 });
+  expect(getOutputDimensions("4:5", "720p")).toEqual({ width: 720, height: 900 });
+
+  expect(getOutputDimensions("9:16", "1080p")).toEqual({ width: 1080, height: 1920 });
+  expect(getOutputDimensions("16:9", "1080p")).toEqual({ width: 1920, height: 1080 });
+  expect(getOutputDimensions("1:1", "1080p")).toEqual({ width: 1080, height: 1080 });
+  expect(getOutputDimensions("4:5", "1080p")).toEqual({ width: 1080, height: 1350 });
+
+  expect(getOutputDimensions("9:16", "4K")).toEqual({ width: 2160, height: 3840 });
+  expect(getOutputDimensions("16:9", "4K")).toEqual({ width: 3840, height: 2160 });
+  expect(getOutputDimensions("1:1", "4K")).toEqual({ width: 2160, height: 2160 });
+  expect(getOutputDimensions("4:5", "4K")).toEqual({ width: 2160, height: 2700 });
+});
+
 test("source framing fills matching aspect ratios and preserves mismatched sources", () => {
   expect(shouldContainSource(9 / 16, 9 / 16)).toBe(false);
   expect(shouldContainSource(16 / 9, 16 / 9)).toBe(false);
@@ -173,6 +201,28 @@ test("quick video cut points stay valid across the full duration range", () => {
   expect(buildQuickVideoCandidates(0.1)).toHaveLength(0);
 });
 
+test("highlight variants rank motion and contrast differently", () => {
+  const candidates = Array.from({ length: 60 }, (_, index) => {
+    const time = index + 0.5;
+    return {
+      time,
+      start: Math.max(0, time - 0.4),
+      end: Math.min(60, time + 0.4),
+      score: 0.4,
+      motion: index % 3 === 0 ? 1 : 0.1,
+      contrast: index % 3 === 1 ? 1 : 0.1,
+    };
+  });
+  const variants = buildHighlightVariants(candidates, 60);
+  expect(variants.map((variant) => variant.id)).toEqual(["aggressive", "cinematic", "slow"]);
+  expect(variants[0].shotLength).toBeLessThan(variants[1].shotLength);
+  expect(variants[1].shotLength).toBeLessThan(variants[2].shotLength);
+  const averageMotion = (variant: typeof variants[number]) =>
+    variant.moments.reduce((sum, moment) => sum + moment.motion, 0) / Math.max(1, variant.moments.length);
+  expect(averageMotion(variants[0])).toBeGreaterThan(averageMotion(variants[2]));
+  expect(variants[0].moments.map((moment) => moment.time)).not.toEqual(variants[2].moments.map((moment) => moment.time));
+});
+
 test("fallback video planner covers short, medium, and long sources without invalid trims", () => {
   for (const sourceDuration of [0.25, 0.5, 2, 5, 9, 15, 16, 30, 60, 300, 1800, 7200, 18000]) {
     for (const targetDuration of [5, 15, 30, 60]) {
@@ -189,6 +239,26 @@ test("fallback video planner covers short, medium, and long sources without inva
   }
   expect(buildFallbackVideoCuts(Number.NaN, 5)).toHaveLength(0);
   expect(buildFallbackVideoCuts(5, 0)).toHaveLength(0);
+});
+
+test("action speed ramp changes speed without consuming the trim range too early", () => {
+  expect(getSpeedRampRate("velocity", 0)).toBeCloseTo(0.7286, 3);
+  expect(getSpeedRampRate("velocity", 0.42)).toBeCloseTo(1.466, 3);
+  expect(getSpeedRampRate("velocity", 0.62)).toBeCloseTo(0.7996, 3);
+  expect(getSpeedRampRate("velocity", 1)).toBeCloseTo(0.8885, 3);
+  expect(getSpeedRampRate("cinematic", 0.42)).toBe(1);
+  expect(getSpeedRampRate("travel", 0.62)).toBe(1);
+  expect(getSpeedRampRate("velocity", Number.NaN)).toBeCloseTo(0.7286, 3);
+  expect(getSpeedRampRate("velocity", -1)).toBeCloseTo(0.7286, 3);
+  expect(getSpeedRampRate("velocity", 2)).toBeCloseTo(0.8885, 3);
+
+  // A normalized ramp should consume about the selected source duration over
+  // one output-duration, preventing the renderer from freezing the shot early.
+  const steps = 2000;
+  const sourceSeconds = Array.from({ length: steps }, (_, index) =>
+    getSpeedRampRate("velocity", (index + 0.5) / steps) / steps
+  ).reduce((sum, rate) => sum + rate, 0);
+  expect(sourceSeconds).toBeCloseTo(1, 2);
 });
 
 test("camera motion profiles provide visible but controlled movement", () => {
