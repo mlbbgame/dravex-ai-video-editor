@@ -20,6 +20,7 @@ type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
 
 type TransitionPreset = "auto" | "cinematic" | "action";
 type EffectPreset = "soft" | "balanced" | "strong";
+type FramingMode = "auto" | "fit" | "fill";
 type MontageVariant = {
   id: string;
   title: string;
@@ -133,6 +134,7 @@ export default function App() {
   const [stage, setStage] = useState<Stage>("empty");
   const [duration, setDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
+  const [framingMode, setFramingMode] = useState<FramingMode>("auto");
   const [style, setStyle] = useState<EditStyle>("auto");
   const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
   const [qualityReport, setQualityReport] = useState<OutputQualityReport | null>(null);
@@ -210,6 +212,8 @@ export default function App() {
         setStyle((project.style as EditStyle) || "auto");
         setDuration(project.duration || 30);
         setAspectRatio(project.aspectRatio ?? "9:16");
+      setFramingMode(project.framingMode ?? "auto");
+        setFramingMode(project.framingMode ?? "auto");
         setQuality(project.quality || "720p");
         setBeatSync(project.beatSync !== false);
         setEffectStrength(project.effectStrength ?? "balanced");
@@ -236,6 +240,7 @@ export default function App() {
         style,
         duration,
         aspectRatio,
+        framingMode,
         quality,
         beatSync,
         effectStrength,
@@ -246,7 +251,7 @@ export default function App() {
       });
     }, 450);
     return () => window.clearTimeout(timeout);
-  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode]);
+  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode, framingMode]);
 
   // On Android, the system/browser Back action should leave the Music tab first,
   // returning to the existing edit instead of navigating away and losing context.
@@ -284,6 +289,7 @@ export default function App() {
     setStyle("auto");
     setDuration(30);
     setAspectRatio("9:16");
+    setFramingMode("auto");
     setQuality("720p");
     setBeatSync(true);
     setEffectStrength("balanced");
@@ -312,7 +318,7 @@ export default function App() {
     setProjectBusy(true);
     setProjectMessage("");
     try {
-      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode });
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode, framingMode });
       setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
     } catch (caught) {
       setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
@@ -593,6 +599,7 @@ export default function App() {
           audioTracks,
           title: "",
           aspectRatio,
+          framingMode,
           quality: "preview",
           style: previewStyle,
           effectStrength: variant.strength,
@@ -770,6 +777,7 @@ export default function App() {
         audioTracks,
         title: "",
         aspectRatio,
+        framingMode,
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
@@ -973,6 +981,7 @@ export default function App() {
           <div className="dravex-more-content">
             <label className="dravex-duration dravex-duration-slider"><span>Длительность ролика <strong>{duration} сек.</strong></span><input aria-label="Длительность ролика в секундах" type="range" min={5} max={60} step={1} value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }} /><span className="dravex-range-limits"><span>5 сек.</span><span>60 сек.</span></span></label>
             <label className="dravex-duration"><span>Формат кадра</span><select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as "9:16" | "16:9" | "1:1" | "4:5"); invalidateOutput(); }}><option value="9:16">9:16 · TikTok / Shorts</option><option value="16:9">16:9 · YouTube</option><option value="1:1">1:1 · квадрат</option><option value="4:5">4:5 · лента</option></select></label>
+            <label className="dravex-duration"><span>Кадрирование</span><select aria-label="Кадрирование видео" value={framingMode} onChange={(event) => { setFramingMode(event.target.value as FramingMode); invalidateOutput(); }}><option value="auto">Умное · сохранить весь кадр при необходимости</option><option value="fit">Весь кадр · без обрезки</option><option value="fill">Заполнить экран · обрезать края</option></select><small>Для игр и интерфейсов выбирай «Весь кадр», чтобы не потерять мини-карту и HUD. «Заполнить экран» увеличивает изображение, но может обрезать края.</small></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p" | "4K"); invalidateOutput(); }}><option value="720p">720p · быстрее для телефона</option><option value="1080p">1080p · чётче</option><option value="4K">4K · очень высокая нагрузка</option></select>
             {quality === "4K" && <small className="dravex-quality-caution">4K требует много памяти и может не поддерживаться некоторыми телефонами. Для длинных роликов лучше выбрать 720p или 1080p.</small>}</label>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
