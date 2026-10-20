@@ -104,6 +104,40 @@ type LoadedImage = {
 
 type LoadedSegment = LoadedVideo | LoadedImage;
 
+export type SourceFrameRect = { x: number; y: number; width: number; height: number };
+export type FrameFit = "contain" | "cover";
+
+/**
+ * Compute a centered source rectangle for the requested output ratio.
+ * This geometry helper never guesses where game HUD/minimap elements are; callers
+ * should use contain for gameplay/UI-heavy footage unless a safe crop is known.
+ */
+export function getSourceFrameRect(
+  sourceWidth: number,
+  sourceHeight: number,
+  outputWidth: number,
+  outputHeight: number,
+  fit: FrameFit = "contain",
+): SourceFrameRect {
+  const valid = [sourceWidth, sourceHeight, outputWidth, outputHeight].every(
+    (value) => Number.isFinite(value) && value > 0,
+  );
+  if (!valid) return { x: 0, y: 0, width: Math.max(1, sourceWidth || 1), height: Math.max(1, sourceHeight || 1) };
+
+  if (fit === "contain") {
+    return { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
+  }
+
+  const sourceAspect = sourceWidth / sourceHeight;
+  const outputAspect = outputWidth / outputHeight;
+  if (sourceAspect > outputAspect) {
+    const width = sourceHeight * outputAspect;
+    return { x: (sourceWidth - width) / 2, y: 0, width, height: sourceHeight };
+  }
+  const height = sourceWidth / outputAspect;
+  return { x: 0, y: (sourceHeight - height) / 2, width: sourceWidth, height };
+}
+
 /** Match canvas redraws to the recorder's capture rate instead of redrawing at 60–120 Hz. */
 export function getRenderFrameInterval(frameRate = 24): number {
   if (!Number.isFinite(frameRate) || frameRate <= 0) return 1000 / 24;
