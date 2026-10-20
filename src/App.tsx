@@ -280,6 +280,8 @@ export default function App() {
     setError("");
     setOutputUrl("");
     setOutputName("");
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     setPreviewUrl("");
     setPreviewBusy(false);
     setPreviewProgress(0);
