@@ -31,6 +31,10 @@ const seekTo = async (video: HTMLVideoElement, time: number) => {
   await seeked;
 };
 
+export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[]): "ok" | "warning" {
+  return blackFrameTimes.length || frozenFramePairs.length ? "warning" : "ok";
+}
+
 export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityReport> {
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
@@ -86,7 +90,7 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
     if (blackFrameTimes.length) findings.push("Обнаружены почти чёрные кадры около: " + blackFrameTimes.map((time) => time.toFixed(1) + " с").join(", ") + ". Проверь, не задуманы ли они как переход.");
     if (frozenFramePairs.length) findings.push("Некоторые контрольные точки почти не меняются (около " + frozenFramePairs.map((time) => time.toFixed(1) + " с").join(", ") + "). Это может быть статичный кадр или зависание — проверь воспроизведение.");
     if (!findings.length) findings.push("На контрольных точках явных чёрных кадров или почти одинаковых соседних кадров не обнаружено.");
-    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: blackFrameTimes.length || frozenFramePairs.length ? "warning" : "ok" };
+    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs) };
   } finally {
     video.removeAttribute("src");
     video.load();
