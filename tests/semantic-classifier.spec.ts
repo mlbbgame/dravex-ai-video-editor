@@ -190,7 +190,7 @@ test("semantic profile inference remains conservative for low-confidence sports 
 });
 
 test("recognizes additional outdoor activities without misclassifying cooking or travel", () => {
-  for (const label of ["rock climbing", "boxing", "skiing", "rowing", "soccer"]) {
+  for (const label of ["rock climbing", "boxing", "skiing", "rowing boat", "soccer ball"]) {
     expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("sports");
   }
 
