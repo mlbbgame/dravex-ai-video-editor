@@ -365,6 +365,13 @@ export async function analyzeVideoForHighlights(
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
+    // Keep visual scoring cheap, but give the optional image classifier a larger
+    // frame so its model input is not upscaled from the 80x45 scoring thumbnail.
+    const semanticCanvas = document.createElement("canvas");
+    semanticCanvas.width = 224;
+    semanticCanvas.height = 126;
+    const semanticContext = semanticCanvas.getContext("2d");
+
     const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; sharpness: number; brightness: number; exposure: number }> = [];
@@ -383,9 +390,10 @@ export async function analyzeVideoForHighlights(
       context.drawImage(video, 0, 0, width, height);
       const pixels = context.getImageData(0, 0, width, height).data;
       const features = frameFeatures(pixels, width, height);
-      if (semanticFrameIndices.has(index)) {
+      if (semanticFrameIndices.has(index) && semanticContext) {
         try {
-          semanticFrames.push({ time, imageDataUrl: canvas.toDataURL("image/jpeg", 0.72) });
+          semanticContext.drawImage(video, 0, 0, semanticCanvas.width, semanticCanvas.height);
+          semanticFrames.push({ time, imageDataUrl: semanticCanvas.toDataURL("image/jpeg", 0.78) });
         } catch {
           // Semantic classification is optional; continue with visual-only analysis.
         }
