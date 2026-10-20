@@ -11,6 +11,7 @@ import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
+import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -117,7 +118,9 @@ export default function App() {
   const [duration, setDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
   const [style, setStyle] = useState<EditStyle>("auto");
-  const [quality, setQuality] = useState<"720p" | "1080p">("720p");
+  const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
+  const [qualityReport, setQualityReport] = useState<OutputQualityReport | null>(null);
+  const [qualityCheckBusy, setQualityCheckBusy] = useState(false);
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
@@ -449,6 +452,8 @@ export default function App() {
   };
 
   const invalidateOutput = () => {
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     setOutputUrl("");
     setPreviewUrl("");
     setPreviewStatus("");
@@ -752,7 +757,16 @@ export default function App() {
       const nextUrl = URL.createObjectURL(blob);
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
+      setQualityReport(null);
+      setQualityCheckBusy(true);
       setStage("done");
+      // Inspect the encoded WebM without blocking playback or download. The check is advisory.
+      void inspectRenderedVideo(blob).then((report) => {
+        setQualityReport(report);
+      }).catch((qualityError) => {
+        console.warn("DRAVEX output quality check failed:", qualityError);
+        setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь воспроизведение вручную."], severity: "warning" });
+      }).finally(() => setQualityCheckBusy(false));
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
@@ -935,7 +949,8 @@ export default function App() {
           <div className="dravex-more-content">
             <label className="dravex-duration dravex-duration-slider"><span>Длительность ролика <strong>{duration} сек.</strong></span><input aria-label="Длительность ролика в секундах" type="range" min={5} max={60} step={1} value={duration} onChange={(event) => { setDuration(Number(event.target.value)); invalidateOutput(); }} /><span className="dravex-range-limits"><span>5 сек.</span><span>60 сек.</span></span></label>
             <label className="dravex-duration"><span>Формат кадра</span><select value={aspectRatio} onChange={(event) => { setAspectRatio(event.target.value as "9:16" | "16:9" | "1:1" | "4:5"); invalidateOutput(); }}><option value="9:16">9:16 · TikTok / Shorts</option><option value="16:9">16:9 · YouTube</option><option value="1:1">1:1 · квадрат</option><option value="4:5">4:5 · лента</option></select></label>
-            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p"); invalidateOutput(); }}><option value="720p">720p · быстрее</option><option value="1080p">1080p · чётче</option></select></label>
+            <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p" | "4K"); invalidateOutput(); }}><option value="720p">720p · быстрее для телефона</option><option value="1080p">1080p · чётче</option><option value="4K">4K · очень высокая нагрузка</option></select>
+            {quality === "4K" && <small className="dravex-quality-caution">4K требует много памяти и может не поддерживаться некоторыми телефонами. Для длинных роликов лучше выбрать 720p или 1080p.</small>}</label>
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
             <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
@@ -953,7 +968,7 @@ export default function App() {
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
-        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div></section>}
+        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · {quality} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>{qualityCheckBusy ? <p className="dravex-quality-report" role="status">Проверяем экспортированные кадры и ищем возможные чёрные или зависшие фрагменты…</p> : qualityReport && <div className={`dravex-quality-report ${qualityReport.severity === "warning" ? "is-warning" : "is-ok"}`} role="status"><strong>{qualityReport.severity === "warning" ? "Проверка просит внимания" : "Автопроверка завершена"}</strong><span>{qualityReport.width && qualityReport.height ? `${qualityReport.width}×${qualityReport.height} · ${qualityReport.duration.toFixed(1)} с · проверено кадров: ${qualityReport.sampledFrames}` : "Проверка видеокадров не завершилась."}</span><ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul></div>}</section>}
           </aside>
         </div>
         </>)}
