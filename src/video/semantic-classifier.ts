@@ -85,6 +85,35 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
   return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(labels.length / 5))) };
 }
 
+/**
+ * Require agreement across representative frames before choosing an automatic
+ * edit profile. A single high-scoring object label should not dictate the edit
+ * style for an entire long or mixed-content video.
+ */
+export function aggregateSemanticProfiles(
+  analyses: readonly { profile: SemanticProfile; confidence: number }[]
+): { profile: SemanticProfile; confidence: number } {
+  const votes = new Map<Exclude<SemanticProfile, "unknown">, { count: number; confidence: number }>();
+  for (const analysis of analyses) {
+    if (analysis.profile === "unknown" || !Number.isFinite(analysis.confidence) || analysis.confidence <= 0) continue;
+    const current = votes.get(analysis.profile) ?? { count: 0, confidence: 0 };
+    current.count += 1;
+    current.confidence += Math.max(0, Math.min(1, analysis.confidence));
+    votes.set(analysis.profile, current);
+  }
+  const ranked = [...votes.entries()].sort((a, b) =>
+    b[1].count - a[1].count || b[1].confidence - a[1].confidence
+  );
+  const winner = ranked[0];
+  if (!winner || winner[1].count < 2) return { profile: "unknown", confidence: 0 };
+  const secondCount = ranked[1]?.[1].count ?? 0;
+  if (winner[1].count - secondCount < 1) return { profile: "unknown", confidence: 0 };
+  return {
+    profile: winner[0],
+    confidence: winner[1].confidence / winner[1].count
+  };
+}
+
 async function loadClassifier(): Promise<ImageClassifier> {
   if (!classifierPromise) {
     classifierPromise = (async () => {
@@ -135,6 +164,7 @@ export async function classifySemanticFrames(
   try {
     const classifier = await Promise.race([loadClassifier(), timeout]);
     const labels: SemanticLabel[] = [];
+    const frameAnalyses: Array<{ profile: SemanticProfile; confidence: number }> = [];
     for (const frame of validFrames) {
       const predictions = await Promise.race([classifier(frame.imageDataUrl, { top_k: 5 }), timeout]);
       for (const prediction of predictions) {
@@ -144,8 +174,9 @@ export async function classifySemanticFrames(
           score: Math.max(0, Math.min(1, prediction.score))
         });
       }
+      frameAnalyses.push(inferSemanticProfile(predictions));
     }
-    const inferred = inferSemanticProfile(labels);
+    const inferred = aggregateSemanticProfiles(frameAnalyses);
     return { ...inferred, labels };
   } catch {
     return null;
