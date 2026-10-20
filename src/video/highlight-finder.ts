@@ -1,3 +1,5 @@
+import { classifySemanticFrames, type SemanticAnalysis, type SemanticProfile } from "./semantic-classifier";
+
 export type HighlightSample = {
   time: number;
   score: number;
@@ -35,6 +37,7 @@ export type HighlightProgress = {
   current: number;
   total: number;
   time: number;
+  phase?: "sampling" | "semantic";
 };
 
 /** Build deterministic cut points for short clips without seeking through every frame. */
@@ -341,7 +344,7 @@ export function buildSceneAwareCandidates(
 export async function analyzeVideoForHighlights(
   url: string,
   onProgress?: (progress: HighlightProgress) => void
-): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[] }> {
+): Promise<{ duration: number; samples: HighlightSample[]; candidates: HighlightMoment[]; semantic: SemanticAnalysis | null }> {
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
@@ -368,6 +371,8 @@ export async function analyzeVideoForHighlights(
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
     const analysisBudgetMs = duration > 1800 ? 60_000 : 90_000;
+    const semanticFrameIndices = new Set([0, Math.floor((total - 1) / 3), Math.floor(2 * (total - 1) / 3), total - 1]);
+    const semanticFrames: Array<{ time: number; imageDataUrl: string }> = [];
 
     for (let index = 0; index < total; index += 1) {
       if (performance.now() - analysisStartedAt > analysisBudgetMs) {
@@ -378,6 +383,13 @@ export async function analyzeVideoForHighlights(
       context.drawImage(video, 0, 0, width, height);
       const pixels = context.getImageData(0, 0, width, height).data;
       const features = frameFeatures(pixels, width, height);
+      if (semanticFrameIndices.has(index)) {
+        try {
+          semanticFrames.push({ time, imageDataUrl: canvas.toDataURL("image/jpeg", 0.72) });
+        } catch {
+          // Semantic classification is optional; continue with visual-only analysis.
+        }
+      }
       let motion = 0;
       if (previous) {
         for (let i = 0; i < pixels.length; i += 4) {
@@ -397,7 +409,9 @@ export async function analyzeVideoForHighlights(
     const candidates = buildSceneAwareCandidates(samples, duration, interval);
 
     if (!candidates.length) throw new Error("Не удалось найти подходящие кадры в этом видео.");
-    return { duration, samples, candidates };
+    onProgress?.({ current: total, total, time: duration, phase: "semantic" });
+    const semantic = await classifySemanticFrames(semanticFrames);
+    return { duration, samples, candidates, semantic };
   } finally {
     video.pause();
     video.removeAttribute("src");
