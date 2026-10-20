@@ -104,6 +104,22 @@ type LoadedImage = {
 
 type LoadedSegment = LoadedVideo | LoadedImage;
 
+/** Match canvas redraws to the recorder's capture rate instead of redrawing at 60–120 Hz. */
+export function getRenderFrameInterval(frameRate = 24): number {
+  if (!Number.isFinite(frameRate) || frameRate <= 0) return 1000 / 24;
+  return 1000 / Math.min(60, Math.max(1, frameRate));
+}
+
+function waitForRenderFrame(lastFrameAt: number, intervalMs: number): Promise<number> {
+  return new Promise((resolve) => {
+    const check = (timestamp: number) => {
+      if (timestamp - lastFrameAt >= intervalMs) resolve(timestamp);
+      else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  });
+}
+
 type EbmlSize = { length: number; value: number; unknown: boolean };
 type EbmlElement = { start: number; idLength: number; sizeStart: number; sizeLength: number; dataStart: number; dataEnd: number; size: number };
 
@@ -999,12 +1015,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     for (const [cutIndex, item] of loaded.entries()) {
       if (item.kind === "image") {
         const segmentStartedAt = performance.now();
+        const frameInterval = getRenderFrameInterval(frameRate);
+        let lastFrameAt = segmentStartedAt - frameInterval;
         while (performance.now() - segmentStartedAt < item.duration * 1000) {
-          const elapsedSeconds = (performance.now() - segmentStartedAt) / 1000;
+          lastFrameAt = await waitForRenderFrame(lastFrameAt, frameInterval);
+          const elapsedSeconds = (lastFrameAt - segmentStartedAt) / 1000;
           const segmentProgress = Math.min(1, elapsedSeconds / item.duration);
           draw(item.image, segmentProgress, elapsedSeconds, cutIndex);
           onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
         savePreviousFrame();
         completed += item.duration;
@@ -1030,8 +1048,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       }
       await video.play();
       const clipStartedAt = performance.now();
+      const frameInterval = getRenderFrameInterval(frameRate);
+      let lastFrameAt = clipStartedAt - frameInterval;
       while (performance.now() - clipStartedAt < duration * 1000) {
-        const elapsedSeconds = (performance.now() - clipStartedAt) / 1000;
+        lastFrameAt = await waitForRenderFrame(lastFrameAt, frameInterval);
+        const elapsedSeconds = (lastFrameAt - clipStartedAt) / 1000;
         const clipProgress = Math.min(1, elapsedSeconds / duration);
         // Speed ramps can otherwise let the decoder run beyond the selected source trim.
         // Once the trim boundary is reached, seek back to the last in-range frame and hold it
@@ -1045,7 +1066,6 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         video.playbackRate = trimBoundaryReached ? 1 : getSpeedRampRate(style, clipProgress, cutIndex);
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       // The gain automation was scheduled against the clip duration so the fade-out
       // finishes at the cut without extending the rendered timeline.
