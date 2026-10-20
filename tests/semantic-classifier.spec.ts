@@ -102,6 +102,17 @@ test("recognizes popular mobile and PC games including PUBG and MLBB", () => {
   }
 });
 
+test("recognizes cooking-process and recipe-video labels", () => {
+  for (const label of [
+    "cooking", "chef", "recipe", "food preparation", "meal prep",
+    "chopping", "slicing", "stirring", "whisking", "kneading",
+    "seasoning", "grilling", "frying", "boiling", "simmering",
+    "saute", "plating", "marinating", "food styling", "kitchen counter",
+  ]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("food");
+  }
+});
+
 test("recognizes travel and social-video labels alongside people and landscapes", () => {
   for (const label of ["travel", "tourist", "sightseeing", "hiking", "road trip", "cityscape"]) {
     expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("nature");
