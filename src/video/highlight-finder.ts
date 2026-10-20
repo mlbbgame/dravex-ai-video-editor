@@ -250,12 +250,20 @@ export function buildSceneAwareCandidates(
   sampleInterval = 2
 ): HighlightMoment[] {
   if (!Number.isFinite(duration) || duration <= 0 || samples.length === 0) return [];
+  // Callers may supply an invalid interval in tests, integrations, or future UI
+  // controls. Normalize it once so bucket math and trim windows never become NaN.
+  const safeSampleInterval = Number.isFinite(sampleInterval) && sampleInterval > 0 ? sampleInterval : 2;
   const valid = samples.filter((sample) =>
     Number.isFinite(sample.time) &&
     sample.time >= 0 &&
     sample.time <= duration &&
     Number.isFinite(sample.score) &&
-    Number.isFinite(sample.motion)
+    Number.isFinite(sample.motion) &&
+    Number.isFinite(sample.contrast) &&
+    (sample.sharpness === undefined || Number.isFinite(sample.sharpness)) &&
+    (sample.saturation === undefined || Number.isFinite(sample.saturation)) &&
+    (sample.brightness === undefined || Number.isFinite(sample.brightness)) &&
+    (sample.exposure === undefined || Number.isFinite(sample.exposure))
   ).sort((a, b) => a.time - b.time);
   if (!valid.length) return [];
 
@@ -342,7 +350,7 @@ export function buildSceneAwareCandidates(
     });
   }
 
-  const halfWindow = Math.max(0.35, Math.min(2.4, sampleInterval * 0.8));
+  const halfWindow = Math.max(0.35, Math.min(2.4, safeSampleInterval * 0.8));
   return selected
     .sort((a, b) => a.sample.time - b.sample.time)
     .map(({ sample, score }) => ({
