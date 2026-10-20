@@ -41,7 +41,11 @@ export function selectDiverseHighlightMoments(
     item.time <= sourceDuration &&
     item.start >= 0 &&
     item.end > item.start &&
-    item.end <= sourceDuration
+    item.end <= sourceDuration &&
+    // A candidate's representative timestamp must belong to the footage range
+    // it claims to represent; otherwise it can produce confusing cut boundaries.
+    item.time >= item.start &&
+    item.time <= item.end
   );
   if (!safe.length) return [];
 
