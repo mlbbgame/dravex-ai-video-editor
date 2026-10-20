@@ -89,7 +89,17 @@ async function loadClassifier(): Promise<ImageClassifier> {
   if (!classifierPromise) {
     classifierPromise = (async () => {
       const { pipeline } = await import("@huggingface/transformers");
-      const instance = await pipeline("image-classification", MODEL_ID, { dtype: "q8" });
+      let instance;
+      if (typeof navigator !== "undefined" && "gpu" in navigator) {
+        try {
+          instance = await pipeline("image-classification", MODEL_ID, { device: "webgpu", dtype: "q8" });
+        } catch {
+          // WebGPU is optional and varies by browser/device; fall back to WASM/CPU.
+          instance = await pipeline("image-classification", MODEL_ID, { dtype: "q8" });
+        }
+      } else {
+        instance = await pipeline("image-classification", MODEL_ID, { dtype: "q8" });
+      }
       return instance as unknown as ImageClassifier;
     })().catch((error) => {
       classifierPromise = null;
