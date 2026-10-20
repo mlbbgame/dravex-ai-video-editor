@@ -23,6 +23,14 @@ test("semantic profile inference recognizes broad content categories from model 
   ]).profile).toBe("wildlife");
 });
 
+test("recognizes common classifier synonyms for landscapes and prepared food", () => {
+  expect(inferSemanticProfile([{ label: "seashore", score: 0.84 }]).profile).toBe("nature");
+  expect(inferSemanticProfile([{ label: "coral reef", score: 0.81 }]).profile).toBe("nature");
+  expect(inferSemanticProfile([{ label: "carbonara", score: 0.82 }]).profile).toBe("food");
+  expect(inferSemanticProfile([{ label: "ice lolly", score: 0.79 }]).profile).toBe("food");
+  expect(inferSemanticProfile([{ label: "dolphin", score: 0.88 }]).profile).toBe("wildlife");
+});
+
 test("semantic profile inference stays unknown for weak or ambiguous predictions", () => {
   expect(inferSemanticProfile([
     { label: "sports car", score: 0.12 },
