@@ -64,7 +64,7 @@ function makeSegments(candidates: HighlightMoment[], sourceDuration: number, tar
   const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
-  const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style);
+  const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style, shotLength);
 
   if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
   const segments: VideoSegment[] = [];
