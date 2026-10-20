@@ -182,3 +182,43 @@ test("variant selection keeps timeline coverage when top bucket picks violate sp
     expect(new Set(times).size).toBe(times.length);
   }
 });
+
+test("variant builder rejects malformed and out-of-range candidates before trimming", () => {
+  const valid: HighlightMoment = {
+    time: 4,
+    start: 3,
+    end: 5,
+    score: 0.8,
+    motion: 0.6,
+    contrast: 0.5,
+    sharpness: 0.7
+  };
+  const invalidCandidates: HighlightMoment[] = [
+    { ...valid, time: Number.NaN },
+    { ...valid, time: -2 },
+    { ...valid, time: 80 },
+    { ...valid, start: 5, end: 5 }
+  ];
+
+  expect(buildHighlightVariants(invalidCandidates, 60)).toEqual([]);
+
+  const variants = buildHighlightVariants([
+    ...invalidCandidates,
+    valid,
+    { ...valid, score: 0.7 }
+  ], 60);
+  expect(variants).toHaveLength(3);
+  for (const variant of variants) {
+    expect(variant.moments.length).toBeGreaterThan(0);
+    expect(new Set(variant.moments.map((moment) => moment.time)).size).toBe(variant.moments.length);
+    expect(variant.moments.every((moment) =>
+      Number.isFinite(moment.time) &&
+      moment.time >= 0 &&
+      moment.time <= 60 &&
+      moment.start >= 0 &&
+      moment.end <= 60 &&
+      moment.end > moment.start
+    )).toBe(true);
+  }
+});
+
