@@ -241,16 +241,24 @@ test("fallback video planner covers short, medium, and long sources without inva
   expect(buildFallbackVideoCuts(5, 0)).toHaveLength(0);
 });
 
-test("action speed ramp changes source speed while calm styles remain at normal speed", () => {
-  expect(getSpeedRampRate("velocity", 0)).toBeCloseTo(0.82, 3);
-  expect(getSpeedRampRate("velocity", 0.42)).toBeCloseTo(1.65, 3);
-  expect(getSpeedRampRate("velocity", 0.62)).toBeCloseTo(0.9, 3);
-  expect(getSpeedRampRate("velocity", 1)).toBeCloseTo(1, 3);
+test("action speed ramp changes speed without consuming the trim range too early", () => {
+  expect(getSpeedRampRate("velocity", 0)).toBeCloseTo(0.7286, 3);
+  expect(getSpeedRampRate("velocity", 0.42)).toBeCloseTo(1.466, 3);
+  expect(getSpeedRampRate("velocity", 0.62)).toBeCloseTo(0.7996, 3);
+  expect(getSpeedRampRate("velocity", 1)).toBeCloseTo(0.8885, 3);
   expect(getSpeedRampRate("cinematic", 0.42)).toBe(1);
   expect(getSpeedRampRate("travel", 0.62)).toBe(1);
-  expect(getSpeedRampRate("velocity", Number.NaN)).toBeCloseTo(0.82, 3);
-  expect(getSpeedRampRate("velocity", -1)).toBeCloseTo(0.82, 3);
-  expect(getSpeedRampRate("velocity", 2)).toBeCloseTo(1, 3);
+  expect(getSpeedRampRate("velocity", Number.NaN)).toBeCloseTo(0.7286, 3);
+  expect(getSpeedRampRate("velocity", -1)).toBeCloseTo(0.7286, 3);
+  expect(getSpeedRampRate("velocity", 2)).toBeCloseTo(0.8885, 3);
+
+  // A normalized ramp should consume about the selected source duration over
+  // one output-duration, preventing the renderer from freezing the shot early.
+  const steps = 2000;
+  const sourceSeconds = Array.from({ length: steps }, (_, index) =>
+    getSpeedRampRate("velocity", (index + 0.5) / steps) / steps
+  ).reduce((sum, rate) => sum + rate, 0);
+  expect(sourceSeconds).toBeCloseTo(1, 2);
 });
 
 test("camera motion profiles provide visible but controlled movement", () => {
