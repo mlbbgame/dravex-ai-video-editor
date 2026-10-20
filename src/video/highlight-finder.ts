@@ -214,8 +214,10 @@ export function scoreVisualSamples(
   const motion = normalize(samples.map((item) => item.motion));
   const contrast = normalize(samples.map((item) => item.contrast));
   const sharpness = normalize(samples.map((item) => item.sharpness ?? 0.5));
-  const saturation = normalize(samples.map((item) => Math.max(0, Math.min(1, item.saturation ?? 0.5))));
-  const exposure = normalize(samples.map((item) => item.exposure ?? 1));
+  // Keep saturation and exposure absolute: normalizing these across the clip would
+  // hide a source where every frame is badly exposed or almost monochrome.
+  const saturation = samples.map((item) => Math.max(0, Math.min(1, item.saturation ?? 0.5)));
+  const exposure = samples.map((item) => Math.max(0, Math.min(1, item.exposure ?? 1)));
   return samples.map((item, index) => ({
     ...item,
     score: motion[index] * 0.28
