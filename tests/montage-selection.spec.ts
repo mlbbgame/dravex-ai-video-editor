@@ -45,6 +45,14 @@ test("style ranking can select different moments for aggressive and atmospheric 
   expect(aggressive).not.toEqual(atmospheric);
 });
 
+test("respects the planned shot length to prevent overlapping montage cuts", () => {
+  const selected = selectDiverseHighlightMoments(candidates(), 5, 40, "story", 3.2);
+  expect(selected.length).toBeGreaterThanOrEqual(3);
+  for (let index = 1; index < selected.length; index += 1) {
+    expect(selected[index].time - selected[index - 1].time).toBeGreaterThanOrEqual(3.2);
+  }
+});
+
 test("ignores invalid candidates and returns an empty list for invalid requests", () => {
   const source = candidates();
   source.push({
