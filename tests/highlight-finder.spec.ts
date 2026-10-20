@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { buildHighlightVariants, buildSceneAwareCandidates, scoreVisualSamples, type HighlightMoment } from "../src/video/highlight-finder";
+import { buildHighlightVariants, buildSceneAwareCandidates, getAnalysisSampleInterval, scoreVisualSamples, type HighlightMoment } from "../src/video/highlight-finder";
 
 test("visual scoring balances motion with sharpness, exposure, and readable detail", () => {
   const scored = scoreVisualSamples([
@@ -116,4 +116,19 @@ test("style variants preserve late-source coverage and produce different moment 
   }
   expect(aggressive.moments.map((moment) => moment.time)).not.toEqual(cinematic.moments.map((moment) => moment.time));
   expect(cinematic.moments.map((moment) => moment.time)).not.toEqual(slow.moments.map((moment) => moment.time));
+});
+
+
+test("analysis sampling adapts to clip duration without exploding on long videos", () => {
+  expect(getAnalysisSampleInterval(60)).toBe(1.25);
+  expect(getAnalysisSampleInterval(300)).toBe(2.5);
+  expect(getAnalysisSampleInterval(900)).toBe(7.5);
+  expect(getAnalysisSampleInterval(3600)).toBe(30);
+  expect(getAnalysisSampleInterval(0)).toBe(2);
+  expect(getAnalysisSampleInterval(Number.NaN)).toBe(2);
+
+  for (const duration of [10, 60, 300, 900, 3600]) {
+    const interval = getAnalysisSampleInterval(duration);
+    expect(Math.ceil(duration / interval)).toBeLessThanOrEqual(120);
+  }
 });
