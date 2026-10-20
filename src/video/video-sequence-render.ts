@@ -364,10 +364,41 @@ function loadImage(segment: ImageSegment, maxEdge: number): Promise<HTMLCanvasEl
 function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
   return new Promise((resolve, reject) => {
     const audio = document.createElement("audio");
-    audio.preload = "auto";
+    audio.preload = "metadata";
+    let timeoutId = 0;
+    let settled = false;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      audio.removeEventListener("loadedmetadata", loaded);
+      audio.removeEventListener("error", failed);
+    };
+    const failed = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      reject(new Error(`Не удалось прочитать аудиофайл «${segment.name}». Попробуй MP3, WAV или другой файл.`));
+    };
+    const loaded = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(audio);
+    };
+    timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      reject(new Error(`Аудиофайл «${segment.name}» не открылся за 15 секунд. Попробуй MP3/WAV или другой файл.`));
+    }, 15_000);
+    audio.addEventListener("loadedmetadata", loaded, { once: true });
+    audio.addEventListener("error", failed, { once: true });
     audio.src = segment.url;
-    audio.onloadedmetadata = () => resolve(audio);
-    audio.onerror = () => reject(new Error(`Could not read audio file: ${segment.name}`));
     audio.load();
   });
 }
