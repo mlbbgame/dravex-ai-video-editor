@@ -3,6 +3,9 @@ export type HighlightSample = {
   score: number;
   motion: number;
   contrast: number;
+  sharpness?: number;
+  brightness?: number;
+  exposure?: number;
 };
 
 export type HighlightMoment = {
@@ -12,6 +15,9 @@ export type HighlightMoment = {
   score: number;
   motion: number;
   contrast: number;
+  sharpness?: number;
+  brightness?: number;
+  exposure?: number;
 };
 
 export type HighlightVariant = {
@@ -43,7 +49,10 @@ export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
       end,
       score: 1 - index / (count * 10),
       motion: 0,
-      contrast: 0
+      contrast: 0,
+      sharpness: 0.5,
+      brightness: 0.5,
+      exposure: 1
     };
   });
 }
@@ -79,7 +88,6 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
       cleanup();
       reject(new Error("Браузер не смог определить длительность видео за 20 секунд. Попробуй MP4 (H.264) или более короткий файл."));
     }, 20_000);
-    // Metadata may already have loaded before listeners were attached.
     checkReady();
     if (video.readyState < 1) video.load();
   });
@@ -104,7 +112,6 @@ export async function getVideoDuration(url: string): Promise<number> {
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   const target = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.05));
-  // Some browsers do not fire "seeked" when asked to seek to the current frame.
   if (video.readyState >= 2 && Math.abs(video.currentTime - target) < 0.02) return Promise.resolve();
 
   return new Promise((resolve, reject) => {
@@ -124,7 +131,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
     timeoutId = window.setTimeout(() => {
       cleanup();
       reject(new Error("Видео слишком долго обрабатывается. Попробуй более короткий файл."));
-    }, 12000);
+    }, 12_000);
     try {
       video.currentTime = target;
     } catch {
@@ -133,7 +140,16 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-function frameFeatures(data: Uint8ClampedArray) {
+type FrameFeatures = {
+  contrast: number;
+  saturation: number;
+  brightness: number;
+  sharpness: number;
+  exposure: number;
+};
+
+/** Low-resolution frame features; deliberately not semantic/object recognition. */
+function frameFeatures(data: Uint8ClampedArray, width = 80, height = 45): FrameFeatures {
   let sum = 0;
   let saturation = 0;
   const lumas: number[] = [];
@@ -148,15 +164,69 @@ function frameFeatures(data: Uint8ClampedArray) {
     saturation += max > 0 ? (max - min) / max : 0;
     lumas.push(luma);
   }
-  const mean = sum / lumas.length;
+  const brightness = lumas.length ? sum / lumas.length : 0;
   let variance = 0;
-  for (const luma of lumas) variance += Math.abs(luma - mean);
-  return { contrast: variance / lumas.length, saturation: saturation / lumas.length };
+  for (const luma of lumas) variance += Math.abs(luma - brightness);
+  const contrast = lumas.length ? variance / lumas.length : 0;
+
+  // Approximate edge detail from neighbouring pixels. This is a useful sharpness
+  // proxy, not a full blur detector; it helps avoid ranking motion alone too highly.
+  let edgeSum = 0;
+  let edgeCount = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (x + 1 < width) {
+        edgeSum += Math.abs(lumas[index] - lumas[index + 1]);
+        edgeCount += 1;
+      }
+      if (y + 1 < height) {
+        edgeSum += Math.abs(lumas[index] - lumas[index + width]);
+        edgeCount += 1;
+      }
+    }
+  }
+  const sharpness = edgeCount ? Math.min(1, (edgeSum / edgeCount) * 4) : 0;
+  const meanSaturation = lumas.length ? saturation / lumas.length : 0;
+  // Penalize severely under- or over-exposed frames without rejecting intentional darkness.
+  const exposure = Math.max(0, 1 - Math.max(0, 0.12 - brightness) * 4 - Math.max(0, brightness - 0.9) * 3);
+  return { contrast, saturation: meanSaturation, brightness, sharpness, exposure };
+}
+
+function normalize(values: number[]): number[] {
+  if (!values.length) return [];
+  const sorted = [...values].sort((a, b) => a - b);
+  const low = sorted[Math.floor((sorted.length - 1) * 0.1)] ?? 0;
+  const high = sorted[Math.floor((sorted.length - 1) * 0.9)] ?? 1;
+  if (high - low < 0.0001) return values.map(() => 0.5);
+  return values.map((value) => Math.max(0, Math.min(1, (value - low) / (high - low))));
 }
 
 /**
- * A lightweight browser-only visual scan. It detects visual change and contrast;
- * it is deliberately not described as semantic AI or character/emotion recognition.
+ * Combine motion with image readability/detail and exposure.
+ * This prevents the detector from treating every large visual change as a good moment.
+ */
+export function scoreVisualSamples(
+  samples: Array<Omit<HighlightSample, "score"> & { score?: number }>
+): HighlightSample[] {
+  const motion = normalize(samples.map((item) => item.motion));
+  const contrast = normalize(samples.map((item) => item.contrast));
+  const sharpness = normalize(samples.map((item) => item.sharpness ?? 0.5));
+  const saturation = normalize(samples.map((item) => Math.max(0, Math.min(1, item.score ?? 0.5))));
+  const exposure = normalize(samples.map((item) => item.exposure ?? 1));
+  return samples.map((item, index) => ({
+    ...item,
+    score: motion[index] * 0.28
+      + contrast[index] * 0.18
+      + sharpness[index] * 0.30
+      + saturation[index] * 0.08
+      + exposure[index] * 0.16
+  }));
+}
+
+/**
+ * A lightweight browser-only visual scan. It estimates motion, contrast, colour,
+ * edge detail, and exposure. It does not identify objects or understand actions.
  */
 export async function analyzeVideoForHighlights(
   url: string,
@@ -174,24 +244,19 @@ export async function analyzeVideoForHighlights(
     if (!Number.isFinite(duration) || duration < 0.25) {
       throw new Error("Не удалось определить длительность видео. Попробуй другой файл.");
     }
-    // Short clips are still decoded and sampled: duration alone cannot tell a road
-    // pan from an action peak. Sampling remains sparse (at most ~8 frames for 15 s)
-    // to keep seek overhead bounded on Android; failures still use the safe fallback.
     const canvas = document.createElement("canvas");
-    canvas.width = 80;
-    canvas.height = 45;
+    const width = 80;
+    const height = 45;
+    canvas.width = width;
+    canvas.height = height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Frame analysis is not supported by this browser.");
 
-    // Keep frame analysis bounded for mobile browsers: at most about 60 samples.
-    // A wider interval on long clips reduces seeking overhead without scanning every frame.
     const interval = Math.max(2, duration / 60, duration > 1800 ? 4 : 0);
     const total = Math.max(2, Math.ceil(duration / interval));
-    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number }> = [];
+    const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; sharpness: number; brightness: number; exposure: number }> = [];
     let previous: Uint8ClampedArray | null = null;
     const analysisStartedAt = performance.now();
-    // Never let frame scanning monopolize a phone for several minutes. The caller
-    // can fall back to evenly spaced cuts while still exporting a usable video.
     const analysisBudgetMs = duration > 1800 ? 60_000 : 90_000;
 
     for (let index = 0; index < total; index += 1) {
@@ -200,9 +265,9 @@ export async function analyzeVideoForHighlights(
       }
       const time = Math.min(duration - 0.08, index * interval + Math.min(0.12, interval * 0.08));
       await seekTo(video, time);
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-      const features = frameFeatures(pixels);
+      context.drawImage(video, 0, 0, width, height);
+      const pixels = context.getImageData(0, 0, width, height).data;
+      const features = frameFeatures(pixels, width, height);
       let motion = 0;
       if (previous) {
         for (let i = 0; i < pixels.length; i += 4) {
@@ -210,62 +275,53 @@ export async function analyzeVideoForHighlights(
         }
         motion /= pixels.length / 4;
       }
-      raw.push({ time, motion, contrast: features.contrast, saturation: features.saturation });
+      raw.push({ time, motion, ...features });
       previous = new Uint8ClampedArray(pixels);
       onProgress?.({ current: index + 1, total, time });
       if (index % 8 === 7) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
 
-    const normalize = (value: number, values: number[]) => {
-      const sorted = [...values].sort((a, b) => a - b);
-      const low = sorted[Math.floor((sorted.length - 1) * 0.1)] ?? 0;
-      const high = sorted[Math.floor((sorted.length - 1) * 0.9)] ?? 1;
-      return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
-    };
-    const motionValues = raw.map((item) => item.motion);
-    const contrastValues = raw.map((item) => item.contrast);
-    const samples: HighlightSample[] = raw.map((item) => ({
-      time: item.time,
-      motion: item.motion,
-      contrast: item.contrast,
-      score: normalize(item.motion, motionValues) * 0.62
-        + normalize(item.contrast, contrastValues) * 0.25
-        + item.saturation * 0.13
+    const scored = scoreVisualSamples(raw);
+    const samples: HighlightSample[] = scored.map((sample, index) => ({
+      ...sample,
+      // Saturation is retained as a feature, not used as a proxy for quality on its own.
+      score: sample.score * 0.92 + Math.max(0, Math.min(1, raw[index].saturation)) * 0.08
     }));
 
     const peaks = samples.filter((sample, index) => {
       const left = samples[index - 1]?.score ?? -1;
       const right = samples[index + 1]?.score ?? -1;
-      return sample.score >= left && sample.score >= right && sample.time > 1 && sample.time < duration - 1;
+      return sample.score >= left && sample.score >= right && sample.time > Math.min(1, duration * 0.1) && sample.time < duration - Math.min(1, duration * 0.1);
     }).sort((a, b) => b.score - a.score);
 
-    const minimumGap = Math.max(3.5, Math.min(9, duration / 70));
-    const bucketCount = Math.min(80, Math.max(12, Math.ceil(duration / 90)));
+    const minimumGap = Math.max(2.5, Math.min(8, duration / 70));
+    const bucketCount = Math.min(80, Math.max(8, Math.ceil(duration / 90)));
     const bucketWidth = duration / bucketCount;
-    const bucketPeaks: HighlightSample[] = [];
+    const selectedPeaks: HighlightSample[] = [];
     for (const peak of peaks) {
       const bucket = Math.min(bucketCount - 1, Math.floor(peak.time / bucketWidth));
-      if (!bucketPeaks.some((item) => Math.min(bucketCount - 1, Math.floor(item.time / bucketWidth)) === bucket)) bucketPeaks.push(peak);
-    }    const selectedPeaks = [...bucketPeaks];
-    for (const peak of peaks) {
+      const sameBucket = selectedPeaks.some((item) => Math.min(bucketCount - 1, Math.floor(item.time / bucketWidth)) === bucket);
+      const tooClose = selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap);
+      if (!sameBucket && !tooClose) selectedPeaks.push(peak);
       if (selectedPeaks.length >= 100) break;
-      if (selectedPeaks.some((item) => Math.abs(item.time - peak.time) < minimumGap)) continue;
-      selectedPeaks.push(peak);
     }
+
     let candidates: HighlightMoment[] = selectedPeaks.map((peak) => {
-      const half = Math.max(0.25, Math.min(2.4, interval * 0.8));
+      const half = Math.max(0.35, Math.min(2.4, interval * 0.8));
       return {
         time: peak.time,
         start: Math.max(0, peak.time - half),
         end: Math.min(duration, peak.time + half),
         score: peak.score,
         motion: peak.motion,
-        contrast: peak.contrast
+        contrast: peak.contrast,
+        sharpness: peak.sharpness,
+        brightness: peak.brightness,
+        exposure: peak.exposure
       };
     }).sort((a, b) => a.time - b.time);
 
-    // Very short clips may not contain a local peak away from the edges.
-    // Keep them usable by ranking the sampled frames instead of rejecting the file.
+    // If no local peak exists, retain the strongest sampled frames, spread across time.
     if (!candidates.length) {
       candidates = [...samples]
         .sort((a, b) => b.score - a.score)
@@ -276,7 +332,10 @@ export async function analyzeVideoForHighlights(
           end: Math.min(duration, sample.time + Math.min(0.8, duration / 3)),
           score: sample.score,
           motion: sample.motion,
-          contrast: sample.contrast
+          contrast: sample.contrast,
+          sharpness: sample.sharpness,
+          brightness: sample.brightness,
+          exposure: sample.exposure
         }))
         .sort((a, b) => a.time - b.time);
     }
@@ -290,7 +349,7 @@ export async function analyzeVideoForHighlights(
 }
 
 function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
-  const normalize = (value: number, values: number[]) => {
+  const normalizeCandidates = (value: number, values: number[]) => {
     const finite = values.filter(Number.isFinite);
     if (!finite.length) return 0.5;
     const minimum = Math.min(...finite);
@@ -300,21 +359,19 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   };
   const motions = candidates.map((item) => item.motion);
   const contrasts = candidates.map((item) => item.contrast);
+  const sharpness = candidates.map((item) => item.sharpness ?? 0.5);
   const ranked = [...candidates].sort((a, b) => {
     const scoreFor = (item: HighlightMoment) => {
-      const motion = normalize(item.motion, motions);
-      const contrast = normalize(item.contrast, contrasts);
-      // Each style must rank the actual visual features differently. Multiplying
-      // every candidate's score by the same style constant cannot change ordering.
-      if (mode === "aggressive") return item.score * 0.55 + motion * 0.45;
-      if (mode === "slow") return item.score * 0.4 + contrast * 0.4 + (1 - motion) * 0.2;
-      return item.score * 0.55 + contrast * 0.3 + (1 - motion) * 0.15;
+      const movement = normalizeCandidates(item.motion, motions);
+      const contrast = normalizeCandidates(item.contrast, contrasts);
+      const detail = normalizeCandidates(item.sharpness ?? 0.5, sharpness);
+      if (mode === "aggressive") return item.score * 0.45 + movement * 0.4 + detail * 0.15;
+      if (mode === "slow") return item.score * 0.45 + contrast * 0.25 + detail * 0.2 + (1 - movement) * 0.1;
+      return item.score * 0.5 + contrast * 0.2 + detail * 0.2 + (1 - movement) * 0.1;
     };
     return scoreFor(b) - scoreFor(a);
   });
   const selected: HighlightMoment[] = [];
-  // Seed the cut with the strongest moment from evenly spaced time buckets so a long source
-  // does not accidentally become an edit from one short action-heavy stretch.
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
@@ -325,7 +382,6 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
     if (selected.length >= count) break;
     if (selected.every((existing) => Math.abs(existing.time - item.time) >= spacing)) selected.push(item);
   }
-  // If spacing is too strict for a short source, fill with the best remaining distinct candidates.
   for (const item of ranked) {
     if (selected.length >= count) break;
     if (!selected.some((existing) => existing.time === item.time)) selected.push(item);
@@ -339,16 +395,17 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
     { id: "cinematic", title: "Кинематографичный", description: "Более длинные кадры с нарастанием к кульминации", shotLength: 2.5, desired: 22, spacing: 4.2 },
     { id: "slow", title: "Плавный / атмосферный", description: "Длиннее держит выразительные кадры, меньше резких смен", shotLength: 3.5, desired: 16, spacing: 5.5 }
   ];
+  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return [];
   return configs.map((config) => {
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
     const count = Math.min(config.desired, availableCount, candidates.length);
     const moments = chooseSpread(candidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
-      const half = config.shotLength / 2;
-      const start = Math.max(0, Math.min(sourceDuration - config.shotLength, moment.time - half));
+      const shotLength = Math.min(config.shotLength, sourceDuration);
+      const start = Math.max(0, Math.min(sourceDuration - shotLength, moment.time - shotLength / 2));
       return {
         ...moment,
         start,
-        end: Math.min(sourceDuration, start + config.shotLength)
+        end: Math.min(sourceDuration, start + shotLength)
       };
     });
     const duration = moments.reduce((sum, item) => sum + Math.max(0, item.end - item.start), 0);
