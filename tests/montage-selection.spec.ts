@@ -53,7 +53,12 @@ test("ignores invalid candidates and returns an empty list for invalid requests"
   source.push({
     time: 39.9, start: 39, end: 41, score: 1, motion: 1, contrast: 1,
   });
-  expect(selectDiverseHighlightMoments(source, 4, 40, "cinematic").every((item) => Number.isFinite(item.time))).toBe(true);
+  source.push({
+    time: 8, start: 1, end: 3, score: 1, motion: 1, contrast: 1,
+  });
+  const selected = selectDiverseHighlightMoments(source, 4, 40, "cinematic");
+  expect(selected.every((item) => Number.isFinite(item.time))).toBe(true);
+  expect(selected.map((item) => item.time)).not.toContain(8);
   expect(selectDiverseHighlightMoments(source, 0, 40, "cinematic")).toEqual([]);
   expect(selectDiverseHighlightMoments(source, 4, Number.NaN, "cinematic")).toEqual([]);
 });
