@@ -476,8 +476,15 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   for (let bucket = 0; bucket < count; bucket += 1) {
     const from = sourceDuration * bucket / count;
     const to = sourceDuration * (bucket + 1) / count;
-    const best = ranked.find((item) => item.time >= from && (bucket === count - 1 ? item.time <= to : item.time < to));
-    if (best && selected.every((item) => Math.abs(item.time - best.time) >= spacing)) selected.push(best);
+    // Search for the best candidate that also respects spacing. If the top
+    // moment is too close to the previous bucket, don't abandon this bucket:
+    // choose its next-best valid moment so the edit keeps broad source coverage.
+    const best = ranked.find((item) =>
+      item.time >= from &&
+      (bucket === count - 1 ? item.time <= to : item.time < to) &&
+      selected.every((existing) => Math.abs(existing.time - item.time) >= spacing)
+    );
+    if (best) selected.push(best);
   }
   for (const item of ranked) {
     if (selected.length >= count) break;
