@@ -163,8 +163,8 @@ export function directorProfileForSemanticProfile(
     case "automotive": return "aggressive-car";
     case "nature": return "nature-wildlife";
     case "food": return "food-cooking";
-    case "people":
-    case "wildlife": return "people-everyday";
+    case "people": return "people-everyday";
+    case "wildlife": return "nature-wildlife";
     case "product-diy": return "product-diy";
     case "anime": return "anime-edit";
     case "gaming": return "gaming-highlights";
