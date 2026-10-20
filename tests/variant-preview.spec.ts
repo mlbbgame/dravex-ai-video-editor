@@ -43,6 +43,15 @@ test("short sources never produce trims outside their duration", () => {
   }
 });
 
+test("cuts do not overlap when the source is only slightly longer than preview", () => {
+  const plan = planVariantPreviewCuts(4, 3.8, "velocity");
+  expect(plan.cuts).toHaveLength(4);
+  for (let index = 1; index < plan.cuts.length; index += 1) {
+    expect(plan.cuts[index].trimStart).toBeGreaterThanOrEqual(plan.cuts[index - 1].trimEnd - 1e-9);
+  }
+  expect(plan.cuts[plan.cuts.length - 1].trimEnd).toBeLessThanOrEqual(4 + 1e-9);
+});
+
 test("short clips are partitioned without repeating the same opening frames", () => {
   const plan = planVariantPreviewCuts(1.2, 3.8, "velocity");
   expect(plan.cuts).toHaveLength(2);
