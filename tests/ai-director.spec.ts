@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   analyzeWithAIDirector,
+  chooseDirectorStyleFromInference,
   chooseAdaptiveDirectorSampleIndices,
   findNearestDetectedObjects,
   getDirectorFrameBudget,
@@ -124,6 +125,22 @@ test("style-aware ranking favors relevant detected subjects instead of any objec
     .toBeGreaterThan(scoreDirectorMoment(moment, cake, "velocity", 0.1, 0.2));
   expect(scoreDirectorMoment(moment, cake, "story", 0.1, 0.2))
     .toBeGreaterThan(scoreDirectorMoment(moment, car, "story", 0.1, 0.2));
+});
+
+test("automatic style requires stronger scene evidence and respects the manual fallback", () => {
+  expect(chooseDirectorStyleFromInference(
+    { category: "vehicles", confidence: 0.55, matchedLabels: ["car"] },
+    "cinematic"
+  )).toBe("cinematic");
+  expect(chooseDirectorStyleFromInference(
+    { category: "vehicles", confidence: 0.67, matchedLabels: ["car", "truck"] },
+    "cinematic"
+  )).toBe("velocity");
+  expect(chooseDirectorStyleFromInference(
+    { category: "vehicles", confidence: 0.9, matchedLabels: ["car", "truck"] },
+    "cinematic",
+    false
+  )).toBe("cinematic");
 });
 
 test("automatic style adapts to detected subjects while unknown scenes keep the fallback", () => {
