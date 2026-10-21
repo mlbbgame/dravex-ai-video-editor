@@ -108,3 +108,13 @@ test("candidate tuning is promoted only after measurable gain and no large regre
   expect(accepted.next.version).toBe(3);
   expect(accepted.next.values.transitionDensity).toBe(0.55);
 });
+
+test("experience memory rejects free-form content labels that could contain private filenames", () => {
+  expect(validateExperience(experience(90, { contentKind: "private-video.mp4" }))).toContain(
+    "contentKind must be a supported coarse category; file names and free-form text are not allowed.",
+  );
+  expect(validateExperience(experience(91, { contentKind: "gaming" }))).toEqual([]);
+  expect(validateExperience(experience(92, { id: "x".repeat(121) }))).toContain(
+    "Experience ID must be a non-empty string of at most 120 characters.",
+  );
+});
