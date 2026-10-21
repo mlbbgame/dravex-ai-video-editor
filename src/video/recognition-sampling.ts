@@ -77,7 +77,7 @@ export function buildDenseSampleTimes(
   const reservedCount = Math.min(maxSamples, windowCenters.length);
   for (let index = 0; index < reservedCount; index += 1) {
     const centerIndex = reservedCount === 1
-      ? Math.floor((windowCenters.length - 1) / 2)
+      ? Math.floor(windowCenters.length / 2)
       : Math.round(index * (windowCenters.length - 1) / (reservedCount - 1));
     selected.add(windowCenters[centerIndex]);
   }
