@@ -226,6 +226,22 @@ test("temporal event cues distinguish motion build-up, peaks, and settling", () 
   expect(inferTemporalEventCues(0.18, 0.1, 0.09, [], [], [], 0.08)).toContain("Затухание движения");
 });
 
+test("sparse long-video samples cannot create false motion peaks across wide time gaps", () => {
+  const sparse = inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    0, 12, 24
+  );
+  expect(sparse).not.toContain("Пик движения");
+  expect(inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    0, 1.2, 2.4
+  )).toContain("Пик движения");
+  expect(inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    2, 1, 3
+  )).not.toContain("Пик движения");
+});
+
 test("temporal event cues flag likely scene changes without inventing an action", () => {
   expect(inferTemporalEventCues(
     0.04,
