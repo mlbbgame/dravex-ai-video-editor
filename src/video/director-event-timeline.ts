@@ -10,8 +10,11 @@ export type DirectorEventKind =
   | "subject-approaching"
   | "subject-receding";
 
+export type DirectorEvidenceLevel = "visual-heuristic" | "object-detector";
+
 export type DirectorEventEvidence = {
   kind: DirectorEventKind;
+  evidenceLevel: DirectorEvidenceLevel;
   label: string;
   confidence: number;
   sourceTime: number;
@@ -50,7 +53,8 @@ export function buildDirectorEventTimeline(
     kind: DirectorEventKind,
     label: string,
     evidence: string[],
-    baseConfidence: number
+    baseConfidence: number,
+    evidenceLevel: DirectorEvidenceLevel = "visual-heuristic"
   ) => {
     if (![candidate.time, candidate.start, candidate.end].every(Number.isFinite)) return;
     const sourceTime = clampTime(candidate.time);
@@ -59,7 +63,7 @@ export function buildDirectorEventTimeline(
     const quality = Number.isFinite(candidate.score) ? Math.max(0, Math.min(1, candidate.score)) : 0;
     const confidence = Math.max(0.05, Math.min(0.95, baseConfidence * 0.65 + quality * 0.25
       + (evidence.length > 1 ? 0.05 : 0)));
-    events.push({ kind, label, confidence, sourceTime, start, end, evidence: [...new Set(evidence)] });
+    events.push({ kind, evidenceLevel, label, confidence, sourceTime, start, end, evidence: [...new Set(evidence)] });
   };
 
   for (const candidate of candidates) {
@@ -80,13 +84,13 @@ export function buildDirectorEventTimeline(
       add(candidate, "scene-change", "Вероятная смена сцены", ["Изменение набора видимых объектов"], 0.66);
     }
     if (cues.includes("Объект перемещается по кадру")) {
-      add(candidate, "object-moving", "Объект перемещается в кадре", ["Смещение обнаруженного объекта"], 0.7);
+      add(candidate, "object-moving", "Объект перемещается в кадре", ["Смещение обнаруженного объекта"], 0.7, "object-detector");
     }
     if (cues.includes("Объект приближается")) {
-      add(candidate, "subject-approaching", "Объект визуально приближается", ["Увеличение площади объекта"], 0.68);
+      add(candidate, "subject-approaching", "Объект визуально приближается", ["Увеличение площади объекта"], 0.68, "object-detector");
     }
     if (cues.includes("Объект удаляется")) {
-      add(candidate, "subject-receding", "Объект визуально удаляется", ["Уменьшение площади объекта"], 0.68);
+      add(candidate, "subject-receding", "Объект визуально удаляется", ["Уменьшение площади объекта"], 0.68, "object-detector");
     }
   }
 
