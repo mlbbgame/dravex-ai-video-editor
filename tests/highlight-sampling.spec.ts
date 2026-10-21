@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   buildHighlightVariants,
+  ensureCandidateCoverage,
   rankHighlightMomentsForStyle,
   getHighlightSampleLimit,
   getHighlightSamplingInterval,
@@ -185,4 +186,30 @@ test("style ranking and variant building ignore null runtime candidates", () => 
     moment.end <= 5 &&
     moment.end > moment.start
   ))).toBe(true);
+});
+
+
+test("coverage fallback ignores malformed sample and candidate records", () => {
+  const samples = [
+    null,
+    undefined,
+    { time: 1, score: 0.9, motion: 0.7, contrast: 0.5 },
+    { time: Number.NaN, score: 1, motion: 1, contrast: 1 },
+  ];
+  const candidates = [
+    null,
+    undefined,
+    { time: 2, start: 1.5, end: 2.5, score: 0.8, motion: 0.6, contrast: 0.4 },
+    { time: 3, start: 4, end: 2, score: 1, motion: 1, contrast: 1 },
+  ];
+  const result = ensureCandidateCoverage(samples as never, candidates as never, 5);
+  expect(result.length).toBeGreaterThan(0);
+  expect(result.every((moment) =>
+    Number.isFinite(moment.time) &&
+    Number.isFinite(moment.start) &&
+    Number.isFinite(moment.end) &&
+    moment.start >= 0 &&
+    moment.end <= 5 &&
+    moment.end > moment.start
+  )).toBe(true);
 });
