@@ -107,6 +107,49 @@ test("style ranking prefers motion for velocity and calmer footage for story", (
   expect(velocity.map((item) => item.time)).not.toEqual(story.map((item) => item.time));
 });
 
+
+test("highlight variants preserve duration and trim invariants across short and long sources", async () => {
+  const { buildHighlightVariants } = await import("../src/video/highlight-finder");
+  const durations = [0.25, 0.45, 0.9, 1.2, 3, 3.8, 4.37, 15, 60, 300];
+
+  for (const duration of durations) {
+    const sampleCount = Math.max(2, Math.min(80, Math.ceil(duration * 2)));
+    const candidates: HighlightMoment[] = Array.from({ length: sampleCount }, (_, index) => {
+      const time = duration * (index + 0.5) / sampleCount;
+      const halfWindow = Math.min(0.4, duration / 4);
+      return {
+        time,
+        start: Math.max(0, time - halfWindow),
+        end: Math.min(duration, time + halfWindow),
+        score: 0.25 + (index % 6) * 0.12,
+        motion: (index % 5) / 4,
+        contrast: (index % 4) / 3,
+      };
+    });
+    const variants = buildHighlightVariants(candidates, duration);
+
+    expect(variants).toHaveLength(3);
+    for (const variant of variants) {
+      let summedDuration = 0;
+      const sorted = [...variant.moments].sort((a, b) => a.start - b.start);
+      for (let index = 0; index < sorted.length; index += 1) {
+        const moment = sorted[index];
+        expect(Number.isFinite(moment.start)).toBe(true);
+        expect(Number.isFinite(moment.end)).toBe(true);
+        expect(moment.start).toBeGreaterThanOrEqual(0);
+        expect(moment.end).toBeLessThanOrEqual(duration);
+        expect(moment.end).toBeGreaterThan(moment.start);
+        summedDuration += moment.end - moment.start;
+        if (index > 0) {
+          expect(moment.start).toBeGreaterThanOrEqual(sorted[index - 1].end - 1e-9);
+        }
+      }
+      expect(variant.duration).toBeCloseTo(summedDuration, 8);
+      expect(variant.duration).toBeLessThanOrEqual(duration + 1e-8);
+    }
+  }
+});
+
 test("candidate coverage safely handles malformed runtime collections", () => {
   expect(ensureCandidateCoverage(null as unknown as HighlightSample[], null as unknown as HighlightMoment[], 5))
     .toEqual([]);
