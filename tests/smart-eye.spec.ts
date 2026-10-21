@@ -37,6 +37,28 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
   expect(report.coverage.largestSampleGapSeconds).toBe(29);
 });
 
+
+test("Smart Eye coverage ignores inferred candidate timestamps when detector sampled only a few frames", () => {
+  const report = buildSmartEyeReport({
+    duration: 60,
+    detectedLabels: ["car"],
+    events: [],
+    observations: Array.from({ length: 60 }, (_, index) => ({
+      time: index,
+      sceneLabels: ["car"],
+      actionCues: ["Плавное движение"],
+      score: 0.5,
+    })),
+    selectedStyle: "velocity",
+    sampledFrameCount: 2,
+    candidateCount: 60,
+    sampledFrameTimes: [2, 31],
+  });
+  expect(report.memory.some((entry) => entry.time === 15 && entry.kind === "frame-observation")).toBe(true);
+  expect(report.coverage.sampledFrameCount).toBe(2);
+  expect(report.coverage.largestSampleGapSeconds).toBe(29);
+});
+
 test("Smart Eye rejects out-of-range events and bounds confidence and coverage", () => {
   const invalid = { ...event(100), confidence: 12 };
   const report = buildSmartEyeReport({
