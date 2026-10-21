@@ -47,6 +47,31 @@ test("dense recognition preserves coverage of late event windows when budget is 
   expect(times.every((time, index) => time >= 0 && time <= 100 && (index === 0 || time > times[index - 1]))).toBe(true);
 });
 
+test("dense sampling reserves event-window representatives before spending budget on detail", () => {
+  const windows = [
+    { start: 0, end: 10 },
+    { start: 20, end: 21 },
+    { start: 80, end: 81 },
+    { start: 90, end: 100 },
+  ];
+  const times = buildDenseSampleTimes(100, windows, 0.05, 4);
+
+  expect(times).toHaveLength(4);
+  expect(times).toContain(5);
+  expect(times).toContain(20.5);
+  expect(times).toContain(80.5);
+  expect(times).toContain(95);
+});
+
+test("dense sampling with one slot chooses a central window representative, not the first frame", () => {
+  const times = buildDenseSampleTimes(100, [
+    { start: 0, end: 10 },
+    { start: 90, end: 100 },
+  ], 0.1, 1);
+
+  expect(times).toEqual([95]);
+});
+
 test("dense recognition ignores malformed windows and rejects invalid budgets", () => {
   expect(buildDenseSampleTimes(20, [
     { start: Number.NaN, end: 2 },
@@ -55,4 +80,14 @@ test("dense recognition ignores malformed windows and rejects invalid budgets", 
   ])).toEqual([4, 4.25, 4.5, 4.75, 5]);
   expect(buildDenseSampleTimes(20, [{ start: 1, end: 2 }], 0)).toEqual([]);
   expect(buildDenseSampleTimes(20, [{ start: 1, end: 2 }], 0.25, 0)).toEqual([]);
+});
+
+test("dense recognition safely ignores malformed window collections and entries", () => {
+  expect(buildDenseSampleTimes(20, null as never)).toEqual([]);
+  expect(buildDenseSampleTimes(20, undefined as never)).toEqual([]);
+  expect(buildDenseSampleTimes(20, [
+    null,
+    17,
+    { start: 2, end: 3 },
+  ] as never, 0.25, 20)).toEqual([2, 2.25, 2.5, 2.75, 3]);
 });

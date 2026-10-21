@@ -61,6 +61,14 @@ test("empty candidate input produces valid empty variant descriptions", () => {
   expect(variants.every((variant) => variant.duration === 0 && variant.moments.length === 0)).toBe(true);
 });
 
+test("malformed candidate collection returns safe empty variants", () => {
+  for (const candidates of [null, undefined, 17, {}]) {
+    const variants = buildHighlightVariants(candidates as never, 12);
+    expect(variants).toHaveLength(3);
+    expect(variants.every((variant) => variant.duration === 0 && variant.moments.length === 0)).toBe(true);
+  }
+});
+
 test("variant rankings prefer different motion profiles instead of applying a constant score multiplier", () => {
   const candidates: HighlightMoment[] = [];
   for (let bucket = 0; bucket < 12; bucket += 1) {

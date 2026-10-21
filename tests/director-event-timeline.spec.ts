@@ -17,6 +17,8 @@ test("timeline creates timestamped events from explicit visual cues", () => {
     "motion-peak", "subject-approaching", "visual-highlight", "scene-change",
   ]);
   expect(timeline.find((event) => event.kind === "motion-peak")?.sourceTime).toBe(4.2);
+  expect(timeline.find((event) => event.kind === "motion-peak")?.evidenceLevel).toBe("visual-heuristic");
+  expect(timeline.find((event) => event.kind === "subject-approaching")?.evidenceLevel).toBe("object-detector");
   expect(timeline.every((event) => event.start >= 0 && event.end <= 12)).toBe(true);
   expect(timeline.every((event) => event.confidence >= 0 && event.confidence <= 1)).toBe(true);
 });
@@ -51,4 +53,19 @@ test("timeline returns empty output for invalid duration and does not invent sem
     { time: 1, start: 0.5, end: 1.5, score: 0.9, motion: 0.9, contrast: 0.3, actionCues: ["Резкое движение"] },
   ], 3);
   expect(timeline.map((event) => event.kind)).toEqual(["visual-highlight"]);
+});
+
+
+test("timeline rejects empty, reversed, and out-of-range collapsed event intervals", () => {
+  const timeline = buildDirectorEventTimeline([
+    { time: 1, start: 1, end: 1, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 2, start: 3, end: 2, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 9, start: 11, end: 12, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 1.5, start: 1, end: 2, score: 0.8, motion: 0.5, contrast: 0.2, actionCues: ["Пик движения"] },
+  ], 10);
+
+  // The one valid candidate legitimately emits both motion-peak and visual-highlight events.
+  expect(timeline.map((event) => event.kind)).toEqual(["motion-peak", "visual-highlight"]);
+  expect(timeline.every((event) => event.start === 1 && event.end === 2)).toBe(true);
+  expect(timeline.every((event) => event.end > event.start)).toBe(true);
 });

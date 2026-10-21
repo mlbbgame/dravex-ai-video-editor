@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { aggregateSemanticProfiles, inferSemanticProfile } from "../src/video/semantic-classifier";
+import { aggregateSemanticProfiles, classifySemanticFrames, inferSemanticProfile } from "../src/video/semantic-classifier";
 
 test("semantic profile inference recognizes broad content categories from model labels", () => {
   expect(inferSemanticProfile([
@@ -198,3 +198,43 @@ test("recognizes additional outdoor activities without misclassifying cooking or
   expect(inferSemanticProfile([{ label: "food preparation", score: 0.9 }]).profile).toBe("food");
 });
 
+
+test("free local semantic analysis safely skips empty or invalid frame input", async () => {
+  await expect(classifySemanticFrames([])).resolves.toBeNull();
+  await expect(classifySemanticFrames([
+    { time: Number.NaN, imageDataUrl: "data:image/png;base64,AAAA" },
+    { time: -1, imageDataUrl: "data:image/png;base64,AAAA" },
+    { time: 1, imageDataUrl: "https://example.com/frame.png" },
+    { time: 2, imageDataUrl: "" },
+  ])).resolves.toBeNull();
+});
+
+
+test("semantic analysis ignores malformed runtime frame records before model loading", async () => {
+  const malformed = [
+    null,
+    undefined,
+    17,
+    { time: 1, imageDataUrl: "https://example.com/frame.png" },
+    { time: Number.POSITIVE_INFINITY, imageDataUrl: "data:image/png;base64,AAAA" },
+  ] as never;
+
+  await expect(classifySemanticFrames(malformed)).resolves.toBeNull();
+});
+
+
+test("semantic profile helpers safely ignore malformed runtime records", () => {
+  expect(inferSemanticProfile([
+    null,
+    { label: "sports car", score: 0.95 },
+    { label: 17, score: 0.99 },
+    { label: "forest", score: Number.NaN },
+  ] as never)).toEqual({ profile: "automotive", confidence: 0.95 });
+
+  expect(aggregateSemanticProfiles([
+    null,
+    { profile: "not-a-profile", confidence: 1 },
+    { profile: "nature", confidence: 0.8 },
+    { profile: "nature", confidence: 0.7 },
+  ] as never)).toEqual({ profile: "nature", confidence: 0.75 });
+});

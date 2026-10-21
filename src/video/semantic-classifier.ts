@@ -80,8 +80,15 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
     gaming: 0
   };
 
-  for (const item of labels) {
-    if (!Number.isFinite(item.score) || item.score <= 0 || typeof item.label !== "string") continue;
+  const safeLabels = Array.isArray(labels) ? labels.filter((item) =>
+    item !== null &&
+    typeof item === "object" &&
+    typeof item.label === "string" &&
+    Number.isFinite(item.score) &&
+    item.score > 0
+  ) : [];
+
+  for (const item of safeLabels) {
     for (const [profile, patterns] of Object.entries(profileKeywords) as Array<[Exclude<SemanticProfile, "unknown">, RegExp[]]>) {
       if (patterns.some((pattern) => pattern.test(item.label))) {
         totals[profile] += Math.max(0, Math.min(1, item.score));
@@ -97,7 +104,7 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
   const margin = best[1] - (second?.[1] ?? 0);
   // Ambiguous scenes should not force an inappropriate edit profile.
   if (margin < 0.12) return { profile: "unknown", confidence: 0 };
-  return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(labels.length / 5))) };
+  return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(safeLabels.length / 5))) };
 }
 
 /**
@@ -109,8 +116,20 @@ export function aggregateSemanticProfiles(
   analyses: readonly { profile: SemanticProfile; confidence: number }[]
 ): { profile: SemanticProfile; confidence: number } {
   const votes = new Map<Exclude<SemanticProfile, "unknown">, { count: number; confidence: number }>();
-  for (const analysis of analyses) {
-    if (analysis.profile === "unknown" || !Number.isFinite(analysis.confidence) || analysis.confidence <= 0) continue;
+  const knownProfiles = new Set<SemanticProfile>([
+    "automotive", "nature", "food", "people", "sports", "wildlife",
+    "product-diy", "anime", "gaming", "unknown"
+  ]);
+  const safeAnalyses = Array.isArray(analyses) ? analyses.filter((analysis) =>
+    analysis !== null &&
+    typeof analysis === "object" &&
+    knownProfiles.has(analysis.profile) &&
+    Number.isFinite(analysis.confidence) &&
+    analysis.confidence > 0
+  ) : [];
+
+  for (const analysis of safeAnalyses) {
+    if (analysis.profile === "unknown") continue;
     const current = votes.get(analysis.profile) ?? { count: 0, confidence: 0 };
     current.count += 1;
     current.confidence += Math.max(0, Math.min(1, analysis.confidence));
@@ -163,17 +182,24 @@ export async function classifySemanticFrames(
   frames: readonly SemanticFrameInput[],
   timeoutMs = 30_000
 ): Promise<SemanticAnalysis | null> {
-  const validFrames = frames.filter((frame) =>
+  // Treat runtime payloads as untrusted even though the public TypeScript type
+  // is strict: callers can still supply malformed data from JS or persisted state.
+  const validFrames = Array.isArray(frames) ? frames.filter((frame) =>
+    frame !== null &&
+    typeof frame === "object" &&
     Number.isFinite(frame.time) &&
     frame.time >= 0 &&
     typeof frame.imageDataUrl === "string" &&
     frame.imageDataUrl.startsWith("data:image/")
-  ).slice(0, 5);
+  ).slice(0, 5) : [];
   if (!validFrames.length) return null;
 
+  const boundedTimeoutMs = Number.isFinite(timeoutMs)
+    ? Math.max(250, Math.min(60_000, timeoutMs))
+    : 30_000;
   let timeoutId = 0;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = window.setTimeout(() => reject(new Error("Semantic model load timed out")), timeoutMs);
+    timeoutId = window.setTimeout(() => reject(new Error("Semantic model load timed out")), boundedTimeoutMs);
   });
 
   try {
@@ -182,14 +208,21 @@ export async function classifySemanticFrames(
     const frameAnalyses: Array<{ profile: SemanticProfile; confidence: number }> = [];
     for (const frame of validFrames) {
       const predictions = await Promise.race([classifier(frame.imageDataUrl, { top_k: 5 }), timeout]);
-      for (const prediction of predictions) {
-        labels.push({
-          time: frame.time,
-          label: prediction.label,
-          score: Math.max(0, Math.min(1, prediction.score))
-        });
+      const safePredictions = Array.isArray(predictions) ? predictions.filter((prediction) =>
+        prediction !== null &&
+        typeof prediction === "object" &&
+        typeof prediction.label === "string" &&
+        prediction.label.length > 0 &&
+        Number.isFinite(prediction.score) &&
+        prediction.score > 0
+      ).map((prediction) => ({
+        label: prediction.label.slice(0, 120),
+        score: Math.max(0, Math.min(1, prediction.score))
+      })) : [];
+      for (const prediction of safePredictions) {
+        labels.push({ time: frame.time, label: prediction.label, score: prediction.score });
       }
-      frameAnalyses.push(inferSemanticProfile(predictions));
+      frameAnalyses.push(inferSemanticProfile(safePredictions));
     }
     const inferred = aggregateSemanticProfiles(frameAnalyses);
     return { ...inferred, labels };

@@ -1,9 +1,56 @@
 import type { HighlightMoment, HighlightSample } from "./highlight-finder";
+import type { SemanticProfile } from "./semantic-classifier";
 import { buildDirectorEventTimeline, type DirectorEventEvidence } from "./director-event-timeline";
+import { buildSmartEyeReport, type SmartEyeReport } from "./smart-eye";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
 export type DetectedSceneCategory = "food" | "vehicles" | "people" | "animals" | "sports" | "indoor" | "nature" | "general";
+
+export type DirectorKnowledge = {
+  profile: SemanticProfile | "general";
+  preferredStyle: DirectorStyle;
+  baseShotSeconds: number;
+  motionPriority: "high" | "balanced" | "low";
+  transitionPreset: "action" | "cinematic" | "auto";
+  preserveFullFrame: boolean;
+  editingGoal: string;
+};
+
+const DIRECTOR_KNOWLEDGE: Record<SemanticProfile | "general", DirectorKnowledge> = {
+  automotive: { profile: "automotive", preferredStyle: "velocity", baseShotSeconds: 1.1, motionPriority: "high", transitionPreset: "action", preserveFullFrame: false, editingGoal: "Prioritize visible motion peaks and angle changes; do not claim a drift without supporting evidence." },
+  nature: { profile: "nature", preferredStyle: "cinematic", baseShotSeconds: 2.8, motionPriority: "low", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Give scenic reveals time to read and avoid cutting away too early." },
+  food: { profile: "food", preferredStyle: "cinematic", baseShotSeconds: 2.2, motionPriority: "balanced", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Balance preparation details with the finished dish; do not infer a completed step from an ingredient alone." },
+  people: { profile: "people", preferredStyle: "story", baseShotSeconds: 3, motionPriority: "low", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Favor readable gestures and continuity; speech-aware cutting needs audio analysis." },
+  sports: { profile: "sports", preferredStyle: "velocity", baseShotSeconds: 1.2, motionPriority: "high", transitionPreset: "action", preserveFullFrame: false, editingGoal: "Prioritize movement peaks without claiming a goal or trick without evidence." },
+  wildlife: { profile: "wildlife", preferredStyle: "cinematic", baseShotSeconds: 2.5, motionPriority: "balanced", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Preserve subject visibility and let animal movement develop across shots." },
+  "product-diy": { profile: "product-diy", preferredStyle: "cinematic", baseShotSeconds: 2.4, motionPriority: "balanced", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Keep tools and product details legible; do not assume task completion from one frame." },
+  anime: { profile: "anime", preferredStyle: "anime", baseShotSeconds: 1.55, motionPriority: "high", transitionPreset: "action", preserveFullFrame: false, editingGoal: "Favor expressive visual changes and dynamic pacing without repeating the same moment." },
+  gaming: { profile: "gaming", preferredStyle: "velocity", baseShotSeconds: 1.1, motionPriority: "high", transitionPreset: "action", preserveFullFrame: true, editingGoal: "Prioritize action while keeping HUD, minimap and kill feed readable." },
+  unknown: { profile: "unknown", preferredStyle: "cinematic", baseShotSeconds: 2.2, motionPriority: "balanced", transitionPreset: "auto", preserveFullFrame: true, editingGoal: "Use conservative visual cues and keep uncertainty visible for ambiguous scenes." },
+  general: { profile: "general", preferredStyle: "cinematic", baseShotSeconds: 2.2, motionPriority: "balanced", transitionPreset: "auto", preserveFullFrame: true, editingGoal: "Balance visual interest and continuity when no reliable category is available." }
+};
+
+export function getDirectorKnowledge(profile: SemanticProfile | "general" | null | undefined): DirectorKnowledge {
+  return profile && Object.prototype.hasOwnProperty.call(DIRECTOR_KNOWLEDGE, profile)
+    ? DIRECTOR_KNOWLEDGE[profile]
+    : DIRECTOR_KNOWLEDGE.unknown;
+}
+
+/** Profile-aware pacing heuristics; they guide the edit but do not prove action semantics. */
+export function getDirectorShotLength(
+  profile: SemanticProfile | "general" | null | undefined,
+  style: DirectorStyle
+): number {
+  const base = getDirectorKnowledge(profile).baseShotSeconds;
+  switch (style) {
+    case "velocity": return Math.max(0.85, Math.min(1.3, Math.min(base, 1.2)));
+    case "glitch": return Math.max(1.05, Math.min(1.45, Math.min(base, 1.35)));
+    case "anime": return Math.max(1.25, Math.min(1.8, base));
+    case "story": return Math.max(2.7, Math.min(3.5, base));
+    case "cinematic": return Math.max(1.9, Math.min(3.2, base));
+  }
+}
 
 export type SceneCategoryInference = {
   category: DetectedSceneCategory;
@@ -67,6 +114,19 @@ export function inferSceneCategory(labels: string[]): SceneCategoryInference {
   };
 }
 
+/**
+ * Change the automatic style only when multiple detector labels support the scene.
+ * A single detected object is useful context, but too weak to override the user's fallback.
+ */
+export function chooseDirectorStyleFromInference(
+  inference: SceneCategoryInference,
+  fallback: DirectorStyle,
+  allowAdjustment = true
+): DirectorStyle {
+  if (!allowAdjustment || inference.confidence < 0.67 || inference.category === "general") return fallback;
+  return suggestDirectorStyle(inference.category, fallback);
+}
+
 /** Choose a conservative automatic edit profile from detected subjects. Manual styles remain untouched. */
 export function suggestDirectorStyle(category: DetectedSceneCategory, fallback: DirectorStyle): DirectorStyle {
   switch (category) {
@@ -110,6 +170,7 @@ export type AIDirectorResult = {
   selectedStyle: DirectorStyle;
   note: string;
   eventTimeline?: DirectorEventEvidence[];
+  smartEye?: SmartEyeReport;
 };
 
 type ObjectDetector = (input: string) => Promise<DetectedObject[]>;
@@ -213,8 +274,24 @@ export function findNearestDetectedObjects(
     : [];
 }
 
-export function inferTrackedObjectCues(previousObjects: DetectedObject[], currentObjects: DetectedObject[]): string[] {
+export function inferTrackedObjectCues(
+  previousObjects: DetectedObject[],
+  currentObjects: DetectedObject[],
+  previousTime?: number,
+  currentTime?: number,
+  maxGapSeconds = 2.5
+): string[] {
   const cues: string[] = [];
+  const hasAnyTimestamp = previousTime !== undefined || currentTime !== undefined;
+  const hasValidTimestamps = Number.isFinite(previousTime) && Number.isFinite(currentTime);
+  const safeMaxGap = Number.isFinite(maxGapSeconds) ? Math.max(0, maxGapSeconds) : 2.5;
+  // Object motion and apparent approach need nearby observations; distant samples
+  // can represent unrelated scenes even if a detector finds the same object class.
+  if (hasAnyTimestamp && (
+    !hasValidTimestamps ||
+    (currentTime as number) <= (previousTime as number) ||
+    (currentTime as number) - (previousTime as number) > safeMaxGap
+  )) return cues;
   const matchedPrevious = new Set<number>();
   for (const current of currentObjects) {
     const currentCenterX = (current.box.xmin + current.box.xmax) / 2;
@@ -231,7 +308,10 @@ export function inferTrackedObjectCues(previousObjects: DetectedObject[], curren
         bestIndex = index;
       }
     });
-    if (bestIndex < 0) continue;
+    // Do not associate same-class detections across a large jump: they may
+    // belong to different people/vehicles in a cut or to unrelated objects.
+    // Coordinates are evaluated against the detector's 320x180 analysis space.
+    if (bestIndex < 0 || bestDistance > Math.hypot(320, 180) * 0.25) continue;
     matchedPrevious.add(bestIndex);
     const previous = previousObjects[bestIndex];
     const previousCenterX = (previous.box.xmin + previous.box.xmax) / 2;
@@ -301,31 +381,55 @@ export function inferTemporalEventCues(
   previousLabels: string[] = [],
   currentLabels: string[] = [],
   nextLabels: string[] = [],
-  motionReference = 0.08
+  motionReference = 0.08,
+  previousTime?: number,
+  currentTime?: number,
+  nextTime?: number,
+  maxMotionGapSeconds = 2.5
 ): string[] {
   const cues: string[] = [];
   const values = [previousMotion, currentMotion, nextMotion];
   if (values.some((value) => !Number.isFinite(value) || value < 0)) return cues;
 
-  const reference = Math.max(0.001, motionReference);
-  if (
-    currentMotion >= reference * 1.2 &&
-    currentMotion >= previousMotion * 1.25 &&
-    currentMotion >= nextMotion * 1.25
-  ) {
-    cues.push("Пик движения");
-  } else if (
-    currentMotion >= reference * 0.65 &&
-    currentMotion >= previousMotion * 1.2 &&
-    nextMotion >= currentMotion * 0.95
-  ) {
-    cues.push("Нарастание движения");
-  } else if (
-    previousMotion >= reference * 1.2 &&
-    currentMotion <= previousMotion * 0.75 &&
-    nextMotion <= currentMotion * 1.15
-  ) {
-    cues.push("Затухание движения");
+  // Motion peaks only make sense when adjacent samples are close enough in time.
+  // Sparse samples from long videos can span different scenes; comparing them as
+  // if they were consecutive frames creates false "action" events.
+  const timestamps = [previousTime, currentTime, nextTime];
+  const hasAnyTimestamp = timestamps.some((value) => value !== undefined);
+  const hasTimestamps = timestamps.every(
+    (value) => typeof value === "number" && Number.isFinite(value)
+  );
+  const safeMaxGap = Number.isFinite(maxMotionGapSeconds) ? Math.max(0, maxMotionGapSeconds) : 2.5;
+  // Backward-compatible callers may omit all timestamps. If a caller supplies
+  // only some timestamps, do not guess the missing temporal spacing.
+  const temporalSpacingIsValid = !hasAnyTimestamp || (hasTimestamps &&
+    (currentTime as number) > (previousTime as number) &&
+    (nextTime as number) > (currentTime as number) &&
+    (currentTime as number) - (previousTime as number) <= safeMaxGap &&
+    (nextTime as number) - (currentTime as number) <= safeMaxGap
+  );
+
+  const reference = Number.isFinite(motionReference) ? Math.max(0.001, motionReference) : 0.08;
+  if (temporalSpacingIsValid) {
+    if (
+      currentMotion >= reference * 1.2 &&
+      currentMotion >= previousMotion * 1.25 &&
+      currentMotion >= nextMotion * 1.25
+    ) {
+      cues.push("Пик движения");
+    } else if (
+      currentMotion >= reference * 0.65 &&
+      currentMotion >= previousMotion * 1.2 &&
+      nextMotion >= currentMotion * 0.95
+    ) {
+      cues.push("Нарастание движения");
+    } else if (
+      previousMotion >= reference * 1.2 &&
+      currentMotion <= previousMotion * 0.75 &&
+      nextMotion <= currentMotion * 1.15
+    ) {
+      cues.push("Затухание движения");
+    }
   }
 
   const previous = normalizeSceneLabels(previousLabels);
@@ -336,6 +440,8 @@ export function inferTemporalEventCues(
     const overlap = [...left].filter((label) => right.has(label)).length;
     return overlap / Math.max(left.size, right.size);
   };
+  // Scene-change evidence may remain useful across a wider gap, but it is
+  // labelled probable because sparse object labels cannot prove a cut.
   if (previous.size && current.size && overlapRatio(previous, current) < 0.25) {
     cues.push("Вероятная смена сцены");
   } else if (current.size && next.size && overlapRatio(current, next) < 0.25) {
@@ -393,20 +499,32 @@ export function chooseAdaptiveDirectorSampleIndices(
   limit: number,
   includeEdges = true
 ): number[] {
-  const count = candidates.length;
-  if (!count || !Number.isFinite(limit) || limit <= 0) return [];
+  if (!Array.isArray(candidates) || !Number.isFinite(limit) || limit <= 0) return [];
+  // Preserve original source indices while excluding malformed samples entirely.
+  // Returning an index for a null record would make the caller try to seek to NaN.
+  const validOriginalIndices = candidates.flatMap((candidate, index) =>
+    candidate && typeof candidate === "object" &&
+    Number.isFinite(candidate.score) &&
+    Number.isFinite(candidate.motion) &&
+    Number.isFinite(candidate.contrast)
+      ? [index]
+      : []
+  );
+  const safeCandidates = validOriginalIndices.map((index) => candidates[index]);
+  const count = safeCandidates.length;
+  if (!count) return [];
   const safeLimit = Math.max(1, Math.floor(limit));
-  if (count <= safeLimit) return candidates.map((_, index) => index);
-  if (safeLimit === 1) return [Math.round((count - 1) / 2)];
+  if (count <= safeLimit) return validOriginalIndices;
+  if (safeLimit === 1) return [validOriginalIndices[Math.round((count - 1) / 2)]];
 
   const anchorCount = Math.max(1, Math.ceil(safeLimit / 2));
   const anchors = chooseSampleIndices(count, Math.min(anchorCount, safeLimit), includeEdges);
   const selected = new Set(anchors);
   const minimumGap = Math.max(1, Math.floor(count / (safeLimit * 2)));
 
-  const quality = candidates.map((candidate, index) => {
-    const previous = candidates[index - 1];
-    const next = candidates[index + 1];
+  const quality = safeCandidates.map((candidate, index) => {
+    const previous = safeCandidates[index - 1];
+    const next = safeCandidates[index + 1];
     const motion = Number.isFinite(candidate.motion) ? Math.max(0, candidate.motion) : 0;
     const visual = Number.isFinite(candidate.score) ? Math.max(0, Math.min(1, candidate.score)) : 0;
     const contrast = Number.isFinite(candidate.contrast) ? Math.max(0, Math.min(1, candidate.contrast / 0.35)) : 0;
@@ -428,7 +546,22 @@ export function chooseAdaptiveDirectorSampleIndices(
     if (selected.size >= safeLimit) break;
     selected.add(index);
   }
-  return [...selected].sort((a, b) => a - b);
+  return [...selected].sort((a, b) => a - b).map((safeIndex) => validOriginalIndices[safeIndex]);
+}
+
+/**
+ * Return only valid source-candidate indices that were actually submitted to the
+ * detector, ordered by source time. Planned-but-unprocessed indices are excluded.
+ */
+export function getAnalyzedDirectorSampleIndices(
+  candidates: HighlightMoment[],
+  analyzedIndices: Iterable<number>,
+): number[] {
+  if (!Array.isArray(candidates) || !analyzedIndices || typeof analyzedIndices[Symbol.iterator] !== "function") return [];
+  return [...new Set([...analyzedIndices].filter((index) =>
+    Number.isInteger(index) && index >= 0 && index < candidates.length &&
+    candidates[index] && Number.isFinite(candidates[index].time)
+  ))].sort((a, b) => candidates[a].time - candidates[b].time || a - b);
 }
 
 export type DirectorFrameBudget = {
@@ -442,11 +575,13 @@ export function getDirectorFrameBudget(duration: number): DirectorFrameBudget {
   if (!Number.isFinite(duration) || duration <= 0) {
     return { maxFrames: 0, inferenceBudgetMs: 0, includeEdges: false };
   }
-  // Long clips need more than a start/end-adjacent pair to avoid missing a
-  // meaningful middle scene, but keep the extra work tightly bounded on phones.
-  return duration >= 30
-    ? { maxFrames: 5, inferenceBudgetMs: 9_000, includeEdges: false }
-    : { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
+  // Scale semantic coverage with source length while keeping a hard mobile budget.
+  // Five-minute clips need more interior samples than a 30-second clip, otherwise
+  // the director can miss scene changes in the middle of the timeline.
+  if (duration >= 180) return { maxFrames: 8, inferenceBudgetMs: 14_000, includeEdges: false };
+  if (duration >= 60) return { maxFrames: 6, inferenceBudgetMs: 11_000, includeEdges: false };
+  if (duration >= 30) return { maxFrames: 5, inferenceBudgetMs: 9_000, includeEdges: false };
+  return { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
 }
 
 /**
@@ -471,11 +606,30 @@ export async function analyzeWithAIDirector(
     actionCues: inferMotionCues(candidate.motion, candidate.contrast),
     directorScore: candidate.score
   }));
+  // Smart Eye must remain observable even when object detection is unavailable.
+  // Report a zero-frame model sample honestly while preserving fallback evidence.
+  const fallbackDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+  const fallbackTimeline = buildDirectorEventTimeline(emptyCandidates, fallbackDuration);
+  const fallbackSmartEye = buildSmartEyeReport({
+    duration: fallbackDuration,
+    detectedLabels: [],
+    events: fallbackTimeline,
+    observations: emptyCandidates.map((moment) => ({
+      time: moment.time,
+      sceneLabels: moment.sceneLabels,
+      actionCues: moment.actionCues,
+      score: moment.score,
+    })),
+    selectedStyle: style,
+    sampledFrameCount: 0,
+    candidateCount: candidates.length,
+    sampledFrameTimes: [],
+  });
   if (!candidates.length || !samples.length || !Number.isFinite(duration) || duration < 0.25) {
     const note = !Number.isFinite(duration) || duration < 0.25
       ? "Не удалось определить корректную длительность видео. Использован резервный анализ движения и контраста."
       : "Недостаточно кадров для AI Director; используем базовый анализ движения.";
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note };
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note, eventTimeline: fallbackTimeline, smartEye: fallbackSmartEye };
   }
 
   let detector: ObjectDetector;
@@ -504,7 +658,9 @@ export async function analyzeWithAIDirector(
       detectedLabels: [],
       modelLoaded: false,
       selectedStyle: style,
-      note: "Модель объектов не загрузилась вовремя или недоступна офлайн. Использован резервный анализ движения и контраста."
+      note: "Модель объектов не загрузилась вовремя или недоступна офлайн. Использован резервный анализ движения и контраста.",
+      eventTimeline: fallbackTimeline,
+      smartEye: fallbackSmartEye
     };
   } finally {
     window.clearTimeout(modelTimeout);
@@ -521,12 +677,15 @@ export async function analyzeWithAIDirector(
   canvas.height = 180;
   const context = canvas.getContext("2d", { willReadFrequently: false });
   if (!context) {
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, selectedStyle: style, note: "Canvas недоступен; использован резервный анализ." };
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, selectedStyle: style, note: "Canvas недоступен; использован резервный анализ.", eventTimeline: fallbackTimeline, smartEye: fallbackSmartEye };
   }
 
   const frameBudget = getDirectorFrameBudget(duration);
   const selectedIndices = chooseAdaptiveDirectorSampleIndices(candidates, frameBudget.maxFrames, frameBudget.includeEdges);
   const detectionsByCandidate = new Map<number, DetectedObject[]>();
+  // Track only frames actually drawn and submitted to the detector. The planned
+  // sample budget can exceed work completed when the mobile inference budget expires.
+  const analyzedFrameIndices = new Set<number>();
   const allLabels = new Set<string>();
   const inferenceStartedAt = performance.now();
   const inferenceBudgetMs = frameBudget.inferenceBudgetMs;
@@ -547,9 +706,11 @@ export async function analyzeWithAIDirector(
       try {
         await seek(video, Math.min(candidate.time, Math.max(0, video.duration - 0.06)));
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frameData = canvas.toDataURL("image/jpeg", 0.78);
+        analyzedFrameIndices.add(index);
         let inferenceTimeoutId = 0;
         const detected = await Promise.race([
-          detector(canvas.toDataURL("image/jpeg", 0.78)),
+          detector(frameData),
           new Promise<DetectedObject[]>((_, reject) => {
             inferenceTimeoutId = window.setTimeout(() => {
               inferenceTimedOut = true;
@@ -574,7 +735,9 @@ export async function analyzeWithAIDirector(
       detectedLabels: [...allLabels],
       modelLoaded: true,
       selectedStyle: style,
-      note: "Модель загрузилась, но браузер не смог прочитать часть кадров. Сохраняем резервный анализ."
+      note: "Модель загрузилась, но браузер не смог прочитать кадры. Сохраняем резервный анализ без подтверждённых моделью объектов.",
+      eventTimeline: fallbackTimeline,
+      smartEye: fallbackSmartEye
     };
   } finally {
     video.pause();
@@ -586,12 +749,13 @@ export async function analyzeWithAIDirector(
   const referenceMotion = motionValues.reduce((sum, value) => sum + value, 0) / Math.max(1, motionValues.length);
   const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
   const sceneInference = inferSceneCategory(detectedLabels);
-  const selectedStyle = allowCategoryStyleAdjustment
-    ? suggestDirectorStyle(sceneInference.category, style)
-    : style;
-  const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
-  const sampleTimes = selectedIndices.map((candidateIndex) => candidates[candidateIndex].time);
-  const sampledDetections = selectedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
+  const selectedStyle = chooseDirectorStyleFromInference(sceneInference, style, allowCategoryStyleAdjustment);
+  // Only frames actually submitted to the detector can anchor object evidence.
+  // The planned budget may contain indices never reached when inference times out.
+  const analyzedIndices = getAnalyzedDirectorSampleIndices(candidates, analyzedFrameIndices);
+  const sampledPosition = new Map(analyzedIndices.map((candidateIndex, position) => [candidateIndex, position]));
+  const sampleTimes = analyzedIndices.map((candidateIndex) => candidates[candidateIndex].time);
+  const sampledDetections = analyzedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
   const nearbyDetectionRadius = Math.max(1.25, duration / Math.max(2, selectedIndices.length * 2));
   const indexed = candidates.map((candidate, index) => {
     const isModelSample = sampledPosition.has(index);
@@ -623,11 +787,14 @@ export async function analyzeWithAIDirector(
           previousCandidateLabels,
           labels,
           nextCandidateLabels,
-          Math.max(0.015, referenceMotion)
+          Math.max(0.015, referenceMotion),
+          previousCandidate.time,
+          candidate.time,
+          nextCandidate.time
         )
       : [];
-    const trackedTemporalCues = isModelSample
-      ? inferTrackedObjectCues(previousObjects, objects)
+    const trackedTemporalCues = isModelSample && previousCandidate
+      ? inferTrackedObjectCues(previousObjects, objects, previousCandidate.time, candidate.time)
       : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
@@ -663,11 +830,26 @@ export async function analyzeWithAIDirector(
   return {
     candidates: rankedCandidates,
     eventTimeline,
+    smartEye: buildSmartEyeReport({
+      duration,
+      detectedLabels,
+      events: eventTimeline,
+      observations: rankedCandidates.map((moment) => ({
+        time: moment.time,
+        sceneLabels: moment.sceneLabels,
+        actionCues: moment.actionCues,
+        score: moment.score,
+      })),
+      selectedStyle,
+      sampledFrameCount: analyzedFrameIndices.size,
+      candidateCount: candidates.length,
+      sampledFrameTimes: [...analyzedFrameIndices].map((candidateIndex) => candidates[candidateIndex].time),
+    }),
     detectedLabels,
     modelLoaded: true,
     selectedStyle,
     note: detectedLabels.length
-      ? `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${getSceneCategoryLabel(sceneInference.category)} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
+      ? `${duration >= 30 ? `Для длинного видео проверены ${analyzedFrameIndices.size} контрольных кадров. ` : ""}YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${getSceneCategoryLabel(sceneInference.category)} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
       : `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён.`
   };
 }

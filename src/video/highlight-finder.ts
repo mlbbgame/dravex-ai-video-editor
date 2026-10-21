@@ -23,8 +23,23 @@ export function rankHighlightMomentsForStyle(
   candidates: HighlightMoment[],
   style: HighlightRankingStyle,
 ): HighlightMoment[] {
-  const motions = candidates.map((item) => item.motion);
-  const contrasts = candidates.map((item) => item.contrast);
+  // Keep malformed runtime data out of ranking: a single NaN can otherwise
+  // make sort comparisons unstable and leak an invalid trim into a variant.
+  const safeCandidates = (Array.isArray(candidates) ? candidates : []).filter((item) =>
+    item !== null && typeof item === "object" &&
+    Number.isFinite(item.time) &&
+    Number.isFinite(item.start) &&
+    Number.isFinite(item.end) &&
+    Number.isFinite(item.score) &&
+    Number.isFinite(item.motion) &&
+    Number.isFinite(item.contrast) &&
+    item.start >= 0 &&
+    item.end > item.start &&
+    item.time >= item.start &&
+    item.time <= item.end
+  );
+  const motions = safeCandidates.map((item) => item.motion);
+  const contrasts = safeCandidates.map((item) => item.contrast);
   const feature = (value: number, values: number[]) => {
     if (!values.length) return 0.5;
     const low = Math.min(...values);
@@ -43,7 +58,7 @@ export function rankHighlightMomentsForStyle(
       case "story": return visual * 0.4 + contrast * 0.1 + (1 - motion) * 0.5;
     }
   };
-  return [...candidates].sort((a, b) => score(b) - score(a));
+  return [...safeCandidates].sort((a, b) => score(b) - score(a));
 }
 
 export type HighlightVariant = {
@@ -275,6 +290,9 @@ export function scoreFrameQuality(features: {
   brightness: number;
   detail: number;
 }): number {
+  // Runtime callers may pass persisted or JS-originated data that bypasses TS.
+  // Treat missing/malformed feature objects as unusable evidence, not a crash.
+  if (!features || typeof features !== "object") return 0;
   const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   const exposure = clamp(1 - Math.abs(features.brightness - 0.48) / 0.48);
   return clamp(features.motion) * 0.45
@@ -298,8 +316,9 @@ export function ensureCandidateCoverage(
 
   // Sanitize both sources before ranking: one broken seek/sample must not leak
   // NaN timestamps or out-of-range trims into variant planning and export.
-  const safeCandidates = candidates.flatMap((candidate) => {
+  const safeCandidates = (Array.isArray(candidates) ? candidates : []).flatMap((candidate) => {
     if (
+      candidate === null || typeof candidate !== "object" ||
       !Number.isFinite(candidate.time) ||
       !Number.isFinite(candidate.start) ||
       !Number.isFinite(candidate.end) ||
@@ -317,7 +336,8 @@ export function ensureCandidateCoverage(
     return [{ ...candidate, time: Math.max(start, Math.min(end, candidate.time)), start, end }];
   }).sort((a, b) => a.time - b.time);
 
-  const safeSamples = samples.filter((sample) =>
+  const safeSamples = (Array.isArray(samples) ? samples : []).filter((sample) =>
+    sample !== null && typeof sample === "object" &&
     Number.isFinite(sample.time) &&
     Number.isFinite(sample.score) &&
     Number.isFinite(sample.motion) &&
@@ -523,36 +543,25 @@ export async function analyzeVideoForHighlights(
   }
 }
 
-function normalizedFeature(value: number, values: number[]): number {
-  if (!values.length) return 0.5;
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
-}
-
 function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number, shotLength: number) {
-  const motionValues = candidates.map((item) => item.motion);
-  const contrastValues = candidates.map((item) => item.contrast);
-  const styleScore = (item: HighlightMoment) => {
-    const motion = normalizedFeature(item.motion, motionValues);
-    const contrast = normalizedFeature(item.contrast, contrastValues);
-    const visual = Math.max(0, Math.min(1, item.score));
-    if (mode === "aggressive") return visual * 0.55 + motion * 0.45;
-    if (mode === "cinematic") return visual * 0.7 + contrast * 0.2 + (1 - motion) * 0.1;
-    return visual * 0.45 + contrast * 0.1 + (1 - motion) * 0.45;
-  };
-  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
+  // Keep variant previews and the reusable style-ranker on one scoring path so
+  // tests exercise the same logic that actually selects moments for the editor.
+  const rankingStyle: HighlightRankingStyle = mode === "aggressive"
+    ? "velocity"
+    : mode === "cinematic" ? "cinematic" : "story";
+  const ranked = rankHighlightMomentsForStyle(candidates, rankingStyle);
   const selected: HighlightMoment[] = [];
   // Distinct timestamps can still refer to the same source footage when candidate
   // windows are wide. Reject both near-duplicate centres and overlapping source ranges.
   // The renderer normalizes each selected moment to shotLength around its center.
   // Candidate windows may not overlap while those final rendered trims still do,
   // so enforce spacing against the actual output duration as well.
-  const effectiveGap = Math.max(spacing, shotLength + 0.08);
-  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment) =>
-    Math.abs(existing.time - candidate.time) < effectiveGap
+  const renderGap = shotLength + 0.08;
+  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment, minimumGap: number) =>
+    Math.abs(existing.time - candidate.time) < minimumGap
     || (candidate.start < existing.end + 0.08 && candidate.end > existing.start - 0.08);
-  const canAdd = (candidate: HighlightMoment) => selected.every((item) => !conflicts(candidate, item));
+  const canAdd = (candidate: HighlightMoment, minimumGap = Math.max(spacing, renderGap)) =>
+    selected.every((item) => !conflicts(candidate, item, minimumGap));
   // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
   // This prevents long sources from collapsing into one action-heavy stretch.
   for (let bucket = 0; bucket < count; bucket += 1) {
@@ -567,14 +576,11 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
     if (selected.length >= count) break;
     if (canAdd(item)) selected.push(item);
   }
-  // If spacing is too strict for a short source, only relax timestamp spacing;
-  // never reuse overlapping footage, since that creates visibly repeated shots.
+  // If stylistic spacing leaves gaps, relax it only down to the rendered shot
+  // length. This adds useful cuts without replaying any source interval.
   for (const item of ranked) {
     if (selected.length >= count) break;
-    if (selected.every((existing) =>
-      Math.abs(existing.time - item.time) >= effectiveGap
-      && !(item.start < existing.end + 0.08 && item.end > existing.start - 0.08)
-    )) selected.push(item);
+    if (canAdd(item, renderGap)) selected.push(item);
   }
   return selected.sort((a, b) => a.time - b.time).slice(0, count);
 }
@@ -600,7 +606,8 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
 
   // Keep only usable candidates, then clamp their trims to the real source bounds.
   // A single malformed sample should not poison every variant or the final export.
-  const safeCandidates = candidates.flatMap((candidate) => {
+  const safeCandidates = (Array.isArray(candidates) ? candidates : []).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
     if (
       !Number.isFinite(candidate.time) ||
       !Number.isFinite(candidate.start) ||

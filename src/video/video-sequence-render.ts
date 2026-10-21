@@ -70,9 +70,20 @@ export function getCameraMotionProfile(
   return { zoom: base.zoom * scale, pan: base.pan * scale };
 }
 
+export type SourceAudioMode = "auto" | "keep" | "mute";
+
+export function getSourceAudioGain(mode: SourceAudioMode, volume: number, hasMusic: boolean): number {
+  if (mode === "mute") return 0;
+  const safeVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.8;
+  // Automatic mode ducks original audio under music; keep mode respects the chosen level.
+  return safeVolume * (mode === "auto" && hasMusic ? 0.28 : 1);
+}
+
 type SequenceOptions = {
   segments: SequenceSegment[];
   audioTracks?: AudioSegment[];
+  sourceAudioMode?: SourceAudioMode;
+  sourceAudioVolume?: number;
   title: string;
   aspectRatio: string;
   framingMode?: FramingMode;
@@ -536,7 +547,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, sourceAudioMode = "auto", sourceAudioVolume = 0.8, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
@@ -557,7 +568,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       videoCache.set(videoSegment.url, pendingVideo);
     }
     const video = await pendingVideo;
-    if (suppressAudio) video.muted = true;
+    if (suppressAudio || sourceAudioMode === "mute") video.muted = true;
     const { start, end, duration } = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
     return { kind: "video", name: segment.name, video, start, end, duration };
   }));
@@ -668,7 +679,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
-  const hasSourceVideo = !suppressAudio && loaded.some((item) => item.kind === "video");
+  const hasSourceVideo = !suppressAudio && sourceAudioMode !== "mute" && loaded.some((item) => item.kind === "video");
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
   if (hasSourceVideo && !audioContext) {
     throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
@@ -1076,7 +1087,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       if (sourceGain && audioContext) {
         const audioNow = audioContext.currentTime;
         const fadeSeconds = Math.min(0.045, duration / 3);
-        const targetGain = loadedAudio.length > 0 ? 0.28 : 1;
+        const targetGain = getSourceAudioGain(sourceAudioMode, sourceAudioVolume, loadedAudio.length > 0);
         sourceGain.gain.cancelScheduledValues(audioNow);
         sourceGain.gain.setValueAtTime(0, audioNow);
         sourceGain.gain.linearRampToValueAtTime(targetGain, audioNow + fadeSeconds);
