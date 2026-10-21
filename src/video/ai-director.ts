@@ -499,10 +499,18 @@ export function chooseAdaptiveDirectorSampleIndices(
   limit: number,
   includeEdges = true
 ): number[] {
-  const count = candidates.length;
-  if (!count || !Number.isFinite(limit) || limit <= 0) return [];
+  if (!Array.isArray(candidates) || !Number.isFinite(limit) || limit <= 0) return [];
+  // Runtime callers may bypass TypeScript (e.g. partially decoded media data).
+  // Normalize malformed entries so one bad sample cannot abort Smart Eye sampling.
+  const safeCandidates = candidates.map((candidate) =>
+    candidate && typeof candidate === "object"
+      ? candidate
+      : { score: 0, motion: 0, contrast: 0 }
+  );
+  const count = safeCandidates.length;
+  if (!count) return [];
   const safeLimit = Math.max(1, Math.floor(limit));
-  if (count <= safeLimit) return candidates.map((_, index) => index);
+  if (count <= safeLimit) return safeCandidates.map((_, index) => index);
   if (safeLimit === 1) return [Math.round((count - 1) / 2)];
 
   const anchorCount = Math.max(1, Math.ceil(safeLimit / 2));
@@ -510,9 +518,9 @@ export function chooseAdaptiveDirectorSampleIndices(
   const selected = new Set(anchors);
   const minimumGap = Math.max(1, Math.floor(count / (safeLimit * 2)));
 
-  const quality = candidates.map((candidate, index) => {
-    const previous = candidates[index - 1];
-    const next = candidates[index + 1];
+  const quality = safeCandidates.map((candidate, index) => {
+    const previous = safeCandidates[index - 1];
+    const next = safeCandidates[index + 1];
     const motion = Number.isFinite(candidate.motion) ? Math.max(0, candidate.motion) : 0;
     const visual = Number.isFinite(candidate.score) ? Math.max(0, Math.min(1, candidate.score)) : 0;
     const contrast = Number.isFinite(candidate.contrast) ? Math.max(0, Math.min(1, candidate.contrast / 0.35)) : 0;
