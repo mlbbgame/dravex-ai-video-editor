@@ -165,7 +165,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
   // of clustered interior observations cannot look like full-timeline coverage.
   // Candidate observations can include unsampled moments whose cues were inferred
   // from nearby frames. Coverage must use only timestamps actually sent to the model.
-  const suppliedSampleTimes = (Array.isArray(safeInput.sampledFrameTimes) ? safeInput.sampledFrameTimes : observations.map((item) => item.time))
+  const suppliedSampleTimes = (Array.isArray(safeInput.sampledFrameTimes) ? safeInput.sampledFrameTimes : [])
     .filter((time): time is number => typeof time === "number" && Number.isFinite(time) && time >= 0 && time <= duration);
   const observationTimes = [...new Set(suppliedSampleTimes)]
     .sort((a, b) => a - b);
