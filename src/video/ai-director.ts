@@ -680,6 +680,7 @@ export async function analyzeWithAIDirector(
       selectedStyle,
       sampledFrameCount: selectedIndices.length,
       candidateCount: candidates.length,
+      sampledFrameTimes: selectedIndices.map((candidateIndex) => candidates[candidateIndex].time),
     }),
     detectedLabels,
     modelLoaded: true,
