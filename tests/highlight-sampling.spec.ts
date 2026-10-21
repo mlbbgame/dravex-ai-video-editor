@@ -123,3 +123,23 @@ test("genre knowledge sets distinct editorial goals and preserves gameplay frami
   expect(getDirectorShotLength("people", "story")).toBe(3);
   expect(getDirectorShotLength("unknown", "glitch")).toBe(1.35);
 });
+
+test("short aggressive edits relax stylistic spacing before dropping usable non-overlapping cuts", () => {
+  const candidates = Array.from({ length: 7 }, (_, index) => {
+    const time = 0.8 + index * 1.6;
+    return {
+      time,
+      start: time - 0.1,
+      end: time + 0.1,
+      score: 1 - index / 10,
+      motion: index / 7,
+      contrast: (index % 2) / 2,
+    };
+  });
+  const aggressive = buildHighlightVariants(candidates, 12).find((variant) => variant.id === "aggressive");
+
+  expect(aggressive?.moments.length).toBe(7);
+  for (let index = 1; index < (aggressive?.moments.length ?? 0); index += 1) {
+    expect(aggressive!.moments[index].start).toBeGreaterThanOrEqual(aggressive!.moments[index - 1].end);
+  }
+});
