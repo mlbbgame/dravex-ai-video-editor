@@ -656,6 +656,9 @@ export async function analyzeWithAIDirector(
   const frameBudget = getDirectorFrameBudget(duration);
   const selectedIndices = chooseAdaptiveDirectorSampleIndices(candidates, frameBudget.maxFrames, frameBudget.includeEdges);
   const detectionsByCandidate = new Map<number, DetectedObject[]>();
+  // Track only frames actually drawn and submitted to the detector. The planned
+  // sample budget can exceed work completed when the mobile inference budget expires.
+  const analyzedFrameIndices = new Set<number>();
   const allLabels = new Set<string>();
   const inferenceStartedAt = performance.now();
   const inferenceBudgetMs = frameBudget.inferenceBudgetMs;
@@ -676,9 +679,11 @@ export async function analyzeWithAIDirector(
       try {
         await seek(video, Math.min(candidate.time, Math.max(0, video.duration - 0.06)));
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frameData = canvas.toDataURL("image/jpeg", 0.78);
+        analyzedFrameIndices.add(index);
         let inferenceTimeoutId = 0;
         const detected = await Promise.race([
-          detector(canvas.toDataURL("image/jpeg", 0.78)),
+          detector(frameData),
           new Promise<DetectedObject[]>((_, reject) => {
             inferenceTimeoutId = window.setTimeout(() => {
               inferenceTimedOut = true;
@@ -804,15 +809,15 @@ export async function analyzeWithAIDirector(
         score: moment.score,
       })),
       selectedStyle,
-      sampledFrameCount: selectedIndices.length,
+      sampledFrameCount: analyzedFrameIndices.size,
       candidateCount: candidates.length,
-      sampledFrameTimes: selectedIndices.map((candidateIndex) => candidates[candidateIndex].time),
+      sampledFrameTimes: [...analyzedFrameIndices].map((candidateIndex) => candidates[candidateIndex].time),
     }),
     detectedLabels,
     modelLoaded: true,
     selectedStyle,
     note: detectedLabels.length
-      ? `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${getSceneCategoryLabel(sceneInference.category)} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
+      ? `${duration >= 30 ? `Для длинного видео проверены ${analyzedFrameIndices.size} контрольных кадров. ` : ""}YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${getSceneCategoryLabel(sceneInference.category)} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
       : `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён.`
   };
 }
