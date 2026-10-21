@@ -530,7 +530,7 @@ function normalizedFeature(value: number, values: number[]): number {
   return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
 }
 
-function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
+function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number, shotLength: number) {
   const motionValues = candidates.map((item) => item.motion);
   const contrastValues = candidates.map((item) => item.contrast);
   const styleScore = (item: HighlightMoment) => {
@@ -545,8 +545,12 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   const selected: HighlightMoment[] = [];
   // Distinct timestamps can still refer to the same source footage when candidate
   // windows are wide. Reject both near-duplicate centres and overlapping source ranges.
+  // The renderer normalizes each selected moment to shotLength around its center.
+  // Candidate windows may not overlap while those final rendered trims still do,
+  // so enforce spacing against the actual output duration as well.
+  const effectiveGap = Math.max(spacing, shotLength + 0.08);
   const conflicts = (candidate: HighlightMoment, existing: HighlightMoment) =>
-    Math.abs(existing.time - candidate.time) < spacing
+    Math.abs(existing.time - candidate.time) < effectiveGap
     || (candidate.start < existing.end + 0.08 && candidate.end > existing.start - 0.08);
   const canAdd = (candidate: HighlightMoment) => selected.every((item) => !conflicts(candidate, item));
   // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
@@ -621,7 +625,7 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
     }
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
     const count = Math.max(1, Math.min(config.desired, availableCount, safeCandidates.length));
-    const moments = chooseSpread(safeCandidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
+    const moments = chooseSpread(safeCandidates, count, config.spacing, config.id, sourceDuration, config.shotLength).map((moment) => {
       const shotLength = Math.min(config.shotLength, sourceDuration);
       const start = Math.max(0, Math.min(sourceDuration - shotLength, moment.time - shotLength / 2));
       return {
