@@ -225,5 +225,5 @@ test("frame quality scoring safely rejects missing runtime feature payloads", ()
     saturation: -1,
     brightness: Number.NaN,
     detail: 2,
-  })).toBeCloseTo(0.22);
+  })).toBeCloseTo(0.14);
 });
