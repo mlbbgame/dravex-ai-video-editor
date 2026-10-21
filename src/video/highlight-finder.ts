@@ -572,7 +572,7 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   for (const item of ranked) {
     if (selected.length >= count) break;
     if (selected.every((existing) =>
-      existing.time !== item.time
+      Math.abs(existing.time - item.time) >= effectiveGap
       && !(item.start < existing.end + 0.08 && item.end > existing.start - 0.08)
     )) selected.push(item);
   }
