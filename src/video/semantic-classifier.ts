@@ -80,8 +80,15 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
     gaming: 0
   };
 
-  for (const item of labels) {
-    if (!Number.isFinite(item.score) || item.score <= 0 || typeof item.label !== "string") continue;
+  const safeLabels = Array.isArray(labels) ? labels.filter((item) =>
+    item !== null &&
+    typeof item === "object" &&
+    typeof item.label === "string" &&
+    Number.isFinite(item.score) &&
+    item.score > 0
+  ) : [];
+
+  for (const item of safeLabels) {
     for (const [profile, patterns] of Object.entries(profileKeywords) as Array<[Exclude<SemanticProfile, "unknown">, RegExp[]]>) {
       if (patterns.some((pattern) => pattern.test(item.label))) {
         totals[profile] += Math.max(0, Math.min(1, item.score));
@@ -97,7 +104,7 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
   const margin = best[1] - (second?.[1] ?? 0);
   // Ambiguous scenes should not force an inappropriate edit profile.
   if (margin < 0.12) return { profile: "unknown", confidence: 0 };
-  return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(labels.length / 5))) };
+  return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(safeLabels.length / 5))) };
 }
 
 /**
@@ -109,8 +116,20 @@ export function aggregateSemanticProfiles(
   analyses: readonly { profile: SemanticProfile; confidence: number }[]
 ): { profile: SemanticProfile; confidence: number } {
   const votes = new Map<Exclude<SemanticProfile, "unknown">, { count: number; confidence: number }>();
-  for (const analysis of analyses) {
-    if (analysis.profile === "unknown" || !Number.isFinite(analysis.confidence) || analysis.confidence <= 0) continue;
+  const knownProfiles = new Set<SemanticProfile>([
+    "automotive", "nature", "food", "people", "sports", "wildlife",
+    "product-diy", "anime", "gaming", "unknown"
+  ]);
+  const safeAnalyses = Array.isArray(analyses) ? analyses.filter((analysis) =>
+    analysis !== null &&
+    typeof analysis === "object" &&
+    knownProfiles.has(analysis.profile) &&
+    Number.isFinite(analysis.confidence) &&
+    analysis.confidence > 0
+  ) : [];
+
+  for (const analysis of safeAnalyses) {
+    if (analysis.profile === "unknown") continue;
     const current = votes.get(analysis.profile) ?? { count: 0, confidence: 0 };
     current.count += 1;
     current.confidence += Math.max(0, Math.min(1, analysis.confidence));
