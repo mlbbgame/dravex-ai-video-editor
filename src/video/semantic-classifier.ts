@@ -163,17 +163,24 @@ export async function classifySemanticFrames(
   frames: readonly SemanticFrameInput[],
   timeoutMs = 30_000
 ): Promise<SemanticAnalysis | null> {
-  const validFrames = frames.filter((frame) =>
+  // Treat runtime payloads as untrusted even though the public TypeScript type
+  // is strict: callers can still supply malformed data from JS or persisted state.
+  const validFrames = Array.isArray(frames) ? frames.filter((frame) =>
+    frame !== null &&
+    typeof frame === "object" &&
     Number.isFinite(frame.time) &&
     frame.time >= 0 &&
     typeof frame.imageDataUrl === "string" &&
     frame.imageDataUrl.startsWith("data:image/")
-  ).slice(0, 5);
+  ).slice(0, 5) : [];
   if (!validFrames.length) return null;
 
+  const boundedTimeoutMs = Number.isFinite(timeoutMs)
+    ? Math.max(250, Math.min(60_000, timeoutMs))
+    : 30_000;
   let timeoutId = 0;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = window.setTimeout(() => reject(new Error("Semantic model load timed out")), timeoutMs);
+    timeoutId = window.setTimeout(() => reject(new Error("Semantic model load timed out")), boundedTimeoutMs);
   });
 
   try {
@@ -182,14 +189,21 @@ export async function classifySemanticFrames(
     const frameAnalyses: Array<{ profile: SemanticProfile; confidence: number }> = [];
     for (const frame of validFrames) {
       const predictions = await Promise.race([classifier(frame.imageDataUrl, { top_k: 5 }), timeout]);
-      for (const prediction of predictions) {
-        labels.push({
-          time: frame.time,
-          label: prediction.label,
-          score: Math.max(0, Math.min(1, prediction.score))
-        });
+      const safePredictions = Array.isArray(predictions) ? predictions.filter((prediction) =>
+        prediction !== null &&
+        typeof prediction === "object" &&
+        typeof prediction.label === "string" &&
+        prediction.label.length > 0 &&
+        Number.isFinite(prediction.score) &&
+        prediction.score > 0
+      ).map((prediction) => ({
+        label: prediction.label.slice(0, 120),
+        score: Math.max(0, Math.min(1, prediction.score))
+      })) : [];
+      for (const prediction of safePredictions) {
+        labels.push({ time: frame.time, label: prediction.label, score: prediction.score });
       }
-      frameAnalyses.push(inferSemanticProfile(predictions));
+      frameAnalyses.push(inferSemanticProfile(safePredictions));
     }
     const inferred = aggregateSemanticProfiles(frameAnalyses);
     return { ...inferred, labels };
