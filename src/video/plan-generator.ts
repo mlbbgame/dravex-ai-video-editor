@@ -1,3 +1,4 @@
+import { formatDirectorKnowledge, getDirectorKnowledge } from "./director-knowledge";
 export type PlanStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 export type PlanInput = {
   prompt: string;
@@ -264,6 +265,7 @@ export function generateLocalPlan(input: PlanInput): string[] {
   const ruShot = shot.replace(/\./g, ",");
   const mediaCount = input.videoNames.length + input.imageNames.length;
   const intent = detectIntent(prompt, ru, input.videoNames.length > 0);
+  const knowledgeLines = formatDirectorKnowledge(getDirectorKnowledge(prompt, input.language), input.language);
   const mediaLine = mediaCount
     ? (ru
       ? `ИСХОДНИКИ — ${input.videoNames.length} видео, ${input.imageNames.length} изображений. Используй только эти файлы; локальный планировщик пока не распознаёт содержание каждого кадра.`
@@ -319,6 +321,7 @@ export function generateLocalPlan(input: PlanInput): string[] {
     ...scenes.map((scene, index) => `${String(index + 1).padStart(2, "0")} · ${scene.name} [${scene.at}] — ${scene.desc}`),
     cueLine,
     constraintLine,
+    ...knowledgeLines,
     tailoredStyle,
     mediaLine,
     soundLine,

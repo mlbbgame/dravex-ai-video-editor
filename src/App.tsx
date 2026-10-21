@@ -3,8 +3,8 @@ import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircl
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import type { SemanticProfile } from "./video/semantic-classifier";
-import { analyzeWithAIDirector } from "./video/ai-director";
-import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
+import { analyzeWithAIDirector, getDirectorKnowledge, getDirectorShotLength } from "./video/ai-director";
+import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type SourceAudioMode, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
@@ -14,6 +14,8 @@ import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
+import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, shouldApplyLearnedPreference, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
+import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -46,23 +48,36 @@ const montageVariants: MontageVariant[] = [
 ];
 
 function styleForSemanticProfile(profile: SemanticProfile | undefined, fallback: Exclude<EditStyle, "auto">): Exclude<EditStyle, "auto"> {
+  if (!profile || profile === "unknown") return fallback;
+  return getDirectorKnowledge(profile).preferredStyle;
+}
+
+function toLearningProfile(profile: SemanticProfile | undefined): LearningProfileId {
   switch (profile) {
-    case "automotive": return "velocity";
-    case "nature":
-    case "food":
-    case "wildlife": return "cinematic";
-    case "people": return "story";
-    case "product-diy": return "cinematic";
+    case "automotive": return "aggressive-car";
+    case "nature": return "nature-wildlife";
+    case "wildlife": return "nature-wildlife";
+    case "food": return "food-cooking";
+    case "people": return "people-everyday";
+    case "sports": return "sports";
+    case "gaming": return "gaming";
     case "anime": return "anime";
-    // Gameplay benefits from energetic pacing, while crop safety is handled separately.
-    case "gaming": return "velocity";
-    default: return fallback;
+    case "product-diy": return "product-diy";
+    default: return "general";
   }
 }
 
-function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
-  // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
-  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
+function toLearningVariant(style: EditStyle): MontageVariantId {
+  if (style === "auto") return "cinematic";
+  if (style === "velocity") return "hype";
+  if (style === "cinematic") return "cinematic";
+  if (style === "story") return "emotion";
+  return "signature";
+}
+
+function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string, profile: SemanticProfile = "unknown"): VideoSegment[] {
+  // Use the same explicit genre knowledge for actual trims, not just the UI label.
+  const shotLength = getDirectorShotLength(profile, style);
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
   const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style, shotLength);
@@ -142,6 +157,8 @@ export default function App() {
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
+  const [sourceAudioMode, setSourceAudioMode] = useState<SourceAudioMode>("auto");
+  const [sourceAudioVolume, setSourceAudioVolume] = useState(0.8);
   const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
   const [projectMessage, setProjectMessage] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
@@ -157,6 +174,19 @@ export default function App() {
   const [previewProgress, setPreviewProgress] = useState(0);
   const [previewStatus, setPreviewStatus] = useState("");
   const [renderedVariants, setRenderedVariants] = useState<RenderedVariant[]>([]);
+  const [learningEnabled, setLearningEnabled] = useState(() => {
+    try { return typeof window !== "undefined" && window.localStorage.getItem("dravex:director-learning-enabled") === "true"; }
+    catch { return false; }
+  });
+  const [learningStatus, setLearningStatus] = useState("");
+  const [feedbackDimension, setFeedbackDimension] = useState<keyof MontageQuality>("momentSelection");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const feedbackSubmissionRef = useRef(false);
+  const [diagnosticEvents, setDiagnosticEvents] = useState<DirectorDiagnosticEvent[]>([]);
+  const learningProfileRef = useRef<LearningProfileId>("general");
+  const learningVariantRef = useRef<MontageVariantId>("hype");
+  const learningSelectionRef = useRef(false);
   const [cutCount, setCutCount] = useState(0);
   const renderedVariantUrls = useRef<string[]>([]);
   const previewGeneration = useRef(0);
@@ -170,6 +200,21 @@ export default function App() {
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
 
+  const recordDiagnostic = (type: Parameters<typeof createDirectorDiagnostic>[0], details: Parameters<typeof createDirectorDiagnostic>[1] = {}) => {
+    setDiagnosticEvents((events) => [...events, createDirectorDiagnostic(type, details)].slice(-200));
+  };
+
+  const exportDiagnostics = () => {
+    const report = buildDirectorDiagnosticExport(diagnosticEvents);
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `dravex-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
 
   // Restore the active project only within the same tab session; a fresh session starts clean.
@@ -177,6 +222,15 @@ export default function App() {
   useEffect(() => () => { if (outputUrl) URL.revokeObjectURL(outputUrl); }, [outputUrl]);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => () => { renderedVariantUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+
+  useEffect(() => {
+    try {
+      if (learningEnabled) window.localStorage.setItem("dravex:director-learning-enabled", "true");
+      else window.localStorage.removeItem("dravex:director-learning-enabled");
+    } catch {
+      setLearningStatus("Браузер запретил сохранение настройки памяти.");
+    }
+  }, [learningEnabled]);
 
   // Keep a project during the current tab session (including refreshes), but
   // start from a clean editor when the site is opened in a fresh tab session.
@@ -217,6 +271,8 @@ export default function App() {
         setBeatSync(project.beatSync !== false);
         setEffectStrength(project.effectStrength ?? "balanced");
         setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+        setSourceAudioMode(project.sourceAudioMode ?? "auto");
+        setSourceAudioVolume(typeof project.sourceAudioVolume === "number" ? Math.max(0, Math.min(1, project.sourceAudioVolume)) : 0.8);
         setTransitionMode(project.transitionMode ?? "auto");
         setStage("ready");
         setProjectMessage("Проект восстановлен в рамках текущего сеанса.");
@@ -244,13 +300,15 @@ export default function App() {
         beatSync,
         effectStrength,
         musicVolume,
+        sourceAudioMode,
+        sourceAudioVolume,
         transitionMode,
       }).catch(() => {
         // Manual save still reports storage errors to the user.
       });
     }, 450);
     return () => window.clearTimeout(timeout);
-  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode, framingMode]);
+  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, sourceAudioMode, sourceAudioVolume, transitionMode, framingMode]);
 
   // On Android, the system/browser Back action should leave the Music tab first,
   // returning to the existing edit instead of navigating away and losing context.
@@ -293,6 +351,8 @@ export default function App() {
     setBeatSync(true);
     setEffectStrength("balanced");
     setMusicVolume(0.72);
+    setSourceAudioMode("auto");
+    setSourceAudioVolume(0.8);
     setTransitionMode("auto");
     setStage("empty");
     setScan({ current: 0, total: 0, time: 0 });
@@ -317,7 +377,7 @@ export default function App() {
     setProjectBusy(true);
     setProjectMessage("");
     try {
-      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode, framingMode });
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, sourceAudioMode, sourceAudioVolume, transitionMode, framingMode });
       setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
     } catch (caught) {
       setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
@@ -351,6 +411,8 @@ export default function App() {
       setBeatSync(project.beatSync !== false);
       setEffectStrength(project.effectStrength ?? "balanced");
       setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+      setSourceAudioMode(project.sourceAudioMode ?? "auto");
+      setSourceAudioVolume(typeof project.sourceAudioVolume === "number" ? Math.max(0, Math.min(1, project.sourceAudioVolume)) : 0.8);
       setTransitionMode(project.transitionMode ?? "auto");
       setStage("ready");
       setOutputUrl("");
@@ -492,6 +554,9 @@ export default function App() {
     previewGeneration.current += 1;
     const hasRealPreview = renderedVariants.some((item) => item.id === variant.id);
     setStyle(variant.style);
+    learningVariantRef.current = toLearningVariant(variant.style);
+    learningSelectionRef.current = true;
+    setLearningStatus("");
     setTransitionMode(variant.transition);
     setEffectStrength(variant.strength);
     setOutputUrl("");
@@ -499,6 +564,84 @@ export default function App() {
     setMessage("");
     setStage(mediaFiles.length ? "ready" : "empty");
     if (!hasRealPreview) clearRenderedVariants();
+  };
+
+  const recordLearningExperience = async () => {
+    if (!learningEnabled) return;
+    try {
+      const quality = qualityReport
+        ? { technicalReliability: qualityReport.severity === "ok" ? 1 : 0 }
+        : {};
+      const experience: MontageExperience = {
+        id: typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `experience-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        createdAt: new Date().toISOString(),
+        profile: learningProfileRef.current,
+        variant: learningVariantRef.current,
+        quality,
+        selectedByUser: learningSelectionRef.current || undefined,
+        exportedByUser: true
+      };
+      const store = new JsonLocalExperienceStore(window.localStorage);
+      await store.append(experience);
+      learningSelectionRef.current = false;
+      const history = await store.load();
+      const hypotheses = proposeImprovements(history, experience.profile);
+      setLearningStatus(hypotheses.length
+        ? `Опыт сохранён локально. AI Director сформировал гипотезу для проверки: ${hypotheses[0].title}. Изменение не применяется автоматически — сначала нужны сравнительные тесты.`
+        : `Опыт сохранён локально (${history.length}/500 записей). Для обоснованных гипотез нужны повторяющиеся оценки; автоматическое изменение монтажа не включается без тестов.`);
+    } catch {
+      setLearningStatus("Не удалось сохранить опыт. Проверь доступ браузера к локальному хранилищу.");
+    }
+  };
+
+  const recordLearningFeedback = async (rating: "good" | "improve") => {
+    if (!learningEnabled || feedbackSubmissionRef.current || feedbackSubmitted) return;
+    feedbackSubmissionRef.current = true;
+    const score = rating === "good" ? 0.9 : 0.35;
+    const quality: Partial<MontageQuality> = { [feedbackDimension]: score };
+    if (qualityReport) quality.technicalReliability = qualityReport.severity === "ok" ? 1 : 0;
+    const experience: MontageExperience = {
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `feedback-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      createdAt: new Date().toISOString(),
+      profile: learningProfileRef.current,
+      variant: learningVariantRef.current,
+      quality,
+      selectedByUser: learningSelectionRef.current || undefined,
+      editedDimensions: rating === "improve" ? [feedbackDimension] : undefined,
+      contentKind: isImageMode ? "images" : "video",
+    };
+    try {
+      const store = new JsonLocalExperienceStore(window.localStorage);
+      await store.append(experience);
+      const history = await store.load();
+      const hypotheses = proposeImprovements(history, experience.profile);
+      setFeedbackSubmitted(true);
+      setFeedbackStatus(rating === "good"
+        ? "Оценка сохранена локально: этот аспект монтажа получился удачно."
+        : "Оценка сохранена локально: AI Director учтёт слабое место при формировании проверяемых гипотез.");
+      if (hypotheses.length) {
+        setLearningStatus(`Гипотеза для проверки: ${hypotheses[0].title}. Автоматически менять монтаж без сравнительных тестов не будем.`);
+      }
+    } catch {
+      feedbackSubmissionRef.current = false;
+      setFeedbackSubmitted(false);
+      setFeedbackStatus("Не удалось сохранить оценку. Проверь доступ браузера к локальному хранилищу.");
+    }
+  };
+
+  const clearLearningMemory = () => {
+    try {
+      window.localStorage.removeItem("dravex:director-experience:v1");
+      window.localStorage.removeItem("dravex:director-learning-enabled");
+      setLearningEnabled(false);
+      setLearningStatus("Локальная память AI Director удалена с этого устройства.");
+    } catch {
+      setLearningStatus("Не удалось удалить память: браузер заблокировал доступ к хранилищу.");
+    }
   };
 
   const clearMusic = () => {
@@ -597,6 +740,8 @@ export default function App() {
         const blob = await renderVideoSequence({
           segments: previewSegments,
           audioTracks,
+          sourceAudioMode,
+          sourceAudioVolume,
           title: "",
           aspectRatio,
           framingMode,
@@ -604,7 +749,6 @@ export default function App() {
           style: previewStyle,
           effectStrength: variant.strength,
           transitionMode: variant.transition,
-          suppressAudio: !audioTracks.length,
           targetDurationSeconds: previewDuration,
           onProgress: (progress) => {
             if (generation === previewGeneration.current) {
@@ -641,8 +785,14 @@ export default function App() {
     }
     setError("");
     setOutputUrl("");
+    setQualityReport(null);
+    setQualityCheckBusy(false);
+    setFeedbackSubmitted(false);
+    feedbackSubmissionRef.current = false;
+    setFeedbackStatus("");
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
+    recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
     try {
       setStage("analyzing");
       setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
@@ -652,12 +802,33 @@ export default function App() {
       let analysisFallback = false;
       let directorNote = "";
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
+      let contentProfile: SemanticProfile = "unknown";
       if (isImageMode) {
+        learningProfileRef.current = "general";
         const photoCount = mediaFiles.length;
         // Auto-director treats the selected duration as a ceiling: it avoids holding a small photo set on screen for 6–10 seconds per image.
         actualStyle = style === "auto"
           ? (photoCount >= 4 || (musicFile !== null && beatSync) ? "velocity" : "cinematic")
           : actualStyle;
+        if (style === "auto" && learningEnabled) {
+          try {
+            const history = await new JsonLocalExperienceStore(window.localStorage).load();
+            const preference = recommendPreferredVariant(history, learningProfileRef.current);
+            if (preference) {
+              if (preference.variant !== "signature") {
+                const preferredStyle: Record<Exclude<MontageVariantId, "signature">, Exclude<EditStyle, "auto">> = {
+                  hype: "velocity",
+                  cinematic: "cinematic",
+                  emotion: "story",
+                };
+                actualStyle = preferredStyle[preference.variant];
+                setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+              }
+            }
+          } catch {
+            // Personalization is optional; a storage issue must not block montage.
+          }
+        }
         const shotSeconds = actualStyle === "velocity" ? (musicFile && beatSync ? 1.25 : 1.55)
           : actualStyle === "glitch" ? 1.35
           : actualStyle === "anime" ? 1.65
@@ -681,6 +852,7 @@ export default function App() {
           duration: renderDuration * weights[index] / totalWeight
         }));
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
+        recordDiagnostic("analysis-completed", { mediaKind: "images", mediaCount: mediaFiles.length, durationSeconds: renderDuration, candidateCount: mediaFiles.length, sampledFrames: mediaFiles.length, style: actualStyle });
       } else {
         try {
           const analysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
@@ -688,13 +860,38 @@ export default function App() {
             if (progress.phase === "semantic") setMessage("AI Director: определяем тип сцены; если модель недоступна, продолжим по движению и композиции…");
           });
           sourceVideoDuration = analysis.duration;
+          contentProfile = analysis.semantic?.profile ?? "unknown";
+          learningProfileRef.current = toLearningProfile(analysis.semantic?.profile);
           renderDuration = Math.min(duration, analysis.duration);
+          let learnedStylePreferenceApplied = false;
           if (style === "auto") {
             const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
             const motionStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
             actualStyle = analysis.semantic?.profile && analysis.semantic.profile !== "unknown"
               ? styleForSemanticProfile(analysis.semantic.profile, motionStyle)
               : motionStyle;
+            // Scene evidence wins when available. Learned preference is a fallback for
+            // ambiguous/general footage, and only after repeated explicit user exports.
+            if (shouldApplyLearnedPreference(analysis.semantic?.profile, analysis.semantic?.confidence) && learningEnabled) {
+              try {
+                const history = await new JsonLocalExperienceStore(window.localStorage).load();
+                const preference = recommendPreferredVariant(history, learningProfileRef.current);
+                if (preference) {
+                  if (preference.variant !== "signature") {
+                    const preferredStyle: Record<Exclude<MontageVariantId, "signature">, Exclude<EditStyle, "auto">> = {
+                      hype: "velocity",
+                      cinematic: "cinematic",
+                      emotion: "story",
+                    };
+                    actualStyle = preferredStyle[preference.variant];
+                    learnedStylePreferenceApplied = true;
+                    setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+                  }
+                }
+              } catch {
+                // Personalization is optional; do not block analysis if storage is unavailable.
+              }
+            }
           }
           setMessage("AI Director: загружаем модель распознавания объектов и анализируем сцены…");
           const directorResult = await analyzeWithAIDirector(
@@ -713,22 +910,22 @@ export default function App() {
                 setMessage("AI Director: ранжируем фрагменты под выбранный стиль…");
               }
             },
-            style === "auto"
+            style === "auto" && !learnedStylePreferenceApplied
           );
           actualStyle = directorResult.selectedStyle;
-          directorNote = directorResult.note;
-          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+          recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
+          const smartEyeSummary = directorResult.smartEye
+            ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
+            : "";
+          directorNote = `${directorResult.note}${smartEyeSummary} Режиссёрский ориентир: ${getDirectorKnowledge(contentProfile).editingGoal}`;
+          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
           setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
           sourceVideoDuration = await getVideoDuration(videoUrl);
           renderDuration = Math.min(duration, sourceVideoDuration);
           if (style === "auto") actualStyle = "cinematic";
-          const shotLength = actualStyle === "velocity" ? 1.05
-            : actualStyle === "glitch" ? 1.35
-            : actualStyle === "anime" ? 1.65
-            : actualStyle === "story" ? 3.2
-            : 2.2;
+          const shotLength = getDirectorShotLength(contentProfile, actualStyle);
           const fallbackCuts = buildFallbackVideoCuts(sourceVideoDuration, renderDuration, shotLength);
           segments = fallbackCuts.map((cut) => ({
             name: videoFile!.name,
@@ -737,6 +934,7 @@ export default function App() {
             trimEnd: cut.trimEnd
           }));
           analysisFallback = true;
+          recordDiagnostic("analysis-fallback", { mediaKind: "video", mediaCount: 1, durationSeconds: sourceVideoDuration, fallbackUsed: true, reasonCode: "analysis-unavailable", style: actualStyle });
           setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
           if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
         }
@@ -767,21 +965,32 @@ export default function App() {
           setMessage("Не удалось разобрать ритм трека — продолжаем монтаж без синхронизации.");
         }
       }
+      learningVariantRef.current = toLearningVariant(actualStyle);
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
+      recordDiagnostic("render-started", { segmentCount: segments.length, durationSeconds: renderDuration, style: actualStyle, quality, fallbackUsed: analysisFallback });
       setStage("rendering");
       setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
       const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }] : [];
+      const knowledge = getDirectorKnowledge(contentProfile);
+      const effectiveTransitionMode = transitionMode === "auto"
+        ? knowledge.transitionPreset
+        : transitionMode;
+      const effectiveFramingMode = framingMode === "auto" && knowledge.preserveFullFrame
+        ? "fit"
+        : framingMode;
       const blob = await renderVideoSequence({
         segments,
         audioTracks,
+        sourceAudioMode,
+        sourceAudioVolume,
         title: "",
         aspectRatio,
-        framingMode,
+        framingMode: effectiveFramingMode,
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
-        transitionMode,
+        transitionMode: effectiveTransitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress,
         audioContext: preparedAudioContext
@@ -789,19 +998,23 @@ export default function App() {
       const nextUrl = URL.createObjectURL(blob);
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
+      recordDiagnostic("export-ready", { segmentCount: segments.length, durationSeconds: renderDuration, style: actualStyle, quality, fallbackUsed: analysisFallback });
       setQualityReport(null);
       setQualityCheckBusy(true);
       setStage("done");
       // Inspect the encoded WebM without blocking playback or download. The check is advisory.
       void inspectRenderedVideo(blob).then((report) => {
         setQualityReport(report);
+        recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
       }).catch((qualityError) => {
+        recordDiagnostic("quality-check-completed", { severity: "warning", reasonCode: "quality-check-unavailable", quality });
         console.warn("DRAVEX output quality check failed:", qualityError);
         setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь воспроизведение вручную."], severity: "warning" });
       }).finally(() => setQualityCheckBusy(false));
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
+      recordDiagnostic("montage-failed", { reasonCode: "render-error", mediaKind: isImageMode ? "images" : "video", mediaCount: mediaFiles.length, quality });
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
       setMessage("");
     } finally {
@@ -839,7 +1052,7 @@ export default function App() {
     autoPreviewAttempt.current = generation;
     const timer = window.setTimeout(() => { void createStylePreviews(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
+  }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, sourceAudioMode, sourceAudioVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
 
   const normalizedMusicQuery = musicQuery.trim().toLowerCase();
   const filteredMusicPresets = musicPresets.filter((preset) =>
@@ -984,6 +1197,8 @@ export default function App() {
             <label className="dravex-duration"><span>Кадрирование</span><select aria-label="Кадрирование видео" value={framingMode} onChange={(event) => { setFramingMode(event.target.value as FramingMode); invalidateOutput(); }}><option value="auto">Умное · сохранить весь кадр при необходимости</option><option value="fit">Весь кадр · без обрезки</option><option value="fill">Заполнить экран · обрезать края</option></select><small>Для игр и интерфейсов выбирай «Весь кадр», чтобы не потерять мини-карту и HUD. «Заполнить экран» увеличивает изображение, но может обрезать края.</small></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p" | "4K"); invalidateOutput(); }}><option value="720p">720p · быстрее для телефона</option><option value="1080p">1080p · чётче</option><option value="4K">4K · очень высокая нагрузка</option></select>
             {quality === "4K" && <small className="dravex-quality-caution">4K требует много памяти и может не поддерживаться некоторыми телефонами. Для длинных роликов лучше выбрать 720p или 1080p.</small>}</label>
+            <label className="dravex-duration"><span>Звук исходного видео</span><select aria-label="Звук исходного видео" value={sourceAudioMode} onChange={(event) => { setSourceAudioMode(event.target.value as SourceAudioMode); invalidateOutput(); }}><option value="auto">Автоматически · приглушать под музыку</option><option value="keep">Оставить оригинальный звук</option><option value="mute">Отключить оригинальный звук</option></select><small>{sourceAudioMode === "auto" ? "Авто-режим пока использует наличие музыки: при музыке оригинал приглушается. Анализ шума и распознавание речи ещё не реализованы." : sourceAudioMode === "keep" ? "Оригинальный звук сохраняется на выбранной громкости, даже если добавлена музыка." : "Исходная аудиодорожка полностью убирается из экспорта."}</small></label>
+            {!isImageMode && sourceAudioMode !== "mute" && <label className="dravex-volume"><span>Громкость оригинального звука <strong>{Math.round(sourceAudioVolume * 100)}%</strong></span><input aria-label="Громкость оригинального звука" type="range" min="0" max="100" step="5" value={Math.round(sourceAudioVolume * 100)} onChange={(event) => { setSourceAudioVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
             <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
@@ -993,6 +1208,17 @@ export default function App() {
             <button type="button" onClick={saveProject} disabled={!mediaFiles.length || projectBusy}><Save size={15} />{projectBusy ? "Сохраняем…" : "Сохранить проект"}</button>
             <button type="button" onClick={restoreProject} disabled={projectBusy || busy || previewBusy}><FolderOpen size={15} />Восстановить проект</button>
           </div>
+          <div className="dravex-project-actions" aria-label="Диагностика AI Director">
+            <span className="dravex-project-message">Диагностические события: {diagnosticEvents.length}/200. Сохраняются только в памяти текущей вкладки; видео, фотографии, имена файлов и URL не записываются.</span>
+            <button type="button" onClick={exportDiagnostics} disabled={!diagnosticEvents.length}>Экспортировать отчёт диагностики</button>
+            <button type="button" onClick={() => setDiagnosticEvents([])} disabled={!diagnosticEvents.length}>Очистить диагностику</button>
+          </div>
+          <div className="dravex-project-actions" aria-label="Память AI Director">
+            <label className="dravex-memory-toggle"><input type="checkbox" checked={learningEnabled} onChange={(event) => setLearningEnabled(event.target.checked)} /> Запоминать качество монтажей на этом устройстве</label>
+            <button type="button" onClick={clearLearningMemory}>Удалить память AI Director</button>
+          </div>
+          <p className="dravex-project-message">Память выключена по умолчанию. При включении на устройстве сохраняются профиль, выбранный вариант и твои оценки качества отдельных аспектов монтажа. Видео, фотографии, имена файлов и URL не сохраняются.</p>
+          {learningStatus && <p className="dravex-project-message" role="status">{learningStatus}</p>}
           {projectMessage && <p className="dravex-project-message" role="status">{projectMessage}</p>}
         </details>
 
@@ -1001,7 +1227,7 @@ export default function App() {
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
-        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · {quality} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>{qualityCheckBusy ? <p className="dravex-quality-report" role="status">Проверяем экспортированные кадры и ищем возможные чёрные или зависшие фрагменты…</p> : qualityReport && <div className={`dravex-quality-report ${qualityReport.severity === "warning" ? "is-warning" : "is-ok"}`} role="status"><strong>{qualityReport.severity === "warning" ? "Проверка просит внимания" : "Автопроверка завершена"}</strong><span>{qualityReport.width && qualityReport.height ? `${qualityReport.width}×${qualityReport.height} · ${qualityReport.duration.toFixed(1)} с · проверено кадров: ${qualityReport.sampledFrames}` : "Проверка видеокадров не завершилась."}</span><ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul></div>}</section>}
+        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · {quality} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName} onClick={() => { void recordLearningExperience(); }}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>{learningEnabled && <div className="dravex-project-actions" aria-label="Обратная связь AI Director"><label className="dravex-duration"><span>Что оценить в этом монтаже?</span><select aria-label="Аспект монтажа для оценки" value={feedbackDimension} onChange={(event) => setFeedbackDimension(event.target.value as keyof MontageQuality)} disabled={feedbackSubmitted}><option value="momentSelection">Выбор лучших моментов</option><option value="pacing">Темп и длительность кадров</option><option value="transitions">Переходы</option><option value="musicSync">Синхронизация с музыкой</option><option value="visualConsistency">Цвет и визуальная цельность</option><option value="technicalReliability">Техническое качество экспорта</option></select></label><button type="button" disabled={feedbackSubmitted} onClick={() => void recordLearningFeedback("good")}>Получилось хорошо</button><button type="button" disabled={feedbackSubmitted} onClick={() => void recordLearningFeedback("improve")}>Нужно улучшить</button>{feedbackStatus && <span className="dravex-project-message" role="status">{feedbackStatus}</span>}</div>}{qualityCheckBusy ? <p className="dravex-quality-report" role="status">Проверяем экспортированные кадры и ищем возможные чёрные или зависшие фрагменты…</p> : qualityReport && <div className={`dravex-quality-report ${qualityReport.severity === "warning" ? "is-warning" : "is-ok"}`} role="status"><strong>{qualityReport.severity === "warning" ? "Проверка просит внимания" : "Автопроверка завершена"}</strong><span>{qualityReport.width && qualityReport.height ? `${qualityReport.width}×${qualityReport.height} · ${qualityReport.duration.toFixed(1)} с · проверено кадров: ${qualityReport.sampledFrames}` : "Проверка видеокадров не завершилась."}</span><ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul></div>}</section>}
           </aside>
         </div>
         </>)}

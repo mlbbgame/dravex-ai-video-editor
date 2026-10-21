@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceFrameRect, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -59,4 +59,18 @@ test("render loop frame pacing matches the recorder frame rate", () => {
   expect(getRenderFrameInterval(120)).toBeCloseTo(1000 / 60, 5);
   expect(getRenderFrameInterval(0)).toBeCloseTo(1000 / 24, 5);
   expect(getRenderFrameInterval(Number.NaN)).toBeCloseTo(1000 / 24, 5);
+});
+
+
+test("automatic source audio ducks under music while keep and mute modes are explicit", () => {
+  expect(getSourceAudioGain("auto", 0.8, false)).toBeCloseTo(0.8);
+  expect(getSourceAudioGain("auto", 0.8, true)).toBeCloseTo(0.224);
+  expect(getSourceAudioGain("keep", 0.8, true)).toBeCloseTo(0.8);
+  expect(getSourceAudioGain("mute", 0.8, false)).toBe(0);
+});
+
+test("source audio gain clamps invalid and out-of-range volume values", () => {
+  expect(getSourceAudioGain("keep", 5, false)).toBe(1);
+  expect(getSourceAudioGain("keep", -1, false)).toBe(0);
+  expect(getSourceAudioGain("auto", Number.NaN, true)).toBeCloseTo(0.224);
 });

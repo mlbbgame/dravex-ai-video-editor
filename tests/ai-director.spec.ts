@@ -1,9 +1,14 @@
 import { expect, test } from "@playwright/test";
 import {
   analyzeWithAIDirector,
+  chooseDirectorStyleFromInference,
+  chooseAdaptiveDirectorSampleIndices,
   findNearestDetectedObjects,
   getDirectorFrameBudget,
+  getAnalyzedDirectorSampleIndices,
   inferMotionCues,
+  inferTemporalEventCues,
+  getDirectorEventRankingBonus,
   inferSceneCategory,
   inferTrackedObjectCues,
   scoreDirectorMoment,
@@ -30,6 +35,15 @@ const personNear: DetectedObject = {
 test("motion cues separate stable shots from sharp movement", () => {
   expect(inferMotionCues(0.2, 0.1, [], [], 0.08)).toContain("Резкое движение");
   expect(inferMotionCues(0.01, 0.1, [], [], 0.08)).toContain("Стабильный кадр");
+});
+
+test("motion cues normalize labels so casing and whitespace do not invent scene changes", () => {
+  expect(inferMotionCues(0.08, 0.1, [" Car "], ["car"], 0.08))
+    .not.toContain("Объект входит в сцену");
+  expect(inferMotionCues(0.08, 0.1, ["Car"], [" CAR "], 0.08))
+    .not.toContain("Смена объектов в сцене");
+  expect(inferMotionCues(0.08, 0.1, [" ", ""], ["  "], 0.08))
+    .not.toContain("Объект входит в сцену");
 });
 
 test("object tracking detects screen movement and apparent approach", () => {
@@ -65,10 +79,43 @@ test("object matching does not confuse two same-class objects when detector orde
   expect(inferTrackedObjectCues(previous, current)).not.toContain("Объект перемещается по кадру");
 });
 
+test("object tracking does not infer motion or approach across wide or invalid time gaps", () => {
+  expect(inferTrackedObjectCues([personLeft], [personNear], 0, 12)).toEqual([]);
+  expect(inferTrackedObjectCues([personLeft], [personNear], 2, 1)).toEqual([]);
+  expect(inferTrackedObjectCues([personLeft], [personNear], 0, undefined)).toEqual([]);
+  expect(inferTrackedObjectCues([personLeft], [personNear], 0, 1.5))
+    .toContain("Объект приближается");
+});
+
+test("object tracking ignores implausible jumps between same-class detections", () => {
+  const left: DetectedObject = {
+    label: "person", score: 0.92,
+    box: { xmin: 10, ymin: 25, xmax: 60, ymax: 140 },
+  };
+  const farRight: DetectedObject = {
+    label: "person", score: 0.92,
+    box: { xmin: 280, ymin: 25, xmax: 320, ymax: 140 },
+  };
+  expect(inferTrackedObjectCues([left], [farRight])).toEqual([]);
+});
+
 test("scene category inference identifies food, vehicles, and wildlife from object labels", () => {
   expect(inferSceneCategory(["pizza", "bottle", "cake"]).category).toBe("food");
   expect(inferSceneCategory(["car", "truck", "person"]).category).toBe("vehicles");
   expect(inferSceneCategory(["bird", "dog"]).category).toBe("animals");
+});
+
+test("scene category inference stays conservative for equally supported mixed scenes", () => {
+  expect(inferSceneCategory(["person", "car"])).toEqual({
+    category: "general",
+    confidence: 0,
+    matchedLabels: [],
+  });
+  expect(inferSceneCategory(["pizza", "car"])).toEqual({
+    category: "general",
+    confidence: 0,
+    matchedLabels: [],
+  });
 });
 
 test("scene category inference stays unknown when no supported objects are detected", () => {
@@ -87,6 +134,22 @@ test("style-aware ranking favors relevant detected subjects instead of any objec
     .toBeGreaterThan(scoreDirectorMoment(moment, cake, "velocity", 0.1, 0.2));
   expect(scoreDirectorMoment(moment, cake, "story", 0.1, 0.2))
     .toBeGreaterThan(scoreDirectorMoment(moment, car, "story", 0.1, 0.2));
+});
+
+test("automatic style requires stronger scene evidence and respects the manual fallback", () => {
+  expect(chooseDirectorStyleFromInference(
+    { category: "vehicles", confidence: 0.55, matchedLabels: ["car"] },
+    "cinematic"
+  )).toBe("cinematic");
+  expect(chooseDirectorStyleFromInference(
+    { category: "vehicles", confidence: 0.67, matchedLabels: ["car", "truck"] },
+    "cinematic"
+  )).toBe("velocity");
+  expect(chooseDirectorStyleFromInference(
+    { category: "vehicles", confidence: 0.9, matchedLabels: ["car", "truck"] },
+    "cinematic",
+    false
+  )).toBe("cinematic");
 });
 
 test("automatic style adapts to detected subjects while unknown scenes keep the fallback", () => {
@@ -113,14 +176,34 @@ test("director frame budget rejects zero, negative, and non-finite durations", (
   expect(getDirectorFrameBudget(Number.POSITIVE_INFINITY)).toEqual(emptyBudget);
 });
 
-test("long-video director budget samples an interior scene while staying bounded for mobile", () => {
+test("long-video director samples more interior scenes while keeping a bounded mobile budget", () => {
   expect(getDirectorFrameBudget(30)).toEqual({
-    maxFrames: 3,
-    inferenceBudgetMs: 6500,
+    maxFrames: 5,
+    inferenceBudgetMs: 9_000,
     includeEdges: false,
   });
-  expect(getDirectorFrameBudget(300).maxFrames).toBe(3);
+  expect(getDirectorFrameBudget(60)).toEqual({
+    maxFrames: 6,
+    inferenceBudgetMs: 11_000,
+    includeEdges: false,
+  });
+  expect(getDirectorFrameBudget(300)).toEqual({
+    maxFrames: 8,
+    inferenceBudgetMs: 14_000,
+    includeEdges: false,
+  });
   expect(getDirectorFrameBudget(29.99).maxFrames).toBe(4);
+});
+
+test("analyzed frame anchors exclude planned indices never reached by inference", () => {
+  const candidates = [
+    { time: 0, start: 0, end: 0.5, score: 0.7, motion: 0.1, contrast: 0.2 },
+    { time: 4, start: 3.5, end: 4.5, score: 0.7, motion: 0.1, contrast: 0.2 },
+    { time: 8, start: 7.5, end: 8.5, score: 0.7, motion: 0.1, contrast: 0.2 },
+  ];
+  // The planner picked all three, but inference only reached candidates 0 and 2.
+  expect(getAnalyzedDirectorSampleIndices(candidates, new Set([2, 0]))).toEqual([0, 2]);
+  expect(getAnalyzedDirectorSampleIndices(candidates, [2, 2, 99, -1, 1.5])).toEqual([2]);
 });
 
 test("AI Director safely falls back for unknown or too-short source duration", async () => {
@@ -154,4 +237,193 @@ test("AI Director reports missing samples separately from invalid duration", asy
 
   expect(result.modelLoaded).toBe(false);
   expect(result.note).toContain("Недостаточно кадров");
+});
+
+
+test("temporal event cues distinguish motion build-up, peaks, and settling", () => {
+  expect(inferTemporalEventCues(0.03, 0.18, 0.04, [], [], [], 0.08)).toContain("Пик движения");
+  expect(inferTemporalEventCues(0.03, 0.07, 0.09, [], [], [], 0.08)).toContain("Нарастание движения");
+  expect(inferTemporalEventCues(0.18, 0.1, 0.09, [], [], [], 0.08)).toContain("Затухание движения");
+});
+
+test("sparse long-video samples cannot create false motion peaks across wide time gaps", () => {
+  const sparse = inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    0, 12, 24
+  );
+  expect(sparse).not.toContain("Пик движения");
+  expect(inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    0, 1.2, 2.4
+  )).toContain("Пик движения");
+  expect(inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    2, 1, 3
+  )).not.toContain("Пик движения");
+  expect(inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    0, undefined, 2
+  )).not.toContain("Пик движения");
+});
+
+test("temporal event cues flag likely scene changes without inventing an action", () => {
+  expect(inferTemporalEventCues(
+    0.04,
+    0.05,
+    0.04,
+    ["car", "person"],
+    ["dog", "tree"],
+    ["dog", "tree"],
+    0.08
+  )).toContain("Вероятная смена сцены");
+  expect(inferTemporalEventCues(0.04, 0.05, 0.04, [], [], [], 0.08)).toEqual([]);
+});
+
+test("temporal event cues ignore invalid motion values", () => {
+  expect(inferTemporalEventCues(Number.NaN, 0.2, 0.1)).toEqual([]);
+});
+
+test("temporal cues do not invent peaks for steady motion or scene changes for matching labels", () => {
+  expect(inferTemporalEventCues(0.08, 0.08, 0.08, [" Car "], ["car"], ["CAR"], 0.08))
+    .not.toContain("Пик движения");
+  expect(inferTemporalEventCues(0.08, 0.08, 0.08, [" Car "], ["car"], ["CAR"], 0.08))
+    .not.toContain("Вероятная смена сцены");
+});
+
+test("temporal cues safely reject negative motion and normalize empty labels", () => {
+  expect(inferTemporalEventCues(-0.1, 0.2, 0.1, ["car"], ["dog"], ["dog"])).toEqual([]);
+  expect(inferTemporalEventCues(0.04, 0.05, 0.04, [" "], [""], [" "])).toEqual([]);
+});
+
+test("director ranking stays finite and bounded across all edit styles", () => {
+  const moment = { score: 0.7, motion: 0.18, contrast: 0.22 };
+  const objects = [
+    { label: "car", score: 0.91, box: { xmin: 15, ymin: 20, xmax: 175, ymax: 145 } },
+    { label: "person", score: 0.87, box: { xmin: 185, ymin: 25, xmax: 245, ymax: 150 } },
+  ];
+
+  for (const style of ["velocity", "anime", "cinematic", "glitch", "story"] as const) {
+    const score = scoreDirectorMoment(moment, objects, style, 0.08, 0.4);
+    expect(Number.isFinite(score), style).toBe(true);
+    expect(score, style).toBeGreaterThanOrEqual(0);
+    expect(score, style).toBeLessThanOrEqual(1);
+  }
+});
+
+
+test("adaptive director sampling prioritizes a sharp temporal peak without losing source coverage", () => {
+  const candidates = Array.from({ length: 20 }, (_, index) => ({
+    score: index === 12 ? 0.98 : 0.3 + (index % 3) * 0.05,
+    motion: index === 12 ? 0.95 : 0.08,
+    contrast: index === 12 ? 0.3 : 0.1,
+  }));
+  const selected = chooseAdaptiveDirectorSampleIndices(candidates, 5, false);
+
+  expect(selected).toHaveLength(5);
+  expect(selected).toEqual([...selected].sort((a, b) => a - b));
+  expect(selected).toContain(12);
+  expect(selected[0]).toBeGreaterThan(0);
+  expect(selected[selected.length - 1]).toBeLessThan(candidates.length - 1);
+});
+
+test("long-source adaptive sampling spreads eight inference frames across the timeline", () => {
+  const candidates = Array.from({ length: 60 }, (_, index) => ({
+    score: index === 41 ? 0.99 : 0.25 + (index % 4) * 0.04,
+    motion: index === 41 ? 0.98 : 0.06,
+    contrast: index === 41 ? 0.31 : 0.08,
+  }));
+  const selected = chooseAdaptiveDirectorSampleIndices(candidates, getDirectorFrameBudget(300).maxFrames, false);
+
+  expect(selected).toHaveLength(8);
+  expect(selected).toContain(41);
+  expect(selected[0]).toBeGreaterThan(0);
+  expect(selected[selected.length - 1]).toBeLessThan(candidates.length - 1);
+  expect(selected.every((index, position) => position === 0 || index > selected[position - 1])).toBe(true);
+});
+
+test("adaptive director sampling safely ignores malformed runtime candidate entries", () => {
+  const candidates = [
+    null,
+    { score: 0.2, motion: 0.1, contrast: 0.1 },
+    undefined,
+    { score: 0.9, motion: 0.95, contrast: 0.3 },
+    17,
+    { score: 0.4, motion: 0.2, contrast: 0.2 },
+  ];
+
+  const selected = chooseAdaptiveDirectorSampleIndices(candidates as never, 3);
+
+  expect(selected).toHaveLength(3);
+  expect(selected.every((index) => index >= 0 && index < candidates.length)).toBe(true);
+  expect(selected).not.toContain(0);
+  expect(selected).not.toContain(2);
+  expect(selected).not.toContain(4);
+  expect([...selected].sort((a, b) => a - b)).toEqual(selected);
+
+  const singleSelected = chooseAdaptiveDirectorSampleIndices(candidates as never, 1);
+  expect(singleSelected).toHaveLength(1);
+  expect(singleSelected[0]).toBe(3);
+});
+
+test("adaptive director sampling handles invalid budgets and small sources safely", () => {
+  const candidates = [{ score: 0.4, motion: 0.1, contrast: 0.1 }, { score: 0.5, motion: 0.2, contrast: 0.2 }];
+  expect(chooseAdaptiveDirectorSampleIndices(candidates, 0)).toEqual([]);
+  expect(chooseAdaptiveDirectorSampleIndices(candidates, Number.NaN)).toEqual([]);
+  expect(chooseAdaptiveDirectorSampleIndices(candidates, 5)).toEqual([0, 1]);
+});
+
+
+test("timestamped event evidence contributes to style-aware director ranking", () => {
+  const events = [
+    {
+      kind: "motion-peak" as const,
+      label: "Пик движения",
+      confidence: 0.9,
+      sourceTime: 4,
+      start: 3.7,
+      end: 4.3,
+      evidence: ["Пик движения"],
+    },
+  ];
+  const velocityBonus = getDirectorEventRankingBonus(events, 4, "velocity");
+  const cinematicBonus = getDirectorEventRankingBonus(events, 4, "cinematic");
+  expect(velocityBonus).toBeGreaterThan(cinematicBonus);
+  expect(velocityBonus).toBeLessThanOrEqual(0.1);
+  expect(getDirectorEventRankingBonus(events, 20, "velocity")).toBe(0);
+  expect(getDirectorEventRankingBonus(events, Number.NaN, "velocity")).toBe(0);
+});
+
+test("event ranking bonus is bounded when several cues overlap", () => {
+  const events = Array.from({ length: 20 }, (_, index) => ({
+    kind: "motion-peak" as const,
+    label: "Пик движения",
+    confidence: 0.95,
+    sourceTime: 2,
+    start: 1.8,
+    end: 2.2,
+    evidence: ["Пик движения"],
+  }));
+  expect(getDirectorEventRankingBonus(events, 2, "velocity")).toBe(0.1);
+});
+
+
+test("Smart Eye reports honest zero-model-sample coverage when frame analysis falls back", async () => {
+  const candidates = [
+    { time: 1, start: 0.5, end: 1.5, score: 0.7, motion: 0.4, contrast: 0.2 },
+    { time: 3, start: 2.5, end: 3.5, score: 0.6, motion: 0.2, contrast: 0.3 },
+  ];
+  const result = await analyzeWithAIDirector(
+    "",
+    4,
+    [],
+    candidates,
+    "cinematic",
+  );
+
+  expect(result.modelLoaded).toBe(false);
+  expect(result.smartEye).toBeDefined();
+  expect(result.smartEye?.coverage.candidateCount).toBe(2);
+  expect(result.smartEye?.coverage.sampledFrameCount).toBe(0);
+  expect(result.smartEye?.coverage.largestSampleGapSeconds).toBe(4);
+  expect(result.eventTimeline).toBeDefined();
 });
