@@ -113,20 +113,36 @@ function validScore(value: unknown): value is number {
 
 export function validateExperience(input: MontageExperience): string[] {
   const errors: string[] = [];
-  if (!input.id.trim()) errors.push("Experience ID is required.");
-  if (!Number.isFinite(Date.parse(input.createdAt))) errors.push("createdAt must be a valid date.");
+  // Storage is untrusted input: a partial/corrupt row must be rejected safely,
+  // not throw and cause the caller to lose every otherwise valid record.
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return ["Experience must be an object."];
+  }
+  if (typeof input.id !== "string" || !input.id.trim()) errors.push("Experience ID is required.");
+  if (typeof input.createdAt !== "string" || !Number.isFinite(Date.parse(input.createdAt))) {
+    errors.push("createdAt must be a valid date.");
+  }
   if (!["aggressive-car", "cinematic-travel", "nature-wildlife", "food-cooking", "people-everyday", "product-diy", "gaming", "sports", "anime", "general"].includes(input.profile)) {
     errors.push("Unknown learning profile.");
   }
   if (!["hype", "cinematic", "emotion", "signature"].includes(input.variant)) errors.push("Unknown montage variant.");
-  for (const [dimension, score] of Object.entries(input.quality)) {
-    if (!dimensions.includes(dimension as keyof MontageQuality) || !validScore(score)) {
-      errors.push(`Invalid quality score for ${dimension}.`);
+  if (!input.quality || typeof input.quality !== "object" || Array.isArray(input.quality)) {
+    errors.push("Quality scores must be an object.");
+  } else {
+    for (const [dimension, score] of Object.entries(input.quality)) {
+      if (!dimensions.includes(dimension as keyof MontageQuality) || !validScore(score)) {
+        errors.push(`Invalid quality score for ${dimension}.`);
+      }
     }
   }
-  if (input.editedDimensions?.some((dimension) => !dimensions.includes(dimension))) {
+  if (input.editedDimensions !== undefined
+    && (!Array.isArray(input.editedDimensions) || input.editedDimensions.some((dimension) => !dimensions.includes(dimension)))) {
     errors.push("Unknown edited quality dimension.");
   }
+  for (const flag of ["selectedByUser", "exportedByUser", "rejectedByUser"] as const) {
+    if (input[flag] !== undefined && typeof input[flag] !== "boolean") errors.push(`${flag} must be a boolean.`);
+  }
+  if (input.contentKind !== undefined && typeof input.contentKind !== "string") errors.push("contentKind must be a string.");
   return errors;
 }
 
