@@ -3,6 +3,7 @@ import {
   buildHighlightVariants,
   ensureCandidateCoverage,
   rankHighlightMomentsForStyle,
+  scoreFrameQuality,
   getHighlightSampleLimit,
   getHighlightSamplingInterval,
 } from "../src/video/highlight-finder";
@@ -212,4 +213,17 @@ test("coverage fallback ignores malformed sample and candidate records", () => {
     moment.end <= 5 &&
     moment.end > moment.start
   )).toBe(true);
+});
+
+
+test("frame quality scoring safely rejects missing runtime feature payloads", () => {
+  expect(scoreFrameQuality(null as never)).toBe(0);
+  expect(scoreFrameQuality(undefined as never)).toBe(0);
+  expect(scoreFrameQuality({
+    motion: Number.NaN,
+    contrast: Number.POSITIVE_INFINITY,
+    saturation: -1,
+    brightness: Number.NaN,
+    detail: 2,
+  })).toBeCloseTo(0.22);
 });
