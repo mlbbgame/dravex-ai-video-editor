@@ -99,7 +99,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       actionCues: [...new Set((Array.isArray(item.actionCues) ? item.actionCues : [])
         .filter((cue): cue is string => typeof cue === "string")
         .map((cue) => cue.trim().slice(0, MAX_LABEL_LENGTH))
-        .filter(Boolean)).slice(0, 12)]
+        .filter(Boolean))].slice(0, 12)
     }))
     .sort((a, b) => a.time - b.time);
 
