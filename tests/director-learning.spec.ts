@@ -157,3 +157,30 @@ test("learned preferences defer to strong semantic evidence but help when classi
   expect(shouldApplyLearnedPreference(undefined, undefined)).toBe(true);
   expect(shouldApplyLearnedPreference("nature", 0.5, Number.NaN)).toBe(false);
 });
+
+
+test("tuning promotion rejects malformed benchmark payloads and invalid thresholds safely", () => {
+  const current = { version: 2, values: { transitionDensity: 0.4 } };
+  const validBenchmark = {
+    baselineScore: 0.7,
+    candidateScore: 0.9,
+    baselineRegressionByDimension: { musicSync: 0.01 },
+  };
+
+  const missingRegressions = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
+    ...validBenchmark,
+    baselineRegressionByDimension: null as unknown as Record<string, number>,
+  });
+  expect(missingRegressions.accepted).toBe(false);
+  expect(missingRegressions.next).toEqual(current);
+  expect(missingRegressions.reasons).toContain("Dimension regressions must be provided as an object.");
+
+  const invalidThreshold = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, validBenchmark, {
+    minimumGain: Number.NaN,
+  });
+  expect(invalidThreshold.accepted).toBe(false);
+  expect(invalidThreshold.next).toEqual(current);
+  expect(invalidThreshold.reasons).toContain("Minimum gain must be between 0 and 1.");
+
+  expect(() => evaluateTuningCandidate(current, { transitionDensity: 0.6 }, null as never).accepted).not.toThrow();
+});
