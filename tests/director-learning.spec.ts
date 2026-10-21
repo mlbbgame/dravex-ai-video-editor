@@ -3,6 +3,7 @@ import {
   evaluateTuningCandidate,
   JsonLocalExperienceStore,
   proposeImprovements,
+  recommendPreferredVariant,
   summarizeExperience,
   validateExperience,
   type MontageExperience,
@@ -117,4 +118,32 @@ test("experience memory rejects free-form content labels that could contain priv
   expect(validateExperience(experience(92, { id: "x".repeat(121) }))).toContain(
     "Experience ID must be a non-empty string of at most 120 characters.",
   );
+});
+
+
+test("preferred montage variant needs repeated explicit exports and a clear majority", () => {
+  const rows = [
+    experience(100, { variant: "hype", selectedByUser: true, exportedByUser: true }),
+    experience(101, { variant: "hype", selectedByUser: true, exportedByUser: true }),
+    experience(102, { variant: "hype", selectedByUser: true, exportedByUser: true }),
+    experience(103, { variant: "cinematic", selectedByUser: true, exportedByUser: true }),
+  ];
+  expect(recommendPreferredVariant(rows.slice(0, 2), "aggressive-car")).toBeNull();
+  expect(recommendPreferredVariant(rows, "aggressive-car")).toEqual({
+    variant: "hype",
+    sampleCount: 4,
+    share: 0.75,
+  });
+});
+
+test("preferred montage variant ignores unselected exports, rejected edits, and tied preferences", () => {
+  const rows = [
+    experience(110, { variant: "hype", exportedByUser: true }),
+    experience(111, { variant: "hype", selectedByUser: true, exportedByUser: true, rejectedByUser: true }),
+    experience(112, { variant: "hype", selectedByUser: true, exportedByUser: true }),
+    experience(113, { variant: "cinematic", selectedByUser: true, exportedByUser: true }),
+    experience(114, { variant: "emotion", selectedByUser: true, exportedByUser: true }),
+  ];
+  expect(recommendPreferredVariant(rows, "aggressive-car")).toBeNull();
+  expect(recommendPreferredVariant(rows, "gaming")).toBeNull();
 });
