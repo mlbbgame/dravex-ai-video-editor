@@ -50,6 +50,9 @@ export type SmartEyeReportInput = {
   sampledFrameTimes?: number[];
 };
 
+const ALLOWED_EVENT_KINDS = new Set(["visual-highlight", "motion-peak", "motion-build-up", "motion-settling", "scene-change", "object-moving", "subject-approaching", "subject-receding"]);
+const MAX_LABEL_LENGTH = 120;
+
 const LABEL_GROUPS: Record<Exclude<DetectedSceneCategory, "general">, Set<string>> = {
   food: new Set(["apple", "banana", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake"]),
   vehicles: new Set(["bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat"]),
@@ -72,7 +75,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
   const rawLabels = Array.isArray(safeInput.detectedLabels) ? safeInput.detectedLabels : [];
   const labels = [...new Set(rawLabels
     .filter((label): label is string => typeof label === "string")
-    .map((label) => label.trim().toLowerCase())
+    .map((label) => label.trim().slice(0, MAX_LABEL_LENGTH).toLowerCase())
     .filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const categoryEntries = (Object.entries(LABEL_GROUPS) as Array<[Exclude<DetectedSceneCategory, "general">, Set<string>]>)
     .map(([category, group]) => ({ category, count: labels.filter((label) => group.has(label)).length }))
@@ -91,12 +94,12 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       ...item,
       sceneLabels: [...new Set((Array.isArray(item.sceneLabels) ? item.sceneLabels : [])
         .filter((label): label is string => typeof label === "string")
-        .map((label) => label.trim().toLowerCase())
+        .map((label) => label.trim().slice(0, MAX_LABEL_LENGTH).toLowerCase())
         .filter(Boolean))],
       actionCues: [...new Set((Array.isArray(item.actionCues) ? item.actionCues : [])
         .filter((cue): cue is string => typeof cue === "string")
-        .map((cue) => cue.trim())
-        .filter(Boolean))]
+        .map((cue) => cue.trim().slice(0, MAX_LABEL_LENGTH))
+        .filter(Boolean)).slice(0, 12)]
     }))
     .sort((a, b) => a.time - b.time);
 
@@ -136,7 +139,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
   }
   const rawEvents = Array.isArray(safeInput.events) ? safeInput.events : [];
   for (const event of rawEvents) {
-    if (!event || typeof event !== "object" || typeof event.sourceTime !== "number" || !Number.isFinite(event.sourceTime) || event.sourceTime < 0 || event.sourceTime > duration) continue;
+    if (!event || typeof event !== "object" || !ALLOWED_EVENT_KINDS.has(event.kind) || typeof event.sourceTime !== "number" || !Number.isFinite(event.sourceTime) || event.sourceTime < 0 || event.sourceTime > duration) continue;
     memory.push({
       id: `event:${event.kind}:${event.sourceTime.toFixed(3)}`,
       time: event.sourceTime,
