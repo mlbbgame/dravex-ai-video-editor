@@ -1,0 +1,46 @@
+import { expect, test } from "@playwright/test";
+import { buildDirectorDiagnosticExport, createDirectorDiagnostic } from "../src/video/director-diagnostics";
+
+test("diagnostics retain useful montage milestones without accepting private media fields", () => {
+  const event = createDirectorDiagnostic("analysis-completed", {
+    mediaKind: "video",
+    mediaCount: 1,
+    durationSeconds: 42,
+    sampledFrames: 12,
+    candidateCount: 38,
+    style: "velocity",
+    fileName: "private-video.mp4",
+    sourceUrl: "blob:private",
+  } as never, "2026-10-21T10:00:00.000Z");
+
+  expect(event.details).toEqual({
+    mediaKind: "video",
+    mediaCount: 1,
+    durationSeconds: 42,
+    sampledFrames: 12,
+    candidateCount: 38,
+    style: "velocity",
+  });
+  expect(JSON.stringify(event)).not.toContain("private-video.mp4");
+  expect(JSON.stringify(event)).not.toContain("blob:private");
+});
+
+test("diagnostic export is bounded and clearly describes its privacy scope", () => {
+  const events = Array.from({ length: 250 }, (_, index) =>
+    createDirectorDiagnostic("render-started", { segmentCount: index }, "2026-10-21T10:00:00.000Z")
+  );
+  const report = buildDirectorDiagnosticExport(events);
+  expect(report.eventCount).toBe(250);
+  expect(report.events).toHaveLength(200);
+  expect(report.privacy).toContain("no media");
+  expect(report.events[0].details.segmentCount).toBe(50);
+});
+
+test("diagnostic events discard invalid numeric values and oversized strings", () => {
+  const event = createDirectorDiagnostic("montage-failed", {
+    durationSeconds: Number.NaN,
+    style: "x".repeat(100),
+    reasonCode: "render-error",
+  });
+  expect(event.details).toEqual({ reasonCode: "render-error" });
+});
