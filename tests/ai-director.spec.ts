@@ -311,6 +311,30 @@ test("director ranking stays finite and bounded across all edit styles", () => {
 });
 
 
+
+test("director ranking remains finite when frame features or detections are malformed", () => {
+  const badObjects = [
+    { label: "car", score: Number.NaN, box: { xmin: 0, ymin: 0, xmax: 10, ymax: 10 } },
+    { label: "person", score: 0.9, box: { xmin: 0, ymin: 0, xmax: Number.NaN, ymax: 10 } },
+    { label: "   ", score: 1, box: { xmin: 0, ymin: 0, xmax: 10, ymax: 10 } },
+    null,
+  ];
+  const badMoments = [
+    { score: Number.NaN, motion: 0.2, contrast: 0.1 },
+    { score: 0.8, motion: Number.POSITIVE_INFINITY, contrast: Number.NaN },
+    { score: -2, motion: -1, contrast: 0.2 },
+  ];
+
+  for (const style of ["velocity", "anime", "cinematic", "glitch", "story"] as const) {
+    for (const moment of badMoments) {
+      const score = scoreDirectorMoment(moment, badObjects as never, style, Number.NaN, Number.NaN);
+      expect(Number.isFinite(score), style).toBe(true);
+      expect(score, style).toBeGreaterThanOrEqual(0);
+      expect(score, style).toBeLessThanOrEqual(1);
+    }
+  }
+});
+
 test("adaptive director sampling prioritizes a sharp temporal peak without losing source coverage", () => {
   const candidates = Array.from({ length: 20 }, (_, index) => ({
     score: index === 12 ? 0.98 : 0.3 + (index % 3) * 0.05,
