@@ -329,6 +329,23 @@ test("long-source adaptive sampling spreads eight inference frames across the ti
   expect(selected.every((index, position) => position === 0 || index > selected[position - 1])).toBe(true);
 });
 
+test("adaptive director sampling safely ignores malformed runtime candidate entries", () => {
+  const candidates = [
+    null,
+    { score: 0.2, motion: 0.1, contrast: 0.1 },
+    undefined,
+    { score: 0.9, motion: 0.95, contrast: 0.3 },
+    17,
+    { score: 0.4, motion: 0.2, contrast: 0.2 },
+  ];
+
+  const selected = chooseAdaptiveDirectorSampleIndices(candidates as never, 3);
+
+  expect(selected).toHaveLength(3);
+  expect(selected.every((index) => index >= 0 && index < candidates.length)).toBe(true);
+  expect([...selected].sort((a, b) => a - b)).toEqual(selected);
+});
+
 test("adaptive director sampling handles invalid budgets and small sources safely", () => {
   const candidates = [{ score: 0.4, motion: 0.1, contrast: 0.1 }, { score: 0.5, motion: 0.2, contrast: 0.2 }];
   expect(chooseAdaptiveDirectorSampleIndices(candidates, 0)).toEqual([]);
