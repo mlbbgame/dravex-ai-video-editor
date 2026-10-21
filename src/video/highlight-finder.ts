@@ -290,6 +290,9 @@ export function scoreFrameQuality(features: {
   brightness: number;
   detail: number;
 }): number {
+  // Runtime callers may pass persisted or JS-originated data that bypasses TS.
+  // Treat missing/malformed feature objects as unusable evidence, not a crash.
+  if (!features || typeof features !== "object") return 0;
   const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   const exposure = clamp(1 - Math.abs(features.brightness - 0.48) / 0.48);
   return clamp(features.motion) * 0.45
