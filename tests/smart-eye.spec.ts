@@ -33,6 +33,8 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
   expect(report.sceneCategory).toBe("vehicles");
   expect(report.coverage.sampledFrameRatio).toBeCloseTo(8 / 30);
   expect(report.coverage.lastEventTime).toBe(58);
+  // Observations at 2s and 31s leave a 29s blind spot before the final boundary.
+  expect(report.coverage.largestSampleGapSeconds).toBe(29);
 });
 
 test("Smart Eye rejects out-of-range events and bounds confidence and coverage", () => {
@@ -77,5 +79,6 @@ test("Smart Eye safely handles empty input and invalid duration", () => {
   });
   expect(report.duration).toBe(0);
   expect(report.coverage.sampledFrameRatio).toBe(0);
+  expect(report.coverage.largestSampleGapSeconds).toBe(0);
   expect(report.memory).toEqual([]);
 });
