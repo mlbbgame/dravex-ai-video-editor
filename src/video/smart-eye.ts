@@ -5,7 +5,7 @@ export type SmartEyeCertainty = "observed" | "inferred" | "unknown";
 
 export type SmartEyeMemoryEntry = {
   id: string;
-  time: number;
+  time: number | null;
   kind: "detected-object" | DirectorEventEvidence["kind"];
   label: string;
   confidence?: number;
@@ -73,7 +73,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
   for (const label of labels) {
     memory.push({
       id: `object:${label}`,
-      time: 0,
+      time: null,
       kind: "detected-object",
       label,
       certainty: "observed",
@@ -92,7 +92,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       evidence: [...new Set(event.evidence.filter((item) => typeof item === "string" && item.trim()))]
     });
   }
-  memory.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+  memory.sort((a, b) => (a.time ?? Number.POSITIVE_INFINITY) - (b.time ?? Number.POSITIVE_INFINITY) || a.id.localeCompare(b.id));
 
   const candidateCount = Number.isFinite(input.candidateCount) ? Math.max(0, Math.floor(input.candidateCount)) : 0;
   const sampledFrameCount = Number.isFinite(input.sampledFrameCount)
