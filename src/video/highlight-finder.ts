@@ -557,9 +557,22 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   // Candidate windows may not overlap while those final rendered trims still do,
   // so enforce spacing against the actual output duration as well.
   const renderGap = shotLength + 0.08;
-  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment, minimumGap: number) =>
-    Math.abs(existing.time - candidate.time) < minimumGap
-    || (candidate.start < existing.end + 0.08 && candidate.end > existing.start - 0.08);
+  const getRenderedTrim = (moment: HighlightMoment) => {
+    const length = Math.min(shotLength, sourceDuration);
+    const start = Math.max(0, Math.min(sourceDuration - length, moment.time - length / 2));
+    return { start, end: Math.min(sourceDuration, start + length) };
+  };
+  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment, minimumGap: number) => {
+    const candidateTrim = getRenderedTrim(candidate);
+    const existingTrim = getRenderedTrim(existing);
+    const renderedTrimsOverlap = candidateTrim.start < existingTrim.end + 0.08
+      && candidateTrim.end > existingTrim.start - 0.08;
+    const sourceWindowsOverlap = candidate.start < existing.end + 0.08
+      && candidate.end > existing.start - 0.08;
+    return Math.abs(existing.time - candidate.time) < minimumGap
+      || renderedTrimsOverlap
+      || sourceWindowsOverlap;
+  };
   const canAdd = (candidate: HighlightMoment, minimumGap = Math.max(spacing, renderGap)) =>
     selected.every((item) => !conflicts(candidate, item, minimumGap));
   // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
