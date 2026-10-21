@@ -4,6 +4,7 @@ import {
   JsonLocalExperienceStore,
   proposeImprovements,
   recommendPreferredVariant,
+  shouldApplyLearnedPreference,
   summarizeExperience,
   validateExperience,
   type MontageExperience,
@@ -146,4 +147,13 @@ test("preferred montage variant ignores unselected exports, rejected edits, and 
   ];
   expect(recommendPreferredVariant(rows, "aggressive-car")).toBeNull();
   expect(recommendPreferredVariant(rows, "gaming")).toBeNull();
+});
+
+
+test("learned preferences defer to strong semantic evidence but help when classification is uncertain", () => {
+  expect(shouldApplyLearnedPreference("automotive", 0.92)).toBe(false);
+  expect(shouldApplyLearnedPreference("automotive", 0.55)).toBe(true);
+  expect(shouldApplyLearnedPreference("unknown", 0.99)).toBe(true);
+  expect(shouldApplyLearnedPreference(undefined, undefined)).toBe(true);
+  expect(shouldApplyLearnedPreference("nature", 0.5, Number.NaN)).toBe(false);
 });
