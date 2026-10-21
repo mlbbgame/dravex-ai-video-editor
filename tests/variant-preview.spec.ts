@@ -62,7 +62,7 @@ test("short clips are partitioned without repeating the same opening frames", ()
 
 test("variant preview plans stay bounded and non-overlapping across duration edge cases", () => {
   const variants = ["auto", "velocity", "cinema", "pulse", "story"];
-  const sourceDurations = [0.45, 0.9, 1.2, 3.79, 3.8, 3.81, 4, 4.01, 7.6, 15, 60, 60.01];
+  const sourceDurations = [0.45, 0.9, 1.2, 3.79, 3.8, 3.81, 4, 4.01, 4.2, 4.37, 4.38, 7.6, 15, 60, 60.01];
 
   for (const sourceDuration of sourceDurations) {
     for (const variant of variants) {
@@ -71,6 +71,13 @@ test("variant preview plans stay bounded and non-overlapping across duration edg
       expect(plan.duration).toBeGreaterThan(0);
       expect(plan.duration).toBeLessThanOrEqual(sourceDuration + 1e-9);
       expect(plan.cuts.length).toBeGreaterThan(0);
+
+      // Near-length sources have too little spare footage for wide style jumps;
+      // all planned shot durations must add up to the promised preview duration.
+      if (sourceDuration <= 3.8 * 1.15) {
+        const assembledDuration = plan.cuts.reduce((sum, cut) => sum + cut.trimEnd - cut.trimStart, 0);
+        expect(assembledDuration).toBeCloseTo(plan.duration, 8);
+      }
 
       for (let index = 0; index < plan.cuts.length; index += 1) {
         const cut = plan.cuts[index];
