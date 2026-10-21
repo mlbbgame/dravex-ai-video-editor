@@ -68,6 +68,19 @@ export function inferSceneCategory(labels: string[]): SceneCategoryInference {
   };
 }
 
+/**
+ * Change the automatic style only when multiple detector labels support the scene.
+ * A single detected object is useful context, but too weak to override the user's fallback.
+ */
+export function chooseDirectorStyleFromInference(
+  inference: SceneCategoryInference,
+  fallback: DirectorStyle,
+  allowAdjustment = true
+): DirectorStyle {
+  if (!allowAdjustment || inference.confidence < 0.67 || inference.category === "general") return fallback;
+  return suggestDirectorStyle(inference.category, fallback);
+}
+
 /** Choose a conservative automatic edit profile from detected subjects. Manual styles remain untouched. */
 export function suggestDirectorStyle(category: DetectedSceneCategory, fallback: DirectorStyle): DirectorStyle {
   switch (category) {
@@ -593,9 +606,7 @@ export async function analyzeWithAIDirector(
   const referenceMotion = motionValues.reduce((sum, value) => sum + value, 0) / Math.max(1, motionValues.length);
   const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
   const sceneInference = inferSceneCategory(detectedLabels);
-  const selectedStyle = allowCategoryStyleAdjustment
-    ? suggestDirectorStyle(sceneInference.category, style)
-    : style;
+  const selectedStyle = chooseDirectorStyleFromInference(sceneInference, style, allowCategoryStyleAdjustment);
   const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
   const sampleTimes = selectedIndices.map((candidateIndex) => candidates[candidateIndex].time);
   const sampledDetections = selectedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
