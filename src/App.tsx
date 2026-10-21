@@ -911,7 +911,7 @@ export default function App() {
       void inspectRenderedVideo(blob).then((report) => {
         setQualityReport(report);
         recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
-      }).catch((_qualityError) => {
+      }).catch((qualityError) => {
         recordDiagnostic("quality-check-completed", { severity: "warning", reasonCode: "quality-check-unavailable", quality });
         console.warn("DRAVEX output quality check failed:", qualityError);
         setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь воспроизведение вручную."], severity: "warning" });
