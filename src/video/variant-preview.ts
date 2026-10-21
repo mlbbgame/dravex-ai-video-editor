@@ -40,9 +40,13 @@ export function planVariantPreviewCuts(
     // If the whole source is shorter than the requested preview, partition it
     // chronologically. Clamping style-specific centers near zero can otherwise
     // select the exact same opening frames more than once on short clips.
-    if (sourceDuration <= requestedDuration) {
+    // When the source is only slightly longer than the preview, there is not
+    // enough spare footage to jump between distant style centers without
+    // shortening the result. Use contiguous cuts so the preview reaches its
+    // requested duration; reserve style-specific sampling for longer sources.
+    if (sourceDuration <= requestedDuration * 1.15) {
       const trimStart = index * shotDuration;
-      return { trimStart, trimEnd: index === count - 1 ? sourceDuration : trimStart + shotDuration };
+      return { trimStart, trimEnd: index === count - 1 ? duration : trimStart + shotDuration };
     }
 
     const centerRatio = centers[Math.min(index, centers.length - 1)] ?? (index + 0.5) / count;
