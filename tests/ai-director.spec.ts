@@ -244,6 +244,21 @@ test("adaptive director sampling prioritizes a sharp temporal peak without losin
   expect(selected[selected.length - 1]).toBeLessThan(candidates.length - 1);
 });
 
+test("long-source adaptive sampling spreads eight inference frames across the timeline", () => {
+  const candidates = Array.from({ length: 60 }, (_, index) => ({
+    score: index === 41 ? 0.99 : 0.25 + (index % 4) * 0.04,
+    motion: index === 41 ? 0.98 : 0.06,
+    contrast: index === 41 ? 0.31 : 0.08,
+  }));
+  const selected = chooseAdaptiveDirectorSampleIndices(candidates, getDirectorFrameBudget(300).maxFrames, false);
+
+  expect(selected).toHaveLength(8);
+  expect(selected).toContain(41);
+  expect(selected[0]).toBeGreaterThan(0);
+  expect(selected[selected.length - 1]).toBeLessThan(candidates.length - 1);
+  expect(selected.every((index, position) => position === 0 || index > selected[position - 1])).toBe(true);
+});
+
 test("adaptive director sampling handles invalid budgets and small sources safely", () => {
   const candidates = [{ score: 0.4, motion: 0.1, contrast: 0.1 }, { score: 0.5, motion: 0.2, contrast: 0.2 }];
   expect(chooseAdaptiveDirectorSampleIndices(candidates, 0)).toEqual([]);
