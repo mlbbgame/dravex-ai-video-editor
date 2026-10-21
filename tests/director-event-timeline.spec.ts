@@ -17,6 +17,8 @@ test("timeline creates timestamped events from explicit visual cues", () => {
     "motion-peak", "subject-approaching", "visual-highlight", "scene-change",
   ]);
   expect(timeline.find((event) => event.kind === "motion-peak")?.sourceTime).toBe(4.2);
+  expect(timeline.find((event) => event.kind === "motion-peak")?.evidenceLevel).toBe("visual-heuristic");
+  expect(timeline.find((event) => event.kind === "subject-approaching")?.evidenceLevel).toBe("object-detector");
   expect(timeline.every((event) => event.start >= 0 && event.end <= 12)).toBe(true);
   expect(timeline.every((event) => event.confidence >= 0 && event.confidence <= 1)).toBe(true);
 });
