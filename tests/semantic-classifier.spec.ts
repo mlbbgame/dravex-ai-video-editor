@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { aggregateSemanticProfiles, inferSemanticProfile } from "../src/video/semantic-classifier";
+import { aggregateSemanticProfiles, classifySemanticFrames, inferSemanticProfile } from "../src/video/semantic-classifier";
 
 test("semantic profile inference recognizes broad content categories from model labels", () => {
   expect(inferSemanticProfile([
@@ -198,3 +198,13 @@ test("recognizes additional outdoor activities without misclassifying cooking or
   expect(inferSemanticProfile([{ label: "food preparation", score: 0.9 }]).profile).toBe("food");
 });
 
+
+test("free local semantic analysis safely skips empty or invalid frame input", async () => {
+  await expect(classifySemanticFrames([])).resolves.toBeNull();
+  await expect(classifySemanticFrames([
+    { time: Number.NaN, imageDataUrl: "data:image/png;base64,AAAA" },
+    { time: -1, imageDataUrl: "data:image/png;base64,AAAA" },
+    { time: 1, imageDataUrl: "https://example.com/frame.png" },
+    { time: 2, imageDataUrl: "" },
+  ])).resolves.toBeNull();
+});
