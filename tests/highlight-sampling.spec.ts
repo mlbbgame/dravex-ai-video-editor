@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   buildHighlightVariants,
+  rankHighlightMomentsForStyle,
   getHighlightSampleLimit,
   getHighlightSamplingInterval,
 } from "../src/video/highlight-finder";
@@ -33,6 +34,18 @@ test("aggressive and cinematic variants select different moments for different v
 
   expect(aggressive?.moments[0]?.time).toBe(1);
   expect(cinematic?.moments[0]?.time).toBe(2);
+});
+
+test("style ranking prioritizes motion for velocity and calmer contrast for cinematic", () => {
+  const candidates = [
+    { time: 1, start: 0.5, end: 1.5, score: 0.5, motion: 1, contrast: 0.1 },
+    { time: 2, start: 1.5, end: 2.5, score: 0.5, motion: 0, contrast: 0.9 },
+  ];
+
+  expect(rankHighlightMomentsForStyle(candidates, "velocity")[0]?.time).toBe(1);
+  expect(rankHighlightMomentsForStyle(candidates, "cinematic")[0]?.time).toBe(2);
+  // Ranking must not mutate the candidate list used by other variants.
+  expect(candidates.map((item) => item.time)).toEqual([1, 2]);
 });
 
 test("invalid sampling inputs fall back safely", () => {
