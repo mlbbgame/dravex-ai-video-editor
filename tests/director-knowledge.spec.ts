@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { formatDirectorKnowledge, getDirectorKnowledge, inferDirectorKnowledgeDomain } from "../src/video/director-knowledge";
+import { generateLocalPlan } from "../src/video/plan-generator";
 
 test("recognizes gaming prompts without confusing them with general editing", () => {
   expect(inferDirectorKnowledgeDomain("Сделай динамичный эдит по MLBB с фрагами").domain).toBe("gaming");
@@ -27,4 +28,21 @@ test("knowledge output includes transparent inference limits and quality checks"
   expect(lines.some((line) => line.includes("not verified recognition"))).toBe(true);
   expect(lines.some((line) => line.includes("QUALITY CHECK"))).toBe(true);
   expect(lines.some((line) => line.includes("Do not imply a maneuver"))).toBe(true);
+});
+
+test("generated montage plans include relevant knowledge and honest limitations", () => {
+  const plan = generateLocalPlan({
+    prompt: "Create an aggressive MLBB gameplay edit",
+    style: "velocity",
+    duration: "30 seconds",
+    aspectRatio: "9:16",
+    quality: "1080p",
+    language: "en",
+    videoNames: ["match.mp4"],
+    imageNames: [],
+    hasAudio: false
+  });
+  expect(plan.some((line) => line.includes("AI DIRECTOR KNOWLEDGE — gaming"))).toBe(true);
+  expect(plan.some((line) => line.includes("Keep the HUD"))).toBe(true);
+  expect(plan.some((line) => line.includes("not a connected language model"))).toBe(true);
 });
