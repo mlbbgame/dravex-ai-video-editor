@@ -914,7 +914,7 @@ export default function App() {
           );
           actualStyle = directorResult.selectedStyle;
           recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
-          directorNote = directorResult.note;
+          directorNote = `${directorResult.note} Режиссёрский ориентир: ${getDirectorKnowledge(contentProfile).editingGoal}`;
           segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
           setMessage(directorNote);
         } catch (analysisError) {
@@ -969,9 +969,13 @@ export default function App() {
       setStage("rendering");
       setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
       const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }] : [];
+      const knowledge = getDirectorKnowledge(contentProfile);
       const effectiveTransitionMode = transitionMode === "auto"
-        ? getDirectorKnowledge(contentProfile).transitionPreset
+        ? knowledge.transitionPreset
         : transitionMode;
+      const effectiveFramingMode = framingMode === "auto" && knowledge.preserveFullFrame
+        ? "fit"
+        : framingMode;
       const blob = await renderVideoSequence({
         segments,
         audioTracks,
@@ -979,7 +983,7 @@ export default function App() {
         sourceAudioVolume,
         title: "",
         aspectRatio,
-        framingMode,
+        framingMode: effectiveFramingMode,
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
