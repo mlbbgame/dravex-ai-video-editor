@@ -1216,7 +1216,7 @@ export default function App() {
             <label className="dravex-memory-toggle"><input type="checkbox" checked={learningEnabled} onChange={(event) => setLearningEnabled(event.target.checked)} /> Запоминать качество монтажей на этом устройстве</label>
             <button type="button" onClick={clearLearningMemory}>Удалить память AI Director</button>
           </div>
-          <p className="dravex-project-message">Память выключена по умолчанию. При включении сохраняются только профиль, вариант и техническая оценка экспорта — не видео, фотографии или имена файлов.</p>
+          <p className="dravex-project-message">Память выключена по умолчанию. При включении на устройстве сохраняются профиль, выбранный вариант и твои оценки качества отдельных аспектов монтажа. Видео, фотографии, имена файлов и URL не сохраняются.</p>
           {learningStatus && <p className="dravex-project-message" role="status">{learningStatus}</p>}
           {projectMessage && <p className="dravex-project-message" role="status">{projectMessage}</p>}
         </details>
