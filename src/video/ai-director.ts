@@ -669,6 +669,12 @@ export async function analyzeWithAIDirector(
       duration,
       detectedLabels,
       events: eventTimeline,
+      observations: rankedCandidates.map((moment) => ({
+        time: moment.time,
+        sceneLabels: moment.sceneLabels,
+        actionCues: moment.actionCues,
+        score: moment.score,
+      })),
       selectedStyle,
       sampledFrameCount: selectedIndices.length,
       candidateCount: candidates.length,
