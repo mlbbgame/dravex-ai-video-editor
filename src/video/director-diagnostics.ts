@@ -73,7 +73,6 @@ export function createDirectorDiagnostic(
     if (key === "reasonCode" && !(typeof value === "string" && ALLOWED_REASON_CODES.has(value))) continue;
     if (key === "fallbackUsed" && typeof value !== "boolean") continue;
     if (typeof value === "number" && (!Number.isFinite(value) || value < 0)) continue;
-    if (typeof value === "string") continue;
     if (INTEGER_KEYS.has(key) && typeof value === "number" && !Number.isInteger(value)) continue;
     if (key === "durationSeconds" && typeof value === "number" && value > 24 * 60 * 60) continue;
     if (["mediaCount", "durationSeconds", "sampledFrames", "candidateCount", "segmentCount", "findingCount"].includes(key)
