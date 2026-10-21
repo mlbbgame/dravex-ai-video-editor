@@ -64,14 +64,33 @@ export function buildDenseSampleTimes(
     }
   }
 
-  const sorted = [...collected].sort((a, b) => a - b);
+  const windowCenters = [...new Set(validWindows.map((window) =>
+    Number(((window.start + window.end) / 2).toFixed(3)),
+  ))].sort((a, b) => a - b);
+  const sorted = [...new Set([...collected, ...windowCenters])].sort((a, b) => a - b);
   if (sorted.length <= maxSamples) return sorted;
-  if (maxSamples === 1) return [sorted[0]];
 
-  // Evenly select across all event windows so late events remain represented.
+  // Reserve a representative from each window before using the remaining budget
+  // for detail samples. If there are more windows than slots, distribute the
+  // available slots across the window centers instead of favoring long windows.
   const selected = new Set<number>();
-  for (let index = 0; index < maxSamples; index += 1) {
-    selected.add(sorted[Math.round(index * (sorted.length - 1) / (maxSamples - 1))]);
+  const reservedCount = Math.min(maxSamples, windowCenters.length);
+  for (let index = 0; index < reservedCount; index += 1) {
+    const centerIndex = reservedCount === 1
+      ? Math.floor((windowCenters.length - 1) / 2)
+      : Math.round(index * (windowCenters.length - 1) / (reservedCount - 1));
+    selected.add(windowCenters[centerIndex]);
+  }
+
+  if (selected.size < maxSamples) {
+    for (let index = 0; index < maxSamples && selected.size < maxSamples; index += 1) {
+      selected.add(sorted[Math.round(index * (sorted.length - 1) / Math.max(1, maxSamples - 1))]);
+    }
+  }
+  // Fill any slots skipped because a detail sample duplicated a reserved center.
+  for (const time of sorted) {
+    if (selected.size >= maxSamples) break;
+    selected.add(time);
   }
   return [...selected].sort((a, b) => a - b).slice(0, maxSamples);
 }
