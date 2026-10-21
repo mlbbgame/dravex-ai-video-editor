@@ -549,6 +549,21 @@ export function chooseAdaptiveDirectorSampleIndices(
   return [...selected].sort((a, b) => a - b).map((safeIndex) => validOriginalIndices[safeIndex]);
 }
 
+/**
+ * Return only valid source-candidate indices that were actually submitted to the
+ * detector, ordered by source time. Planned-but-unprocessed indices are excluded.
+ */
+export function getAnalyzedDirectorSampleIndices(
+  candidates: HighlightMoment[],
+  analyzedIndices: Iterable<number>,
+): number[] {
+  if (!Array.isArray(candidates) || !analyzedIndices || typeof analyzedIndices[Symbol.iterator] !== "function") return [];
+  return [...new Set([...analyzedIndices].filter((index) =>
+    Number.isInteger(index) && index >= 0 && index < candidates.length &&
+    candidates[index] && Number.isFinite(candidates[index].time)
+  ))].sort((a, b) => candidates[a].time - candidates[b].time || a - b);
+}
+
 export type DirectorFrameBudget = {
   maxFrames: number;
   inferenceBudgetMs: number;
@@ -737,7 +752,7 @@ export async function analyzeWithAIDirector(
   const selectedStyle = chooseDirectorStyleFromInference(sceneInference, style, allowCategoryStyleAdjustment);
   // Only frames actually submitted to the detector can anchor object evidence.
   // The planned budget may contain indices never reached when inference times out.
-  const analyzedIndices = [...analyzedFrameIndices].sort((a, b) => candidates[a].time - candidates[b].time);
+  const analyzedIndices = getAnalyzedDirectorSampleIndices(candidates, analyzedFrameIndices);
   const sampledPosition = new Map(analyzedIndices.map((candidateIndex, position) => [candidateIndex, position]));
   const sampleTimes = analyzedIndices.map((candidateIndex) => candidates[candidateIndex].time);
   const sampledDetections = analyzedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
