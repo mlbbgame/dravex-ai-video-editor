@@ -202,6 +202,8 @@ test("tuning promotion rejects malformed benchmark payloads and invalid threshol
     baselineScore: 0.7,
     candidateScore: 0.9,
     baselineRegressionByDimension: { musicSync: 0.01 },
+    baselineSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"],
+    candidateSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"],
   };
 
   const missingRegressions = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
