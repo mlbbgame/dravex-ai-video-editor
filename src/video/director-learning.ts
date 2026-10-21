@@ -150,6 +150,41 @@ export function validateExperience(input: MontageExperience): string[] {
   return errors;
 }
 
+export type PreferredVariantRecommendation = {
+  variant: MontageVariantId;
+  sampleCount: number;
+  share: number;
+};
+
+/**
+ * Personalize auto mode only after repeated explicit choices and exports.
+ * Low-sample or tied histories never override scene analysis.
+ */
+export function recommendPreferredVariant(
+  experiences: readonly MontageExperience[],
+  profile: LearningProfileId,
+  minimumSamples = 3,
+  minimumShare = 0.6,
+): PreferredVariantRecommendation | null {
+  if (!Number.isInteger(minimumSamples) || minimumSamples < 2
+    || !Number.isFinite(minimumShare) || minimumShare <= 0.5 || minimumShare > 1) return null;
+  const rows = experiences.filter((item) =>
+    item.profile === profile
+    && item.selectedByUser === true
+    && item.exportedByUser === true
+    && item.rejectedByUser !== true
+  );
+  if (rows.length < minimumSamples) return null;
+  const counts = new Map<MontageVariantId, number>();
+  for (const row of rows) counts.set(row.variant, (counts.get(row.variant) ?? 0) + 1);
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const winner = ranked[0];
+  if (!winner || (ranked[1] && ranked[1][1] === winner[1])) return null;
+  const share = winner[1] / rows.length;
+  if (share < minimumShare) return null;
+  return { variant: winner[0], sampleCount: rows.length, share };
+}
+
 export function summarizeExperience(
   experiences: readonly MontageExperience[],
   profile: LearningProfileId,
