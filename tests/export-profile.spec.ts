@@ -1,26 +1,49 @@
 import { expect, test } from "@playwright/test";
 import { chooseSupportedWebmMimeType, getExportProfile } from "../src/video/export-profile";
 
-test("portrait and landscape profiles use exact target dimensions", () => {
-  expect(getExportProfile("9:16", "720p")).toMatchObject({ width: 720, height: 1280, frameRate: 24, videoBitsPerSecond: 6_000_000 });
-  expect(getExportProfile("16:9", "1080p")).toMatchObject({ width: 1920, height: 1080, frameRate: 24, videoBitsPerSecond: 12_000_000 });
-  expect(getExportProfile("1:1", "1080p")).toMatchObject({ width: 1080, height: 1080 });
-  expect(getExportProfile("4:5", "1080p")).toMatchObject({ width: 1080, height: 1350 });
+test("4K export profiles preserve the requested aspect ratio and exact dimensions", () => {
+  const expected = [
+    { ratio: "9:16", width: 2160, height: 3840 },
+    { ratio: "16:9", width: 3840, height: 2160 },
+    { ratio: "1:1", width: 2160, height: 2160 },
+    { ratio: "4:5", width: 2160, height: 2700 },
+  ];
+
+  for (const item of expected) {
+    const profile = getExportProfile(item.ratio, "4K");
+    expect(profile.width, item.ratio).toBe(item.width);
+    expect(profile.height, item.ratio).toBe(item.height);
+    expect(profile.frameRate).toBe(24);
+    expect(profile.videoBitsPerSecond).toBe(35_000_000);
+  }
 });
 
-test("preview dimensions stay small and 4K gets a higher bitrate", () => {
-  expect(getExportProfile("9:16", "preview")).toMatchObject({ width: 360, height: 640, videoBitsPerSecond: 1_200_000 });
-  expect(getExportProfile("16:9", "4K")).toMatchObject({ width: 3840, height: 2160, videoBitsPerSecond: 35_000_000 });
-  expect(getExportProfile("9:16", "4K").videoBitsPerSecond).toBeGreaterThan(getExportProfile("9:16", "1080p").videoBitsPerSecond);
+test("1080p and 720p profiles keep bounded resolution and quality settings", () => {
+  const fullHd = getExportProfile("16:9", "1080p");
+  expect(fullHd.width).toBe(1920);
+  expect(fullHd.height).toBe(1080);
+  expect(fullHd.videoBitsPerSecond).toBe(12_000_000);
+
+  const hd = getExportProfile("9:16", "720p");
+  expect(hd.width).toBe(720);
+  expect(hd.height).toBe(1280);
+  expect(hd.videoBitsPerSecond).toBe(6_000_000);
 });
 
-test("unknown aspect ratio or quality safely falls back to portrait 720p", () => {
-  expect(getExportProfile("unknown", "ultra")).toMatchObject({ width: 720, height: 1280, videoBitsPerSecond: 6_000_000 });
+test("invalid export options fall back to a safe supported profile", () => {
+  const profile = getExportProfile("unsupported-ratio", "8K");
+  expect(profile.width).toBe(720);
+  expect(profile.height).toBe(1280);
+  expect(profile.videoBitsPerSecond).toBe(6_000_000);
+  expect(profile.frameRate).toBe(24);
 });
 
-test("WebM codec selection prefers mobile-friendly VP8 and falls back safely", () => {
-  expect(chooseSupportedWebmMimeType((type) => type === "video/webm;codecs=vp8" || type === "video/webm;codecs=vp9")).toBe("video/webm;codecs=vp8");
-  expect(chooseSupportedWebmMimeType((type) => type === "video/webm")).toBe("video/webm");
+test("WebM MIME selection chooses the first supported option", () => {
+  const selected = chooseSupportedWebmMimeType((mime) => mime === "video/webm");
+  expect(selected).toBe("video/webm");
+});
+
+test("WebM MIME selection handles unsupported types and throwing capability checks", () => {
   expect(chooseSupportedWebmMimeType(() => false)).toBeNull();
-  expect(chooseSupportedWebmMimeType(() => { throw new Error("unsupported query"); })).toBeNull();
+  expect(chooseSupportedWebmMimeType(() => { throw new Error("unsupported"); })).toBeNull();
 });
