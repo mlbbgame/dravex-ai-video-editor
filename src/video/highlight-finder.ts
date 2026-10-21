@@ -523,25 +523,13 @@ export async function analyzeVideoForHighlights(
   }
 }
 
-function normalizedFeature(value: number, values: number[]): number {
-  if (!values.length) return 0.5;
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
-}
-
 function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number, shotLength: number) {
-  const motionValues = candidates.map((item) => item.motion);
-  const contrastValues = candidates.map((item) => item.contrast);
-  const styleScore = (item: HighlightMoment) => {
-    const motion = normalizedFeature(item.motion, motionValues);
-    const contrast = normalizedFeature(item.contrast, contrastValues);
-    const visual = Math.max(0, Math.min(1, item.score));
-    if (mode === "aggressive") return visual * 0.55 + motion * 0.45;
-    if (mode === "cinematic") return visual * 0.7 + contrast * 0.2 + (1 - motion) * 0.1;
-    return visual * 0.45 + contrast * 0.1 + (1 - motion) * 0.45;
-  };
-  const ranked = [...candidates].sort((a, b) => styleScore(b) - styleScore(a));
+  // Keep variant previews and the reusable style-ranker on one scoring path so
+  // tests exercise the same logic that actually selects moments for the editor.
+  const rankingStyle: HighlightRankingStyle = mode === "aggressive"
+    ? "velocity"
+    : mode === "cinematic" ? "cinematic" : "story";
+  const ranked = rankHighlightMomentsForStyle(candidates, rankingStyle);
   const selected: HighlightMoment[] = [];
   // Distinct timestamps can still refer to the same source footage when candidate
   // windows are wide. Reject both near-duplicate centres and overlapping source ranges.
