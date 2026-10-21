@@ -55,3 +55,25 @@ test("diagnostics only retain known style and quality labels and bounded non-neg
   } as never);
   expect(event.details).toEqual({ quality: "4K" });
 });
+
+
+test("diagnostics validate every runtime field and normalize invalid timestamps", () => {
+  const event = createDirectorDiagnostic("analysis-completed", {
+    mediaKind: "private-filename.mp4",
+    severity: "secret text",
+    reasonCode: "https://private.example/path",
+    fallbackUsed: "yes",
+    style: "cinematic",
+    quality: "1080p",
+    mediaCount: "one",
+  } as never, "not-a-date");
+
+  expect(event.details).toEqual({ style: "cinematic", quality: "1080p" });
+  expect(Number.isFinite(Date.parse(event.timestamp))).toBe(true);
+});
+
+test("diagnostics tolerate malformed detail and export inputs", () => {
+  const event = createDirectorDiagnostic("render-started", null as never, "2026-10-21T10:00:00.000Z");
+  expect(event.details).toEqual({});
+  expect(buildDirectorDiagnosticExport(null as never).events).toEqual([]);
+});
