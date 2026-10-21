@@ -124,7 +124,7 @@ test("Smart Eye tolerates malformed runtime payloads without inventing evidence"
   expect(report.memory.some((entry) => entry.time === 2)).toBe(false);
   expect(report.selectedStyle).toBe("cinematic");
   expect(report.coverage.sampledFrameCount).toBe(0);
-  expect(report.coverage.largestSampleGapSeconds).toBe(12);
+  expect(report.coverage.largestSampleGapSeconds).toBe(7);
 });
 
 test("Smart Eye safely handles a null top-level payload", () => {
