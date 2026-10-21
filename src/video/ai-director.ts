@@ -333,11 +333,22 @@ export function scoreDirectorMoment(
   referenceMotion: number,
   novelty = 0
 ): number {
-  const objectConfidence = objects.length
-    ? objects.reduce((sum, item) => sum + item.score, 0) / objects.length
+  // Detector payloads can be incomplete or malformed on mobile. Only use
+  // finite confidences and valid labels so one bad detection cannot poison a
+  // whole variant's ranking with NaN.
+  const safeObjects = (Array.isArray(objects) ? objects : []).filter((item) =>
+    item !== null && typeof item === "object" &&
+    typeof item.label === "string" && item.label.trim().length > 0 &&
+    Number.isFinite(item.score) &&
+    item.box !== null && typeof item.box === "object" &&
+    Number.isFinite(item.box.xmin) && Number.isFinite(item.box.ymin) &&
+    Number.isFinite(item.box.xmax) && Number.isFinite(item.box.ymax)
+  );
+  const objectConfidence = safeObjects.length
+    ? safeObjects.reduce((sum, item) => sum + Math.max(0, Math.min(1, item.score)), 0) / safeObjects.length
     : 0;
-  const objectLabels = objects.map((item) => item.label.trim().toLowerCase());
-  const objectPresence = Math.min(1, objects.length / 3) * objectConfidence;
+  const objectLabels = safeObjects.map((item) => item.label.trim().toLowerCase());
+  const objectPresence = Math.min(1, safeObjects.length / 3) * objectConfidence;
   const subjectRelevance: Record<DirectorStyle, Set<string>> = {
     velocity: new Set(["car", "motorcycle", "bicycle", "bus", "train", "truck", "boat", "airplane", "sports ball", "skateboard", "surfboard", "person"]),
     anime: new Set(["person", "sports ball", "skateboard", "surfboard", "car", "motorcycle"]),
@@ -349,10 +360,15 @@ export function scoreDirectorMoment(
   const relevance = objectLabels.length ? relevantCount / objectLabels.length : 0;
   // Object detections help most when they match the chosen editing language.
   const styleAwareObjectPresence = objectPresence * (0.65 + 0.35 * relevance);
-  const motion = normalized(moment.motion, [0, referenceMotion, referenceMotion * 2, 1]);
-  const contrast = Math.max(0, Math.min(1, moment.contrast / 0.35));
-  const visual = Math.max(0, Math.min(1, moment.score));
-  const change = Math.max(0, Math.min(1, novelty));
+  const safeReferenceMotion = Number.isFinite(referenceMotion) && referenceMotion > 0 ? referenceMotion : 0.08;
+  const safeMotion = Number.isFinite(moment.motion) ? Math.max(0, moment.motion) : 0;
+  const safeContrast = Number.isFinite(moment.contrast) ? moment.contrast : 0;
+  const safeVisual = Number.isFinite(moment.score) ? moment.score : 0;
+  const safeNovelty = Number.isFinite(novelty) ? novelty : 0;
+  const motion = normalized(safeMotion, [0, safeReferenceMotion, safeReferenceMotion * 2, 1]);
+  const contrast = Math.max(0, Math.min(1, safeContrast / 0.35));
+  const visual = Math.max(0, Math.min(1, safeVisual));
+  const change = Math.max(0, Math.min(1, safeNovelty));
 
   const weights: Record<DirectorStyle, [number, number, number, number, number]> = {
     velocity: [0.26, 0.28, 0.12, 0.14, 0.20],
