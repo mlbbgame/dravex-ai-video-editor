@@ -369,3 +369,25 @@ test("event ranking bonus is bounded when several cues overlap", () => {
   }));
   expect(getDirectorEventRankingBonus(events, 2, "velocity")).toBe(0.1);
 });
+
+
+test("Smart Eye reports honest zero-model-sample coverage when frame analysis falls back", async () => {
+  const candidates = [
+    { time: 1, start: 0.5, end: 1.5, score: 0.7, motion: 0.4, contrast: 0.2 },
+    { time: 3, start: 2.5, end: 3.5, score: 0.6, motion: 0.2, contrast: 0.3 },
+  ];
+  const result = await analyzeWithAIDirector(
+    "",
+    4,
+    [],
+    candidates,
+    "cinematic",
+  );
+
+  expect(result.modelLoaded).toBe(false);
+  expect(result.smartEye).toBeDefined();
+  expect(result.smartEye?.coverage.candidateCount).toBe(2);
+  expect(result.smartEye?.coverage.sampledFrameCount).toBe(0);
+  expect(result.smartEye?.coverage.largestSampleGapSeconds).toBe(4);
+  expect(result.eventTimeline).toBeDefined();
+});
