@@ -95,6 +95,19 @@ test("scene category inference identifies food, vehicles, and wildlife from obje
   expect(inferSceneCategory(["bird", "dog"]).category).toBe("animals");
 });
 
+test("scene category inference stays conservative for equally supported mixed scenes", () => {
+  expect(inferSceneCategory(["person", "car"])).toEqual({
+    category: "general",
+    confidence: 0,
+    matchedLabels: [],
+  });
+  expect(inferSceneCategory(["pizza", "car"])).toEqual({
+    category: "general",
+    confidence: 0,
+    matchedLabels: [],
+  });
+});
+
 test("scene category inference stays unknown when no supported objects are detected", () => {
   expect(inferSceneCategory(["tree", "sky", "mountain"])).toEqual({
     category: "general",
