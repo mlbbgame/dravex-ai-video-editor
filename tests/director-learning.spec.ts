@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   evaluateTuningCandidate,
+  JsonLocalExperienceStore,
   proposeImprovements,
   summarizeExperience,
   validateExperience,
@@ -33,6 +34,31 @@ test("experience validation rejects invalid scores and dates", () => {
     "createdAt must be a valid date.",
     "Invalid quality score for pacing.",
   ]);
+});
+
+
+test("corrupt stored rows are skipped without discarding valid experience history", async () => {
+  const valid = experience(42);
+  const storage = {
+    getItem: () => JSON.stringify([
+      valid,
+      null,
+      { id: "broken-without-date", profile: "general", variant: "hype", quality: {} },
+      { ...experience(43), quality: { pacing: 7 } },
+    ]),
+    setItem: () => undefined,
+  };
+  const store = new JsonLocalExperienceStore(storage);
+  await expect(store.load()).resolves.toEqual([valid]);
+});
+
+test("experience validation rejects malformed objects without throwing", () => {
+  expect(validateExperience(null as unknown as MontageExperience)).toEqual([
+    "Experience must be an object.",
+  ]);
+  expect(validateExperience({ id: 4 } as unknown as MontageExperience)).toContain(
+    "Experience ID is required.",
+  );
 });
 
 test("summaries require a minimum sample count and stay profile-specific", () => {
