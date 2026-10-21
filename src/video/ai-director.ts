@@ -378,11 +378,15 @@ export function inferTemporalEventCues(
   // Motion peaks only make sense when adjacent samples are close enough in time.
   // Sparse samples from long videos can span different scenes; comparing them as
   // if they were consecutive frames creates false "action" events.
-  const hasTimestamps = [previousTime, currentTime, nextTime].every(
+  const timestamps = [previousTime, currentTime, nextTime];
+  const hasAnyTimestamp = timestamps.some((value) => value !== undefined);
+  const hasTimestamps = timestamps.every(
     (value) => typeof value === "number" && Number.isFinite(value)
   );
   const safeMaxGap = Number.isFinite(maxMotionGapSeconds) ? Math.max(0, maxMotionGapSeconds) : 2.5;
-  const temporalSpacingIsValid = !hasTimestamps || (
+  // Backward-compatible callers may omit all timestamps. If a caller supplies
+  // only some timestamps, do not guess the missing temporal spacing.
+  const temporalSpacingIsValid = !hasAnyTimestamp || (hasTimestamps &&
     (currentTime as number) > (previousTime as number) &&
     (nextTime as number) > (currentTime as number) &&
     (currentTime as number) - (previousTime as number) <= safeMaxGap &&
