@@ -969,6 +969,9 @@ export default function App() {
       setStage("rendering");
       setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
       const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }] : [];
+      const effectiveTransitionMode = transitionMode === "auto"
+        ? getDirectorKnowledge(contentProfile).transitionPreset
+        : transitionMode;
       const blob = await renderVideoSequence({
         segments,
         audioTracks,
@@ -980,7 +983,7 @@ export default function App() {
         quality,
         style: actualStyle as SequenceRenderStyle,
         effectStrength,
-        transitionMode,
+        transitionMode: effectiveTransitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress,
         audioContext: preparedAudioContext
