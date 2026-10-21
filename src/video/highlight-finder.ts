@@ -82,7 +82,7 @@ export function getHighlightSampleLimit(duration: number): number {
  */
 export function getHighlightSamplingInterval(duration: number, sampleLimit: number): number {
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleLimit) || sampleLimit < 2) return 2;
-  if (duration < 30) return 0.75;
+  if (duration < 30) return 1;
   if (duration < 120) return 1.5;
   return duration / Math.max(2, Math.floor(sampleLimit));
 }
