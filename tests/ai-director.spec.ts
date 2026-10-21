@@ -5,6 +5,7 @@ import {
   chooseAdaptiveDirectorSampleIndices,
   findNearestDetectedObjects,
   getDirectorFrameBudget,
+  getAnalyzedDirectorSampleIndices,
   inferMotionCues,
   inferTemporalEventCues,
   getDirectorEventRankingBonus,
@@ -192,6 +193,17 @@ test("long-video director samples more interior scenes while keeping a bounded m
     includeEdges: false,
   });
   expect(getDirectorFrameBudget(29.99).maxFrames).toBe(4);
+});
+
+test("analyzed frame anchors exclude planned indices never reached by inference", () => {
+  const candidates = [
+    { time: 0, start: 0, end: 0.5, score: 0.7, motion: 0.1, contrast: 0.2 },
+    { time: 4, start: 3.5, end: 4.5, score: 0.7, motion: 0.1, contrast: 0.2 },
+    { time: 8, start: 7.5, end: 8.5, score: 0.7, motion: 0.1, contrast: 0.2 },
+  ];
+  // The planner picked all three, but inference only reached candidates 0 and 2.
+  expect(getAnalyzedDirectorSampleIndices(candidates, new Set([2, 0]))).toEqual([0, 2]);
+  expect(getAnalyzedDirectorSampleIndices(candidates, [2, 2, 99, -1, 1.5])).toEqual([2]);
 });
 
 test("AI Director safely falls back for unknown or too-short source duration", async () => {
