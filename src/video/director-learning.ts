@@ -157,6 +157,22 @@ export type PreferredVariantRecommendation = {
 };
 
 /**
+ * Strong scene evidence remains the primary director signal. Repeated explicit
+ * preferences may guide auto mode when the semantic classifier is uncertain.
+ * The score is a model confidence heuristic, not a calibrated probability.
+ */
+export function shouldApplyLearnedPreference(
+  profile: string | undefined,
+  confidence: number | undefined,
+  confidenceThreshold = 0.78,
+): boolean {
+  if (!Number.isFinite(confidenceThreshold) || confidenceThreshold <= 0 || confidenceThreshold > 1) return false;
+  if (!profile || profile === "unknown") return true;
+  if (!Number.isFinite(confidence)) return true;
+  return (confidence as number) < confidenceThreshold;
+}
+
+/**
  * Personalize auto mode only after repeated explicit choices and exports.
  * Low-sample or tied histories never override scene analysis.
  */
