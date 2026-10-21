@@ -4,7 +4,7 @@ import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from 
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import type { SemanticProfile } from "./video/semantic-classifier";
 import { analyzeWithAIDirector } from "./video/ai-director";
-import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
+import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type SourceAudioMode, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
@@ -169,6 +169,8 @@ export default function App() {
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
+  const [sourceAudioMode, setSourceAudioMode] = useState<SourceAudioMode>("auto");
+  const [sourceAudioVolume, setSourceAudioVolume] = useState(0.8);
   const [transitionMode, setTransitionMode] = useState<"auto" | "cinematic" | "action">("auto");
   const [projectMessage, setProjectMessage] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
@@ -277,6 +279,8 @@ export default function App() {
         setBeatSync(project.beatSync !== false);
         setEffectStrength(project.effectStrength ?? "balanced");
         setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+        setSourceAudioMode(project.sourceAudioMode ?? "auto");
+        setSourceAudioVolume(typeof project.sourceAudioVolume === "number" ? Math.max(0, Math.min(1, project.sourceAudioVolume)) : 0.8);
         setTransitionMode(project.transitionMode ?? "auto");
         setStage("ready");
         setProjectMessage("Проект восстановлен в рамках текущего сеанса.");
@@ -304,13 +308,15 @@ export default function App() {
         beatSync,
         effectStrength,
         musicVolume,
+        sourceAudioMode,
+        sourceAudioVolume,
         transitionMode,
       }).catch(() => {
         // Manual save still reports storage errors to the user.
       });
     }, 450);
     return () => window.clearTimeout(timeout);
-  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode, framingMode]);
+  }, [projectHydrated, mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, sourceAudioMode, sourceAudioVolume, transitionMode, framingMode]);
 
   // On Android, the system/browser Back action should leave the Music tab first,
   // returning to the existing edit instead of navigating away and losing context.
@@ -353,6 +359,8 @@ export default function App() {
     setBeatSync(true);
     setEffectStrength("balanced");
     setMusicVolume(0.72);
+    setSourceAudioMode("auto");
+    setSourceAudioVolume(0.8);
     setTransitionMode("auto");
     setStage("empty");
     setScan({ current: 0, total: 0, time: 0 });
@@ -377,7 +385,7 @@ export default function App() {
     setProjectBusy(true);
     setProjectMessage("");
     try {
-      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, transitionMode, framingMode });
+      await saveLocalProject({ files: mediaFiles, musicFile, style, duration, aspectRatio, quality, beatSync, effectStrength, musicVolume, sourceAudioMode, sourceAudioVolume, transitionMode, framingMode });
       setProjectMessage("Проект сохранён на этом устройстве вместе с исходными файлами.");
     } catch (caught) {
       setProjectMessage(caught instanceof Error ? caught.message : "Не удалось сохранить проект.");
@@ -411,6 +419,8 @@ export default function App() {
       setBeatSync(project.beatSync !== false);
       setEffectStrength(project.effectStrength ?? "balanced");
       setMusicVolume(typeof project.musicVolume === "number" ? Math.max(0, Math.min(1, project.musicVolume)) : 0.72);
+      setSourceAudioMode(project.sourceAudioMode ?? "auto");
+      setSourceAudioVolume(typeof project.sourceAudioVolume === "number" ? Math.max(0, Math.min(1, project.sourceAudioVolume)) : 0.8);
       setTransitionMode(project.transitionMode ?? "auto");
       setStage("ready");
       setOutputUrl("");
@@ -701,6 +711,8 @@ export default function App() {
         const blob = await renderVideoSequence({
           segments: previewSegments,
           audioTracks,
+          sourceAudioMode,
+          sourceAudioVolume,
           title: "",
           aspectRatio,
           framingMode,
@@ -708,7 +720,6 @@ export default function App() {
           style: previewStyle,
           effectStrength: variant.strength,
           transitionMode: variant.transition,
-          suppressAudio: !audioTracks.length,
           targetDurationSeconds: previewDuration,
           onProgress: (progress) => {
             if (generation === previewGeneration.current) {
@@ -889,6 +900,8 @@ export default function App() {
       const blob = await renderVideoSequence({
         segments,
         audioTracks,
+        sourceAudioMode,
+        sourceAudioVolume,
         title: "",
         aspectRatio,
         framingMode,
@@ -957,7 +970,7 @@ export default function App() {
     autoPreviewAttempt.current = generation;
     const timer = window.setTimeout(() => { void createStylePreviews(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
+  }, [activeTab, mediaFiles, mediaUrls, style, transitionMode, effectStrength, aspectRatio, musicFile, musicUrl, musicVolume, sourceAudioMode, sourceAudioVolume, beatSync, previewBusy, busy, stage, renderedVariants]);
 
   const normalizedMusicQuery = musicQuery.trim().toLowerCase();
   const filteredMusicPresets = musicPresets.filter((preset) =>
@@ -1102,6 +1115,8 @@ export default function App() {
             <label className="dravex-duration"><span>Кадрирование</span><select aria-label="Кадрирование видео" value={framingMode} onChange={(event) => { setFramingMode(event.target.value as FramingMode); invalidateOutput(); }}><option value="auto">Умное · сохранить весь кадр при необходимости</option><option value="fit">Весь кадр · без обрезки</option><option value="fill">Заполнить экран · обрезать края</option></select><small>Для игр и интерфейсов выбирай «Весь кадр», чтобы не потерять мини-карту и HUD. «Заполнить экран» увеличивает изображение, но может обрезать края.</small></label>
             <label className="dravex-duration"><span>Качество экспорта</span><select value={quality} onChange={(event) => { setQuality(event.target.value as "720p" | "1080p" | "4K"); invalidateOutput(); }}><option value="720p">720p · быстрее для телефона</option><option value="1080p">1080p · чётче</option><option value="4K">4K · очень высокая нагрузка</option></select>
             {quality === "4K" && <small className="dravex-quality-caution">4K требует много памяти и может не поддерживаться некоторыми телефонами. Для длинных роликов лучше выбрать 720p или 1080p.</small>}</label>
+            <label className="dravex-duration"><span>Звук исходного видео</span><select aria-label="Звук исходного видео" value={sourceAudioMode} onChange={(event) => { setSourceAudioMode(event.target.value as SourceAudioMode); invalidateOutput(); }}><option value="auto">Автоматически · приглушать под музыку</option><option value="keep">Оставить оригинальный звук</option><option value="mute">Отключить оригинальный звук</option></select><small>{sourceAudioMode === "auto" ? "Авто-режим пока использует наличие музыки: при музыке оригинал приглушается. Анализ шума и распознавание речи ещё не реализованы." : sourceAudioMode === "keep" ? "Оригинальный звук сохраняется на выбранной громкости, даже если добавлена музыка." : "Исходная аудиодорожка полностью убирается из экспорта."}</small></label>
+            {!isImageMode && sourceAudioMode !== "mute" && <label className="dravex-volume"><span>Громкость оригинального звука <strong>{Math.round(sourceAudioVolume * 100)}%</strong></span><input aria-label="Громкость оригинального звука" type="range" min="0" max="100" step="5" value={Math.round(sourceAudioVolume * 100)} onChange={(event) => { setSourceAudioVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             {musicFile && <label className="dravex-volume"><span>Громкость музыки <strong>{Math.round(musicVolume * 100)}%</strong></span><input type="range" min="0" max="100" step="5" value={Math.round(musicVolume * 100)} onChange={(event) => { setMusicVolume(Number(event.target.value) / 100); invalidateOutput(); }} /></label>}
             <label className="dravex-duration"><span>Переходы</span><select value={transitionMode} onChange={(event) => { setTransitionMode(event.target.value as "auto" | "cinematic" | "action"); invalidateOutput(); }}><option value="auto">Автоматические · разные</option><option value="cinematic">Кинематографичные · растворение</option><option value="action">Экшен · резкие движения</option></select></label>
             <label className="dravex-duration"><span>Сила движения и эффектов</span><select value={effectStrength} onChange={(event) => { setEffectStrength(event.target.value as "soft" | "balanced" | "strong"); invalidateOutput(); }}><option value="soft">Мягкая · спокойнее</option><option value="balanced">Сбалансированная</option><option value="strong">Сильная · динамичнее</option></select></label>
