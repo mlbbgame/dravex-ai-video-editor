@@ -71,11 +71,9 @@ test("generated variants keep final rendered trims finite, in bounds, and non-ov
   expect(variants).toHaveLength(3);
   for (const variant of variants) {
     expect(variant.moments.length).toBeGreaterThan(0);
-    const rendered = variant.moments.map((moment) => {
-      const shotLength = Math.min(variant.shotLength, duration);
-      const start = Math.max(0, Math.min(duration - shotLength, moment.time - shotLength / 2));
-      return { start, end: Math.min(duration, start + shotLength) };
-    }).sort((a, b) => a.start - b.start);
+    const rendered = variant.moments
+      .map(({ start, end }) => ({ start, end }))
+      .sort((a, b) => a.start - b.start);
     for (let index = 0; index < rendered.length; index += 1) {
       expect(Number.isFinite(rendered[index].start)).toBe(true);
       expect(Number.isFinite(rendered[index].end)).toBe(true);
