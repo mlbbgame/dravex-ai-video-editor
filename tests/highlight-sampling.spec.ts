@@ -162,3 +162,27 @@ test("style ranking rejects malformed highlight moments without losing valid can
 
   expect(ranked).toEqual([valid]);
 });
+
+
+test("style ranking and variant building ignore null runtime candidates", () => {
+  const valid = {
+    time: 2,
+    start: 1.5,
+    end: 2.5,
+    score: 0.8,
+    motion: 0.7,
+    contrast: 0.6,
+  };
+  const malformed = [null, undefined, 17, { ...valid, time: Number.NaN }];
+  expect(rankHighlightMomentsForStyle([...malformed, valid] as never, "velocity")).toEqual([valid]);
+
+  const variants = buildHighlightVariants([...malformed, valid] as never, 5);
+  expect(variants).toHaveLength(3);
+  expect(variants.every((variant) => variant.moments.every((moment) =>
+    Number.isFinite(moment.start) &&
+    Number.isFinite(moment.end) &&
+    moment.start >= 0 &&
+    moment.end <= 5 &&
+    moment.end > moment.start
+  ))).toBe(true);
+});
