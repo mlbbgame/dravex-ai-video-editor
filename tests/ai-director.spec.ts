@@ -6,6 +6,7 @@ import {
   getDirectorFrameBudget,
   inferMotionCues,
   inferTemporalEventCues,
+  getDirectorEventRankingBonus,
   inferSceneCategory,
   inferTrackedObjectCues,
   scoreDirectorMoment,
@@ -239,4 +240,38 @@ test("adaptive director sampling handles invalid budgets and small sources safel
   expect(chooseAdaptiveDirectorSampleIndices(candidates, 0)).toEqual([]);
   expect(chooseAdaptiveDirectorSampleIndices(candidates, Number.NaN)).toEqual([]);
   expect(chooseAdaptiveDirectorSampleIndices(candidates, 5)).toEqual([0, 1]);
+});
+
+
+test("timestamped event evidence contributes to style-aware director ranking", () => {
+  const events = [
+    {
+      kind: "motion-peak" as const,
+      label: "Пик движения",
+      confidence: 0.9,
+      sourceTime: 4,
+      start: 3.7,
+      end: 4.3,
+      evidence: ["Пик движения"],
+    },
+  ];
+  const velocityBonus = getDirectorEventRankingBonus(events, 4, "velocity");
+  const cinematicBonus = getDirectorEventRankingBonus(events, 4, "cinematic");
+  expect(velocityBonus).toBeGreaterThan(cinematicBonus);
+  expect(velocityBonus).toBeLessThanOrEqual(0.1);
+  expect(getDirectorEventRankingBonus(events, 20, "velocity")).toBe(0);
+  expect(getDirectorEventRankingBonus(events, Number.NaN, "velocity")).toBe(0);
+});
+
+test("event ranking bonus is bounded when several cues overlap", () => {
+  const events = Array.from({ length: 20 }, (_, index) => ({
+    kind: "motion-peak" as const,
+    label: "Пик движения",
+    confidence: 0.95,
+    sourceTime: 2,
+    start: 1.8,
+    end: 2.2,
+    evidence: ["Пик движения"],
+  }));
+  expect(getDirectorEventRankingBonus(events, 2, "velocity")).toBe(0.1);
 });
