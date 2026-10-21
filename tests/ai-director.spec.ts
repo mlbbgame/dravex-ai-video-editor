@@ -221,15 +221,15 @@ test("director ranking stays finite and bounded across all edit styles", () => {
 
 test("adaptive director sampling prioritizes a sharp temporal peak without losing source coverage", () => {
   const candidates = Array.from({ length: 20 }, (_, index) => ({
-    score: index === 11 ? 0.98 : 0.3 + (index % 3) * 0.05,
-    motion: index === 11 ? 0.95 : 0.08,
-    contrast: index === 11 ? 0.3 : 0.1,
+    score: index === 12 ? 0.98 : 0.3 + (index % 3) * 0.05,
+    motion: index === 12 ? 0.95 : 0.08,
+    contrast: index === 12 ? 0.3 : 0.1,
   }));
   const selected = chooseAdaptiveDirectorSampleIndices(candidates, 5, false);
 
   expect(selected).toHaveLength(5);
   expect(selected).toEqual([...selected].sort((a, b) => a - b));
-  expect(selected).toContain(11);
+  expect(selected).toContain(12);
   expect(selected[0]).toBeGreaterThan(0);
   expect(selected[selected.length - 1]).toBeLessThan(candidates.length - 1);
 });
