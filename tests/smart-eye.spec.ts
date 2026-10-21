@@ -16,6 +16,10 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
     duration: 60,
     detectedLabels: ["car", "person", "car", "motorcycle"],
     events: [event(3), event(31, "scene-change"), event(58)],
+    observations: [
+      { time: 2, sceneLabels: ["car"], actionCues: ["Резкое движение"], score: 0.8 },
+      { time: 31, sceneLabels: ["motorcycle"], actionCues: ["Объект перемещается"], score: 0.7 },
+    ],
     selectedStyle: "velocity",
     sampledFrameCount: 8,
     candidateCount: 30,
@@ -23,7 +27,9 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
   expect(report.memory.filter((entry) => entry.kind !== "detected-object").map((entry) => entry.time))
     .toEqual([3, 31, 58]);
   expect(report.detectedEntities).toEqual(["car", "motorcycle", "person"]);
-  expect(report.memory.filter((entry) => entry.kind === "detected-object").every((entry) => entry.time === null)).toBe(true);
+  expect(report.memory.some((entry) => entry.kind === "detected-object" && entry.time === 2 && entry.label === "car")).toBe(true);
+  expect(report.memory.some((entry) => entry.kind === "detected-object" && entry.time === 31 && entry.label === "motorcycle")).toBe(true);
+  expect(report.memory.some((entry) => entry.kind === "detected-object" && entry.time === null && entry.label === "person")).toBe(true);
   expect(report.sceneCategory).toBe("vehicles");
   expect(report.coverage.sampledFrameRatio).toBeCloseTo(8 / 30);
   expect(report.coverage.lastEventTime).toBe(58);
