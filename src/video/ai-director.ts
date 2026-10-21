@@ -579,11 +579,30 @@ export async function analyzeWithAIDirector(
     actionCues: inferMotionCues(candidate.motion, candidate.contrast),
     directorScore: candidate.score
   }));
+  // Smart Eye must remain observable even when object detection is unavailable.
+  // Report a zero-frame model sample honestly while preserving fallback evidence.
+  const fallbackDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+  const fallbackTimeline = buildDirectorEventTimeline(emptyCandidates, fallbackDuration);
+  const fallbackSmartEye = buildSmartEyeReport({
+    duration: fallbackDuration,
+    detectedLabels: [],
+    events: fallbackTimeline,
+    observations: emptyCandidates.map((moment) => ({
+      time: moment.time,
+      sceneLabels: moment.sceneLabels,
+      actionCues: moment.actionCues,
+      score: moment.score,
+    })),
+    selectedStyle: style,
+    sampledFrameCount: 0,
+    candidateCount: candidates.length,
+    sampledFrameTimes: [],
+  });
   if (!candidates.length || !samples.length || !Number.isFinite(duration) || duration < 0.25) {
     const note = !Number.isFinite(duration) || duration < 0.25
       ? "Не удалось определить корректную длительность видео. Использован резервный анализ движения и контраста."
       : "Недостаточно кадров для AI Director; используем базовый анализ движения.";
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note };
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: false, selectedStyle: style, note, eventTimeline: fallbackTimeline, smartEye: fallbackSmartEye };
   }
 
   let detector: ObjectDetector;
@@ -612,7 +631,9 @@ export async function analyzeWithAIDirector(
       detectedLabels: [],
       modelLoaded: false,
       selectedStyle: style,
-      note: "Модель объектов не загрузилась вовремя или недоступна офлайн. Использован резервный анализ движения и контраста."
+      note: "Модель объектов не загрузилась вовремя или недоступна офлайн. Использован резервный анализ движения и контраста.",
+      eventTimeline: fallbackTimeline,
+      smartEye: fallbackSmartEye
     };
   } finally {
     window.clearTimeout(modelTimeout);
@@ -629,7 +650,7 @@ export async function analyzeWithAIDirector(
   canvas.height = 180;
   const context = canvas.getContext("2d", { willReadFrequently: false });
   if (!context) {
-    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, selectedStyle: style, note: "Canvas недоступен; использован резервный анализ." };
+    return { candidates: emptyCandidates, detectedLabels: [], modelLoaded: true, selectedStyle: style, note: "Canvas недоступен; использован резервный анализ.", eventTimeline: fallbackTimeline, smartEye: fallbackSmartEye };
   }
 
   const frameBudget = getDirectorFrameBudget(duration);
