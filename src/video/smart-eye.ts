@@ -6,7 +6,7 @@ export type SmartEyeCertainty = "observed" | "inferred" | "unknown";
 export type SmartEyeMemoryEntry = {
   id: string;
   time: number | null;
-  kind: "detected-object" | DirectorEventEvidence["kind"];
+  kind: "detected-object" | "frame-observation" | DirectorEventEvidence["kind"];
   label: string;
   confidence?: number;
   certainty: SmartEyeCertainty;
@@ -30,10 +30,18 @@ export type SmartEyeReport = {
   limitations: string[];
 };
 
+export type SmartEyeFrameObservation = {
+  time: number;
+  sceneLabels: string[];
+  actionCues: string[];
+  score: number;
+};
+
 export type SmartEyeReportInput = {
   duration: number;
   detectedLabels: string[];
   events: DirectorEventEvidence[];
+  observations?: SmartEyeFrameObservation[];
   selectedStyle: DirectorStyle;
   sampledFrameCount: number;
   candidateCount: number;
@@ -70,14 +78,53 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
     : "general";
 
   const memory: SmartEyeMemoryEntry[] = [];
-  for (const label of labels) {
+  const observations = (input.observations ?? [])
+    .filter((item) => Number.isFinite(item.time) && item.time >= 0 && item.time <= duration)
+    .map((item) => ({
+      ...item,
+      sceneLabels: [...new Set(item.sceneLabels
+        .filter((label): label is string => typeof label === "string")
+        .map((label) => label.trim().toLowerCase())
+        .filter(Boolean))],
+      actionCues: [...new Set(item.actionCues
+        .filter((cue): cue is string => typeof cue === "string")
+        .map((cue) => cue.trim())
+        .filter(Boolean))]
+    }))
+    .sort((a, b) => a.time - b.time);
+
+  const timestampedLabels = new Set<string>();
+  for (const observation of observations) {
+    for (const label of observation.sceneLabels) {
+      timestampedLabels.add(label);
+      memory.push({
+        id: "object:" + observation.time.toFixed(3) + ":" + label,
+        time: observation.time,
+        kind: "detected-object",
+        label,
+        certainty: "observed",
+        evidence: ["Объектная метка в выбранном кадре"]
+      });
+    }
+    if (observation.actionCues.length) {
+      memory.push({
+        id: "frame:" + observation.time.toFixed(3),
+        time: observation.time,
+        kind: "frame-observation",
+        label: "Наблюдаемые признаки кадра",
+        certainty: "observed",
+        evidence: observation.actionCues
+      });
+    }
+  }
+  for (const label of labels.filter((item) => !timestampedLabels.has(item))) {
     memory.push({
-      id: `object:${label}`,
+      id: "object:" + label,
       time: null,
       kind: "detected-object",
       label,
       certainty: "observed",
-      evidence: ["Объектная метка из модели детекции; время появления конкретного объекта не отслеживалось отдельно"]
+      evidence: ["Объект обнаружен в анализе, но отдельная временная отметка недоступна"]
     });
   }
   for (const event of input.events) {
@@ -120,6 +167,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
     limitations: [
       "Это память доказательств только текущего анализа; постоянное обучение между запусками не включено.",
       "Кадры выборочные, поэтому событие между кадрами может быть пропущено.",
+      "Объекты привязаны ко времени только там, где есть метки конкретного выбранного кадра; это не полноценное отслеживание идентичности объекта.",
       "Метки объектов не доказывают тип сцены, а эвристические события не являются подтверждённым распознаванием действий.",
       "YOLOS Tiny не распознаёт игровые события, рецепты, эмоции или конкретные манёвры автомобиля."
     ]
