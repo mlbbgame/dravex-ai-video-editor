@@ -708,7 +708,9 @@ export async function analyzeWithAIDirector(
       detectedLabels: [...allLabels],
       modelLoaded: true,
       selectedStyle: style,
-      note: "Модель загрузилась, но браузер не смог прочитать часть кадров. Сохраняем резервный анализ."
+      note: "Модель загрузилась, но браузер не смог прочитать кадры. Сохраняем резервный анализ без подтверждённых моделью объектов.",
+      eventTimeline: fallbackTimeline,
+      smartEye: fallbackSmartEye
     };
   } finally {
     video.pause();
