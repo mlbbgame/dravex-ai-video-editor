@@ -536,11 +536,12 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   // The renderer normalizes each selected moment to shotLength around its center.
   // Candidate windows may not overlap while those final rendered trims still do,
   // so enforce spacing against the actual output duration as well.
-  const effectiveGap = Math.max(spacing, shotLength + 0.08);
-  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment) =>
-    Math.abs(existing.time - candidate.time) < effectiveGap
+  const renderGap = shotLength + 0.08;
+  const conflicts = (candidate: HighlightMoment, existing: HighlightMoment, minimumGap: number) =>
+    Math.abs(existing.time - candidate.time) < minimumGap
     || (candidate.start < existing.end + 0.08 && candidate.end > existing.start - 0.08);
-  const canAdd = (candidate: HighlightMoment) => selected.every((item) => !conflicts(candidate, item));
+  const canAdd = (candidate: HighlightMoment, minimumGap = Math.max(spacing, renderGap)) =>
+    selected.every((item) => !conflicts(candidate, item, minimumGap));
   // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
   // This prevents long sources from collapsing into one action-heavy stretch.
   for (let bucket = 0; bucket < count; bucket += 1) {
@@ -555,14 +556,11 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
     if (selected.length >= count) break;
     if (canAdd(item)) selected.push(item);
   }
-  // If spacing is too strict for a short source, only relax timestamp spacing;
-  // never reuse overlapping footage, since that creates visibly repeated shots.
+  // If stylistic spacing leaves gaps, relax it only down to the rendered shot
+  // length. This adds useful cuts without replaying any source interval.
   for (const item of ranked) {
     if (selected.length >= count) break;
-    if (selected.every((existing) =>
-      Math.abs(existing.time - item.time) >= effectiveGap
-      && !(item.start < existing.end + 0.08 && item.end > existing.start - 0.08)
-    )) selected.push(item);
+    if (canAdd(item, renderGap)) selected.push(item);
   }
   return selected.sort((a, b) => a.time - b.time).slice(0, count);
 }
