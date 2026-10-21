@@ -14,7 +14,7 @@ import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
-import { JsonLocalExperienceStore, type LearningProfileId, type MontageExperience, type MontageVariantId } from "./video/director-learning";
+import { JsonLocalExperienceStore, proposeImprovements, type LearningProfileId, type MontageExperience, type MontageVariantId } from "./video/director-learning";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -564,9 +564,14 @@ export default function App() {
         selectedByUser: learningSelectionRef.current || undefined,
         exportedByUser: true
       };
-      await new JsonLocalExperienceStore(window.localStorage).append(experience);
+      const store = new JsonLocalExperienceStore(window.localStorage);
+      await store.append(experience);
       learningSelectionRef.current = false;
-      setLearningStatus("Опыт монтажа сохранён только на этом устройстве. Исходные файлы и их названия не сохраняются.");
+      const history = await store.load();
+      const hypotheses = proposeImprovements(history, experience.profile);
+      setLearningStatus(hypotheses.length
+        ? `Опыт сохранён локально. AI Director сформировал гипотезу для проверки: ${hypotheses[0].title}. Изменение не применяется автоматически — сначала нужны сравнительные тесты.`
+        : `Опыт сохранён локально (${history.length}/500 записей). Для обоснованных гипотез нужны повторяющиеся оценки; автоматическое изменение монтажа не включается без тестов.`);
     } catch {
       setLearningStatus("Не удалось сохранить опыт. Проверь доступ браузера к локальному хранилищу.");
     }
