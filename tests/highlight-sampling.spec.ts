@@ -56,6 +56,33 @@ test("invalid sampling inputs fall back safely", () => {
   expect(getHighlightSamplingInterval(0, 18)).toBe(2);
 });
 
+test("variant builder rejects malformed runtime candidates without NaN trims", () => {
+  const candidates = [
+    null,
+    undefined,
+    17,
+    { time: Number.NaN, start: 0, end: 1, score: 0.8, motion: 0.4, contrast: 0.2 },
+    { time: 2, start: 3, end: 1, score: 0.8, motion: 0.4, contrast: 0.2 },
+    { time: 1, start: -2, end: 2, score: 0.8, motion: 0.4, contrast: 0.2 },
+    { time: 4, start: 3, end: 5, score: 0.8, motion: 0.4, contrast: 0.2 },
+  ];
+
+  const variants = buildHighlightVariants(candidates as never, 4);
+
+  expect(variants).toHaveLength(3);
+  for (const variant of variants) {
+    expect(variant.moments.length).toBeGreaterThan(0);
+    for (const moment of variant.moments) {
+      expect(Number.isFinite(moment.time)).toBe(true);
+      expect(Number.isFinite(moment.start)).toBe(true);
+      expect(Number.isFinite(moment.end)).toBe(true);
+      expect(moment.start).toBeGreaterThanOrEqual(0);
+      expect(moment.end).toBeLessThanOrEqual(4);
+      expect(moment.end).toBeGreaterThan(moment.start);
+    }
+  }
+});
+
 test("director variants stay inside the source and avoid repeated overlapping footage", () => {
   const candidates = Array.from({ length: 16 }, (_, index) => {
     const time = 1 + index * 1.2;
