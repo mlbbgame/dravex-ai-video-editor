@@ -78,6 +78,14 @@ test("object matching does not confuse two same-class objects when detector orde
   expect(inferTrackedObjectCues(previous, current)).not.toContain("Объект перемещается по кадру");
 });
 
+test("object tracking does not infer motion or approach across wide or invalid time gaps", () => {
+  expect(inferTrackedObjectCues([personLeft], [personNear], 0, 12)).toEqual([]);
+  expect(inferTrackedObjectCues([personLeft], [personNear], 2, 1)).toEqual([]);
+  expect(inferTrackedObjectCues([personLeft], [personNear], 0, undefined)).toEqual([]);
+  expect(inferTrackedObjectCues([personLeft], [personNear], 0, 1.5))
+    .toContain("Объект приближается");
+});
+
 test("object tracking ignores implausible jumps between same-class detections", () => {
   const left: DetectedObject = {
     label: "person", score: 0.92,
