@@ -14,7 +14,7 @@ import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
-import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
+import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, shouldApplyLearnedPreference, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
 import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -872,7 +872,7 @@ export default function App() {
               : motionStyle;
             // Scene evidence wins when available. Learned preference is a fallback for
             // ambiguous/general footage, and only after repeated explicit user exports.
-            if ((!analysis.semantic?.profile || analysis.semantic.profile === "unknown") && learningEnabled) {
+            if (shouldApplyLearnedPreference(analysis.semantic?.profile, analysis.semantic?.confidence) && learningEnabled) {
               try {
                 const history = await new JsonLocalExperienceStore(window.localStorage).load();
                 const preference = recommendPreferredVariant(history, learningProfileRef.current);
