@@ -51,6 +51,42 @@ test("candidate coverage ignores malformed samples and keeps all trims within du
   )).toBe(true);
 });
 
+
+test("generated variants keep final rendered trims finite, in bounds, and non-overlapping", async () => {
+  const { buildHighlightVariants } = await import("../src/video/highlight-finder");
+  const duration = 30;
+  const candidates: HighlightMoment[] = Array.from({ length: 59 }, (_, index) => {
+    const time = 0.5 + index * 0.5;
+    return {
+      time,
+      start: Math.max(0, time - 0.4),
+      end: Math.min(duration, time + 0.4),
+      score: 0.3 + (index % 7) * 0.1,
+      motion: (index % 5) / 4,
+      contrast: (index % 3) / 2,
+    };
+  });
+  const variants = buildHighlightVariants(candidates, duration);
+
+  expect(variants).toHaveLength(3);
+  for (const variant of variants) {
+    expect(variant.moments.length).toBeGreaterThan(0);
+    const rendered = variant.moments
+      .map(({ start, end }) => ({ start, end }))
+      .sort((a, b) => a.start - b.start);
+    for (let index = 0; index < rendered.length; index += 1) {
+      expect(Number.isFinite(rendered[index].start)).toBe(true);
+      expect(Number.isFinite(rendered[index].end)).toBe(true);
+      expect(rendered[index].start).toBeGreaterThanOrEqual(0);
+      expect(rendered[index].end).toBeLessThanOrEqual(duration);
+      expect(rendered[index].end).toBeGreaterThan(rendered[index].start);
+      if (index > 0) {
+        expect(rendered[index].start).toBeGreaterThanOrEqual(rendered[index - 1].end - 1e-9);
+      }
+    }
+  }
+});
+
 test("candidate coverage safely handles malformed runtime collections", () => {
   expect(ensureCandidateCoverage(null as unknown as HighlightSample[], null as unknown as HighlightMoment[], 5))
     .toEqual([]);
