@@ -21,8 +21,9 @@ export type RecognitionWindow = { start: number; end: number };
 
 /**
  * Add denser timestamps around candidate events without leaving source bounds.
- * Reserve samples for every valid event window before distributing any remaining
- * budget. This prevents an early/long window from starving later events.
+ * Reserve a representative from each valid event window before spending the
+ * remaining budget on dense detail. When windows outnumber slots, distribute
+ * representatives across the timeline so early or long windows cannot dominate.
  */
 export function buildDenseSampleTimes(
   durationSeconds: number,
