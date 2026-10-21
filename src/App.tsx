@@ -914,7 +914,10 @@ export default function App() {
           );
           actualStyle = directorResult.selectedStyle;
           recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
-          directorNote = `${directorResult.note} Режиссёрский ориентир: ${getDirectorKnowledge(contentProfile).editingGoal}`;
+          const smartEyeSummary = directorResult.smartEye
+            ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
+            : "";
+          directorNote = `${directorResult.note}${smartEyeSummary} Режиссёрский ориентир: ${getDirectorKnowledge(contentProfile).editingGoal}`;
           segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
           setMessage(directorNote);
         } catch (analysisError) {
