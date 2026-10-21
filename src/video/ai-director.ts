@@ -500,17 +500,21 @@ export function chooseAdaptiveDirectorSampleIndices(
   includeEdges = true
 ): number[] {
   if (!Array.isArray(candidates) || !Number.isFinite(limit) || limit <= 0) return [];
-  // Runtime callers may bypass TypeScript (e.g. partially decoded media data).
-  // Normalize malformed entries so one bad sample cannot abort Smart Eye sampling.
-  const safeCandidates = candidates.map((candidate) =>
-    candidate && typeof candidate === "object"
-      ? candidate
-      : { score: 0, motion: 0, contrast: 0 }
+  // Preserve original source indices while excluding malformed samples entirely.
+  // Returning an index for a null record would make the caller try to seek to NaN.
+  const validOriginalIndices = candidates.flatMap((candidate, index) =>
+    candidate && typeof candidate === "object" &&
+    Number.isFinite(candidate.score) &&
+    Number.isFinite(candidate.motion) &&
+    Number.isFinite(candidate.contrast)
+      ? [index]
+      : []
   );
+  const safeCandidates = validOriginalIndices.map((index) => candidates[index]);
   const count = safeCandidates.length;
   if (!count) return [];
   const safeLimit = Math.max(1, Math.floor(limit));
-  if (count <= safeLimit) return safeCandidates.map((_, index) => index);
+  if (count <= safeLimit) return validOriginalIndices;
   if (safeLimit === 1) return [Math.round((count - 1) / 2)];
 
   const anchorCount = Math.max(1, Math.ceil(safeLimit / 2));
@@ -542,7 +546,7 @@ export function chooseAdaptiveDirectorSampleIndices(
     if (selected.size >= safeLimit) break;
     selected.add(index);
   }
-  return [...selected].sort((a, b) => a - b);
+  return [...selected].sort((a, b) => a - b).map((safeIndex) => validOriginalIndices[safeIndex]);
 }
 
 export type DirectorFrameBudget = {
