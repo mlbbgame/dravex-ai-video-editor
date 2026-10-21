@@ -44,3 +44,14 @@ test("diagnostic events discard invalid numeric values and oversized strings", (
   });
   expect(event.details).toEqual({ reasonCode: "render-error" });
 });
+
+test("diagnostics only retain known style and quality labels and bounded non-negative counts", () => {
+  const event = createDirectorDiagnostic("analysis-completed", {
+    style: "private-user-filename.mp4",
+    quality: "4K",
+    mediaCount: -1,
+    sampledFrames: 2.5,
+    durationSeconds: 999999,
+  } as never);
+  expect(event.details).toEqual({ quality: "4K" });
+});
