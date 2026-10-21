@@ -49,8 +49,11 @@ export function planVariantPreviewCuts(
     const desiredStart = Math.max(0, Math.min(sourceDuration - shotDuration, sourceDuration * centerRatio - shotDuration / 2));
     // Distinct target centers can still produce overlapping footage on clips
     // only slightly longer than the preview. Move each cut forward as needed.
-    const trimStart = Math.min(sourceDuration - shotDuration, Math.max(previousEnd, desiredStart));
-    const trimEnd = trimStart + shotDuration;
+    // Never pull a later cut backward to fit the nominal shot length: doing so
+    // can reintroduce overlap when the source has too little remaining footage.
+    // Keep the cut after the previous one and shorten only the final edge if needed.
+    const trimStart = Math.max(previousEnd, desiredStart);
+    const trimEnd = Math.min(sourceDuration, trimStart + shotDuration);
     previousEnd = trimEnd;
     return { trimStart, trimEnd };
   });
