@@ -87,6 +87,26 @@ test("generated variants keep final rendered trims finite, in bounds, and non-ov
   }
 });
 
+
+test("style ranking prefers motion for velocity and calmer footage for story", () => {
+  const calm: HighlightMoment = {
+    time: 1, start: 0.5, end: 1.5, score: 0.65, motion: 0.05, contrast: 0.35,
+  };
+  const action: HighlightMoment = {
+    time: 4, start: 3.5, end: 4.5, score: 0.75, motion: 0.95, contrast: 0.9,
+  };
+  const middle: HighlightMoment = {
+    time: 7, start: 6.5, end: 7.5, score: 0.7, motion: 0.4, contrast: 0.5,
+  };
+  const footage = [calm, action, middle];
+  const velocity = rankHighlightMomentsForStyle(footage, "velocity");
+  const story = rankHighlightMomentsForStyle(footage, "story");
+
+  expect(velocity[0].time).toBe(action.time);
+  expect(story[0].time).toBe(calm.time);
+  expect(velocity.map((item) => item.time)).not.toEqual(story.map((item) => item.time));
+});
+
 test("candidate coverage safely handles malformed runtime collections", () => {
   expect(ensureCandidateCoverage(null as unknown as HighlightSample[], null as unknown as HighlightMoment[], 5))
     .toEqual([]);
