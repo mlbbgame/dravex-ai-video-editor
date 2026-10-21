@@ -25,7 +25,7 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
   expect(report.detectedEntities).toEqual(["car", "person"]);
   expect(report.sceneCategory).toBe("vehicles");
   expect(report.coverage.sampledFrameRatio).toBeCloseTo(8 / 30);
-  expect(report.coverage.lastSampleTime).toBe(58);
+  expect(report.coverage.lastEventTime).toBe(58);
 });
 
 test("Smart Eye rejects out-of-range events and bounds confidence and coverage", () => {
