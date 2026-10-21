@@ -127,7 +127,7 @@ export function inferDirectorKnowledgeDomain(prompt: string): {
   const text = clean(prompt);
   const ranked = (Object.entries(RULES) as Array<[Exclude<DirectorKnowledgeDomain, "general">, DomainRules]>)
     .map(([domain, rules]) => {
-      const tokens = text.split(/[^\\p{L}\\p{N}]+/u).filter(Boolean);
+      const tokens = text.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
       const matchedTerms = rules.terms.filter((term) => {
         const normalizedTerm = clean(term);
         return normalizedTerm.length <= 4
