@@ -24,7 +24,7 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
     sampledFrameCount: 8,
     candidateCount: 30,
   });
-  expect(report.memory.filter((entry) => entry.kind !== "detected-object").map((entry) => entry.time))
+  expect(report.memory.filter((entry) => entry.kind !== "detected-object" && entry.kind !== "frame-observation").map((entry) => entry.time))
     .toEqual([3, 31, 58]);
   expect(report.detectedEntities).toEqual(["car", "motorcycle", "person"]);
   expect(report.memory.some((entry) => entry.kind === "detected-object" && entry.time === 2 && entry.label === "car")).toBe(true);
