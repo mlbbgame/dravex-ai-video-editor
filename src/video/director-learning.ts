@@ -118,7 +118,7 @@ export function validateExperience(input: MontageExperience): string[] {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return ["Experience must be an object."];
   }
-  if (typeof input.id !== "string" || !input.id.trim()) errors.push("Experience ID is required.");
+  if (typeof input.id !== "string" || !input.id.trim() || input.id.length > 120) errors.push("Experience ID must be a non-empty string of at most 120 characters.");
   if (typeof input.createdAt !== "string" || !Number.isFinite(Date.parse(input.createdAt))) {
     errors.push("createdAt must be a valid date.");
   }
@@ -142,7 +142,11 @@ export function validateExperience(input: MontageExperience): string[] {
   for (const flag of ["selectedByUser", "exportedByUser", "rejectedByUser"] as const) {
     if (input[flag] !== undefined && typeof input[flag] !== "boolean") errors.push(`${flag} must be a boolean.`);
   }
-  if (input.contentKind !== undefined && typeof input.contentKind !== "string") errors.push("contentKind must be a string.");
+  const allowedContentKinds = ["video", "images", "mixed", "gaming", "anime", "automotive", "nature", "food", "people", "sports", "wildlife", "product-diy", "general"] as const;
+  if (input.contentKind !== undefined
+    && (typeof input.contentKind !== "string" || !allowedContentKinds.includes(input.contentKind as typeof allowedContentKinds[number]))) {
+    errors.push("contentKind must be a supported coarse category; file names and free-form text are not allowed.");
+  }
   return errors;
 }
 
