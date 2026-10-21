@@ -8,7 +8,7 @@ export type SmartEyeMemoryEntry = {
   time: number;
   kind: "detected-object" | DirectorEventEvidence["kind"];
   label: string;
-  confidence: number;
+  confidence?: number;
   certainty: SmartEyeCertainty;
   evidence: string[];
 };
@@ -24,8 +24,8 @@ export type SmartEyeReport = {
     candidateCount: number;
     sampledFrameCount: number;
     sampledFrameRatio: number;
-    firstSampleTime: number | null;
-    lastSampleTime: number | null;
+    firstEventTime: number | null;
+    lastEventTime: number | null;
   };
   limitations: string[];
 };
@@ -76,7 +76,6 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       time: 0,
       kind: "detected-object",
       label,
-      confidence: 0.5,
       certainty: "observed",
       evidence: ["Объектная метка из модели детекции; время появления конкретного объекта не отслеживалось отдельно"]
     });
@@ -89,7 +88,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       kind: event.kind,
       label: event.label,
       confidence: Number.isFinite(event.confidence) ? Math.max(0, Math.min(1, event.confidence)) : 0,
-      certainty: event.kind === "visual-highlight" ? "inferred" : "inferred",
+      certainty: "inferred",
       evidence: [...new Set(event.evidence.filter((item) => typeof item === "string" && item.trim()))]
     });
   }
@@ -115,8 +114,8 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       candidateCount,
       sampledFrameCount,
       sampledFrameRatio: candidateCount ? sampledFrameCount / candidateCount : 0,
-      firstSampleTime: eventTimes.length ? eventTimes[0] : null,
-      lastSampleTime: eventTimes.length ? eventTimes[eventTimes.length - 1] : null
+      firstEventTime: eventTimes.length ? eventTimes[0] : null,
+      lastEventTime: eventTimes.length ? eventTimes[eventTimes.length - 1] : null
     },
     limitations: [
       "Это память доказательств только текущего анализа; постоянное обучение между запусками не включено.",
