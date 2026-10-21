@@ -1,5 +1,6 @@
 import type { HighlightMoment, HighlightSample } from "./highlight-finder";
 import { buildDirectorEventTimeline, type DirectorEventEvidence } from "./director-event-timeline";
+import { buildSmartEyeReport, type SmartEyeReport } from "./smart-eye";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
@@ -110,6 +111,7 @@ export type AIDirectorResult = {
   selectedStyle: DirectorStyle;
   note: string;
   eventTimeline?: DirectorEventEvidence[];
+  smartEye?: SmartEyeReport;
 };
 
 type ObjectDetector = (input: string) => Promise<DetectedObject[]>;
@@ -663,6 +665,14 @@ export async function analyzeWithAIDirector(
   return {
     candidates: rankedCandidates,
     eventTimeline,
+    smartEye: buildSmartEyeReport({
+      duration,
+      detectedLabels,
+      events: eventTimeline,
+      selectedStyle,
+      sampledFrameCount: selectedIndices.length,
+      candidateCount: candidates.length,
+    }),
     detectedLabels,
     modelLoaded: true,
     selectedStyle,
