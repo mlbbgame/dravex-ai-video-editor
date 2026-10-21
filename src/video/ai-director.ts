@@ -444,11 +444,13 @@ export function getDirectorFrameBudget(duration: number): DirectorFrameBudget {
   if (!Number.isFinite(duration) || duration <= 0) {
     return { maxFrames: 0, inferenceBudgetMs: 0, includeEdges: false };
   }
-  // Long clips need more than a start/end-adjacent pair to avoid missing a
-  // meaningful middle scene, but keep the extra work tightly bounded on phones.
-  return duration >= 30
-    ? { maxFrames: 5, inferenceBudgetMs: 9_000, includeEdges: false }
-    : { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
+  // Scale semantic coverage with source length while keeping a hard mobile budget.
+  // Five-minute clips need more interior samples than a 30-second clip, otherwise
+  // the director can miss scene changes in the middle of the timeline.
+  if (duration >= 180) return { maxFrames: 8, inferenceBudgetMs: 14_000, includeEdges: false };
+  if (duration >= 60) return { maxFrames: 6, inferenceBudgetMs: 11_000, includeEdges: false };
+  if (duration >= 30) return { maxFrames: 5, inferenceBudgetMs: 9_000, includeEdges: false };
+  return { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
 }
 
 /**
