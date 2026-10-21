@@ -93,10 +93,13 @@ test("repeated edits or low scores produce explicit improvement hypotheses", () 
 
 test("candidate tuning is promoted only after measurable gain and no large regressions", () => {
   const current = { version: 2, values: { transitionDensity: 0.4 } };
+  const sampleIds = ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"];
   const rejected = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
     baselineScore: 0.7,
     candidateScore: 0.75,
     baselineRegressionByDimension: { musicSync: 0.08 },
+    baselineSampleIds: sampleIds,
+    candidateSampleIds: sampleIds,
   });
   expect(rejected.accepted).toBe(false);
   expect(rejected.next).toEqual(current);
@@ -105,10 +108,44 @@ test("candidate tuning is promoted only after measurable gain and no large regre
     baselineScore: 0.7,
     candidateScore: 0.74,
     baselineRegressionByDimension: { musicSync: 0.02 },
+    baselineSampleIds: sampleIds,
+    candidateSampleIds: sampleIds,
   });
   expect(accepted.accepted).toBe(true);
   expect(accepted.next.version).toBe(3);
   expect(accepted.next.values.transitionDensity).toBe(0.55);
+});
+
+
+test("tuning promotion rejects benchmarks that compare different source clips", () => {
+  const current = { version: 2, values: { transitionDensity: 0.4 } };
+  const baselineIds = ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"];
+  const result = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
+    baselineScore: 0.7,
+    candidateScore: 0.9,
+    baselineRegressionByDimension: {},
+    baselineSampleIds: baselineIds,
+    candidateSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "different-clip"],
+  });
+
+  expect(result.accepted).toBe(false);
+  expect(result.next).toEqual(current);
+  expect(result.reasons).toContain("Benchmark must use at least 5 identical ordered sample IDs for both versions.");
+});
+
+test("tuning promotion rejects benchmarks with too few clips or duplicate IDs", () => {
+  const current = { version: 2, values: { transitionDensity: 0.4 } };
+  const result = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
+    baselineScore: 0.7,
+    candidateScore: 0.9,
+    baselineRegressionByDimension: {},
+    baselineSampleIds: ["clip-01", "clip-02", "clip-02", "clip-04"],
+    candidateSampleIds: ["clip-01", "clip-02", "clip-02", "clip-04"],
+  });
+
+  expect(result.accepted).toBe(false);
+  expect(result.next).toEqual(current);
+  expect(result.reasons).toContain("Benchmark must use at least 5 identical ordered sample IDs for both versions.");
 });
 
 test("experience memory rejects free-form content labels that could contain private filenames", () => {
