@@ -75,6 +75,18 @@ export function getHighlightSampleLimit(duration: number): number {
   return 60;
 }
 
+/**
+ * Choose a useful temporal sampling interval for highlight analysis.
+ * Clips under 30 seconds need denser samples to locate brief action peaks;
+ * longer clips keep their existing bounded sample budget for mobile devices.
+ */
+export function getHighlightSamplingInterval(duration: number, sampleLimit: number): number {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleLimit) || sampleLimit < 2) return 2;
+  if (duration < 30) return 0.75;
+  if (duration < 120) return 1.5;
+  return duration / Math.max(2, Math.floor(sampleLimit));
+}
+
 /** Keep each frame seek inside the overall analysis deadline on slow mobile decoders. */
 export function getBoundedSeekTimeoutMs(
   elapsedMs: number,
@@ -378,7 +390,7 @@ export async function analyzeVideoForHighlights(
     // A dozen representative frames are preferable to leaving the editor blocked for minutes.
     const isLongSource = duration >= 30;
     const sampleLimit = getHighlightSampleLimit(duration);
-    const interval = Math.max(2, duration / sampleLimit);
+    const interval = getHighlightSamplingInterval(duration, sampleLimit);
     const total = Math.max(2, Math.min(sampleLimit, Math.ceil(duration / interval)));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; brightness: number; detail: number }> = [];
     const semanticCanvas = document.createElement("canvas");
