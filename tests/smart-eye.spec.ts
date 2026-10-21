@@ -104,3 +104,32 @@ test("Smart Eye safely handles empty input and invalid duration", () => {
   expect(report.coverage.largestSampleGapSeconds).toBe(0);
   expect(report.memory).toEqual([]);
 });
+
+
+test("Smart Eye tolerates malformed runtime payloads without inventing evidence", () => {
+  const report = buildSmartEyeReport({
+    duration: 12,
+    detectedLabels: [null, 42, "car"] as never,
+    events: [null, { sourceTime: "bad", evidence: null }, event(4)] as never,
+    observations: [null, { time: 2, sceneLabels: null, actionCues: 9 }] as never,
+    selectedStyle: "invalid-style" as never,
+    sampledFrameCount: Number.NaN,
+    candidateCount: 4,
+    sampledFrameTimes: [null, "3", 5] as never,
+  } as never);
+
+  expect(report.duration).toBe(12);
+  expect(report.detectedEntities).toEqual(["car"]);
+  expect(report.memory.some((entry) => entry.kind === "motion-peak" && entry.time === 4)).toBe(true);
+  expect(report.memory.some((entry) => entry.time === 2)).toBe(false);
+  expect(report.selectedStyle).toBe("cinematic");
+  expect(report.coverage.sampledFrameCount).toBe(0);
+  expect(report.coverage.largestSampleGapSeconds).toBe(12);
+});
+
+test("Smart Eye safely handles a null top-level payload", () => {
+  const report = buildSmartEyeReport(null as never);
+  expect(report.duration).toBe(0);
+  expect(report.memory).toEqual([]);
+  expect(report.sceneCategory).toBe("general");
+});
