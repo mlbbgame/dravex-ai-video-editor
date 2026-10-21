@@ -233,7 +233,10 @@ export function inferTrackedObjectCues(previousObjects: DetectedObject[], curren
         bestIndex = index;
       }
     });
-    if (bestIndex < 0) continue;
+    // Do not associate same-class detections across a large jump: they may
+    // belong to different people/vehicles in a cut or to unrelated objects.
+    // Coordinates are evaluated against the detector's 320x180 analysis space.
+    if (bestIndex < 0 || bestDistance > Math.hypot(320, 180) * 0.25) continue;
     matchedPrevious.add(bestIndex);
     const previous = previousObjects[bestIndex];
     const previousCenterX = (previous.box.xmin + previous.box.xmax) / 2;
