@@ -128,11 +128,6 @@ test("director frame budget rejects zero, negative, and non-finite durations", (
 test("long-video director samples more interior scenes while keeping a bounded mobile budget", () => {
   expect(getDirectorFrameBudget(30)).toEqual({
     maxFrames: 5,
-    inferenceBudgetMs: 9000,
-    includeEdges: false,
-  });
-  expect(getDirectorFrameBudget(30)).toEqual({
-    maxFrames: 5,
     inferenceBudgetMs: 9_000,
     includeEdges: false,
   });
