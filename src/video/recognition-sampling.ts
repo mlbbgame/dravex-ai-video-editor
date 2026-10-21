@@ -34,7 +34,8 @@ export function buildDenseSampleTimes(
   if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return [];
   if (!Number.isInteger(maxSamples) || maxSamples < 1) return [];
 
-  const validWindows = windows.flatMap((window) => {
+  const validWindows = (Array.isArray(windows) ? windows : []).flatMap((window) => {
+    if (!window || typeof window !== "object") return [];
     if (!Number.isFinite(window.start) || !Number.isFinite(window.end)) return [];
     const start = Math.max(0, Math.min(durationSeconds, window.start));
     const end = Math.max(0, Math.min(durationSeconds, window.end));
