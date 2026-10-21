@@ -1,10 +1,56 @@
 import type { HighlightMoment, HighlightSample } from "./highlight-finder";
+import type { SemanticProfile } from "./semantic-classifier";
 import { buildDirectorEventTimeline, type DirectorEventEvidence } from "./director-event-timeline";
 import { buildSmartEyeReport, type SmartEyeReport } from "./smart-eye";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
 export type DetectedSceneCategory = "food" | "vehicles" | "people" | "animals" | "sports" | "indoor" | "nature" | "general";
+
+export type DirectorKnowledge = {
+  profile: SemanticProfile | "general";
+  preferredStyle: DirectorStyle;
+  baseShotSeconds: number;
+  motionPriority: "high" | "balanced" | "low";
+  transitionPreset: "action" | "cinematic" | "auto";
+  preserveFullFrame: boolean;
+  editingGoal: string;
+};
+
+const DIRECTOR_KNOWLEDGE: Record<SemanticProfile | "general", DirectorKnowledge> = {
+  automotive: { profile: "automotive", preferredStyle: "velocity", baseShotSeconds: 1.1, motionPriority: "high", transitionPreset: "action", preserveFullFrame: false, editingGoal: "Prioritize visible motion peaks and angle changes; do not claim a drift without supporting evidence." },
+  nature: { profile: "nature", preferredStyle: "cinematic", baseShotSeconds: 2.8, motionPriority: "low", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Give scenic reveals time to read and avoid cutting away too early." },
+  food: { profile: "food", preferredStyle: "cinematic", baseShotSeconds: 2.2, motionPriority: "balanced", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Balance preparation details with the finished dish; do not infer a completed step from an ingredient alone." },
+  people: { profile: "people", preferredStyle: "story", baseShotSeconds: 3, motionPriority: "low", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Favor readable gestures and continuity; speech-aware cutting needs audio analysis." },
+  sports: { profile: "sports", preferredStyle: "velocity", baseShotSeconds: 1.2, motionPriority: "high", transitionPreset: "action", preserveFullFrame: false, editingGoal: "Prioritize movement peaks without claiming a goal or trick without evidence." },
+  wildlife: { profile: "wildlife", preferredStyle: "cinematic", baseShotSeconds: 2.5, motionPriority: "balanced", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Preserve subject visibility and let animal movement develop across shots." },
+  "product-diy": { profile: "product-diy", preferredStyle: "cinematic", baseShotSeconds: 2.4, motionPriority: "balanced", transitionPreset: "cinematic", preserveFullFrame: false, editingGoal: "Keep tools and product details legible; do not assume task completion from one frame." },
+  anime: { profile: "anime", preferredStyle: "anime", baseShotSeconds: 1.55, motionPriority: "high", transitionPreset: "action", preserveFullFrame: false, editingGoal: "Favor expressive visual changes and dynamic pacing without repeating the same moment." },
+  gaming: { profile: "gaming", preferredStyle: "velocity", baseShotSeconds: 1.1, motionPriority: "high", transitionPreset: "action", preserveFullFrame: true, editingGoal: "Prioritize action while keeping HUD, minimap and kill feed readable." },
+  unknown: { profile: "unknown", preferredStyle: "cinematic", baseShotSeconds: 2.2, motionPriority: "balanced", transitionPreset: "auto", preserveFullFrame: true, editingGoal: "Use conservative visual cues and keep uncertainty visible for ambiguous scenes." },
+  general: { profile: "general", preferredStyle: "cinematic", baseShotSeconds: 2.2, motionPriority: "balanced", transitionPreset: "auto", preserveFullFrame: true, editingGoal: "Balance visual interest and continuity when no reliable category is available." }
+};
+
+export function getDirectorKnowledge(profile: SemanticProfile | "general" | null | undefined): DirectorKnowledge {
+  return profile && Object.prototype.hasOwnProperty.call(DIRECTOR_KNOWLEDGE, profile)
+    ? DIRECTOR_KNOWLEDGE[profile]
+    : DIRECTOR_KNOWLEDGE.unknown;
+}
+
+/** Profile-aware pacing heuristics; they guide the edit but do not prove action semantics. */
+export function getDirectorShotLength(
+  profile: SemanticProfile | "general" | null | undefined,
+  style: DirectorStyle
+): number {
+  const base = getDirectorKnowledge(profile).baseShotSeconds;
+  switch (style) {
+    case "velocity": return Math.max(0.85, Math.min(1.3, Math.min(base, 1.2)));
+    case "glitch": return Math.max(1.05, Math.min(1.45, Math.min(base, 1.35)));
+    case "anime": return Math.max(1.25, Math.min(1.8, base));
+    case "story": return Math.max(2.7, Math.min(3.5, base));
+    case "cinematic": return Math.max(1.9, Math.min(3.2, base));
+  }
+}
 
 export type SceneCategoryInference = {
   category: DetectedSceneCategory;
