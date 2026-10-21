@@ -64,8 +64,8 @@ test("timeline rejects empty, reversed, and out-of-range collapsed event interva
     { time: 1.5, start: 1, end: 2, score: 0.8, motion: 0.5, contrast: 0.2, actionCues: ["Пик движения"] },
   ], 10);
 
-  expect(timeline).toHaveLength(1);
-  expect(timeline[0].start).toBe(1);
-  expect(timeline[0].end).toBe(2);
+  // The one valid candidate legitimately emits both motion-peak and visual-highlight events.
+  expect(timeline.map((event) => event.kind)).toEqual(["motion-peak", "visual-highlight"]);
+  expect(timeline.every((event) => event.start === 1 && event.end === 2)).toBe(true);
   expect(timeline.every((event) => event.end > event.start)).toBe(true);
 });
