@@ -109,3 +109,17 @@ test("director variants use distinct pacing targets", () => {
   // different output shot lengths or effects over the same footage.
   expect(sourceIntervalFingerprints.size).toBe(variants.length);
 });
+
+
+test("genre knowledge sets distinct editorial goals and preserves gameplay framing", async () => {
+  const { getDirectorKnowledge, getDirectorShotLength } = await import("../src/video/ai-director");
+  expect(getDirectorKnowledge("gaming").preserveFullFrame).toBe(true);
+  expect(getDirectorKnowledge("gaming").editingGoal).toContain("HUD");
+  expect(getDirectorKnowledge("automotive").preferredStyle).toBe("velocity");
+  expect(getDirectorKnowledge("nature").baseShotSeconds).toBeGreaterThan(getDirectorKnowledge("automotive").baseShotSeconds);
+  expect(getDirectorKnowledge("food").editingGoal).toContain("finished dish");
+  expect(getDirectorShotLength("nature", "cinematic")).toBe(2.8);
+  expect(getDirectorShotLength("gaming", "velocity")).toBe(1.1);
+  expect(getDirectorShotLength("people", "story")).toBe(3);
+  expect(getDirectorShotLength("unknown", "glitch")).toBe(1.35);
+});
