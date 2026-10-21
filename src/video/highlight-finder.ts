@@ -25,7 +25,8 @@ export function rankHighlightMomentsForStyle(
 ): HighlightMoment[] {
   // Keep malformed runtime data out of ranking: a single NaN can otherwise
   // make sort comparisons unstable and leak an invalid trim into a variant.
-  const safeCandidates = candidates.filter((item) =>
+  const safeCandidates = (Array.isArray(candidates) ? candidates : []).filter((item) =>
+    item !== null && typeof item === "object" &&
     Number.isFinite(item.time) &&
     Number.isFinite(item.start) &&
     Number.isFinite(item.end) &&
@@ -312,8 +313,9 @@ export function ensureCandidateCoverage(
 
   // Sanitize both sources before ranking: one broken seek/sample must not leak
   // NaN timestamps or out-of-range trims into variant planning and export.
-  const safeCandidates = candidates.flatMap((candidate) => {
+  const safeCandidates = (Array.isArray(candidates) ? candidates : []).flatMap((candidate) => {
     if (
+      candidate === null || typeof candidate !== "object" ||
       !Number.isFinite(candidate.time) ||
       !Number.isFinite(candidate.start) ||
       !Number.isFinite(candidate.end) ||
