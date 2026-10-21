@@ -360,6 +360,55 @@ function chooseSampleIndices(count: number, limit: number, includeEdges = true):
     : Math.round((index + 1) * (count - 1) / (limit + 1)));
 }
 
+/**
+ * Allocate the scarce object-detector budget to both source coverage and likely
+ * highlights. The baseline anchors preserve temporal coverage; the remaining
+ * slots prefer local motion/visual peaks while enforcing a minimum index gap.
+ * Scores are only editing cues, not semantic proof of a particular action.
+ */
+export function chooseAdaptiveDirectorSampleIndices(
+  candidates: Array<Pick<HighlightMoment, "score" | "motion" | "contrast">>,
+  limit: number,
+  includeEdges = true
+): number[] {
+  const count = candidates.length;
+  if (!count || !Number.isFinite(limit) || limit <= 0) return [];
+  const safeLimit = Math.max(1, Math.floor(limit));
+  if (count <= safeLimit) return candidates.map((_, index) => index);
+  if (safeLimit === 1) return [Math.round((count - 1) / 2)];
+
+  const anchorCount = Math.max(1, Math.ceil(safeLimit / 2));
+  const anchors = chooseSampleIndices(count, Math.min(anchorCount, safeLimit), includeEdges);
+  const selected = new Set(anchors);
+  const minimumGap = Math.max(1, Math.floor(count / (safeLimit * 2)));
+
+  const quality = candidates.map((candidate, index) => {
+    const previous = candidates[index - 1];
+    const next = candidates[index + 1];
+    const motion = Number.isFinite(candidate.motion) ? Math.max(0, candidate.motion) : 0;
+    const visual = Number.isFinite(candidate.score) ? Math.max(0, Math.min(1, candidate.score)) : 0;
+    const contrast = Number.isFinite(candidate.contrast) ? Math.max(0, Math.min(1, candidate.contrast / 0.35)) : 0;
+    const previousMotion = previous && Number.isFinite(previous.motion) ? Math.max(0, previous.motion) : motion;
+    const nextMotion = next && Number.isFinite(next.motion) ? Math.max(0, next.motion) : motion;
+    const peak = Math.max(0, motion - Math.max(previousMotion, nextMotion));
+    return { index, value: visual * 0.45 + contrast * 0.2 + Math.min(1, motion) * 0.2 + Math.min(1, peak * 4) * 0.15 };
+  }).sort((a, b) => b.value - a.value || a.index - b.index);
+
+  for (const candidate of quality) {
+    if (selected.size >= safeLimit) break;
+    if ([...selected].every((index) => Math.abs(index - candidate.index) >= minimumGap)) {
+      selected.add(candidate.index);
+    }
+  }
+  // If peaks were clustered, fill unused slots with the most evenly spaced
+  // remaining indices so the middle and ending of the source stay represented.
+  for (const index of chooseSampleIndices(count, safeLimit, includeEdges)) {
+    if (selected.size >= safeLimit) break;
+    selected.add(index);
+  }
+  return [...selected].sort((a, b) => a - b);
+}
+
 export type DirectorFrameBudget = {
   maxFrames: number;
   inferenceBudgetMs: number;
@@ -454,7 +503,7 @@ export async function analyzeWithAIDirector(
   }
 
   const frameBudget = getDirectorFrameBudget(duration);
-  const selectedIndices = chooseSampleIndices(candidates.length, frameBudget.maxFrames, frameBudget.includeEdges);
+  const selectedIndices = chooseAdaptiveDirectorSampleIndices(candidates, frameBudget.maxFrames, frameBudget.includeEdges);
   const detectionsByCandidate = new Map<number, DetectedObject[]>();
   const allLabels = new Set<string>();
   const inferenceStartedAt = performance.now();
