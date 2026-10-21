@@ -3,6 +3,7 @@ export type SemanticProfile =
   | "nature"
   | "food"
   | "people"
+  | "sports"
   | "wildlife"
   | "product-diy"
   | "anime"
@@ -37,13 +38,16 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(car|sports car|race car|racing car|racer|convertible|limousine|truck|pickup|minivan|motorcycle|motor scooter|mountain bike|wheel|rally car|jeep|formula one|go-kart|tractor|tow truck)\b/i
   ],
   nature: [
-    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park|aurora|natural arch|rapids|seascape|water bird|wild flower|mushroom)\b/i
+    /\b(mountain|valley|forest|rainforest|waterfall|lakeside|lakeshore|seashore|shore|volcano|geyser|cloud|beach|tree|flower|reef|coral reef|river|desert|coast|sunset|alp|cliff|sky|canyon|meadow|promontory|sandbar|glacier|iceberg|rainbow|national park|aurora|natural arch|rapids|seascape|water bird|wild flower|mushroom|travel|tourist|sightseeing|landmark|historic site|cityscape|hiking|backpacking|camping|campsite|scenic route|road trip|national monument|travel photography)\b/i
   ],
   food: [
-    /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|ice lolly|popsicle|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|carbonara|hotdog|hot dog|cheeseburger|hamburger|rotisserie|roast chicken|potpie|trifle|taco|sushi|ramen|noodle|omelette|omelet|pancake|waffle|bakery|confectionery|menu|dining table|frying pan|mixing bowl|baking sheet|dough|bread loaf|bagel|pretzel|cheese|egg|steak|grilled salmon|mashed potato|guacamole|dim sum|ice pop|cupcake|brownie|burrito)\b/i
+    /\b(pizza|dish|plate|food|meat|broccoli|fruit|ice cream|ice lolly|popsicle|burrito|espresso|coffee|sandwich|soup|cucumber|baking|restaurant|pot|cake|chocolate|spaghetti|carbonara|hotdog|hot dog|cheeseburger|hamburger|rotisserie|roast chicken|potpie|trifle|taco|sushi|ramen|noodle|omelette|omelet|pancake|waffle|bakery|confectionery|menu|dining table|frying pan|mixing bowl|baking sheet|dough|bread loaf|bagel|pretzel|cheese|egg|steak|grilled salmon|mashed potato|guacamole|dim sum|ice pop|cupcake|brownie|burrito|cooking|chef|cookery|recipe|food preparation|meal prep|chopping|slicing|stirring|whisking|kneading|seasoning|grilling|frying|boiling|simmering|saute|sauté|plating|marinating|basting|food styling|kitchen counter)\b/i
   ],
   people: [
-    /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask|wedding|performer|musician|guitarist|drummer|singer|runner|cyclist|skier|snowboarder|weightlifter)\b/i
+    /\b(person|groom|bride|face|swimmer|scuba diver|athlete|baby|child|boy|girl|woman|man|jersey|ballplayer|dancer|suit|ski mask|wedding|performer|musician|guitarist|drummer|singer|runner|cyclist|skier|snowboarder|weightlifter|vlog|vlogger|video blog|blogger|influencer|talking head|interview|podcast|selfie|livestream|live stream|content creator|social media|travel blogger)\b/i
+  ],
+  sports: [
+    /\b(soccer ball|football|basketball|basketball hoop|tennis ball|tennis racket|baseball|baseball bat|volleyball|golf ball|golf club|hockey puck|ice hockey|cricket ball|badminton|ping-pong|table tennis|skateboard|skateboarding|surfboard|surfing|windsurfing|parachute|rock climbing|climbing wall|gymnastics|boxing glove|boxing|wrestling|martial arts|racing bike|track and field|skiing|snowboarding|sled|rowing boat|kayak|canoe|paddle|sports uniform|stadium|racket)\b/i
   ],
   wildlife: [
     /\b(dog|cat|bird|tiger|lion|bear|horse|deer|fox|wolf|elephant|monkey|snake|turtle|fish|penguin|rabbit|hare|squirrel|owl|eagle|butterfly|lizard|frog|toad|tadpole|whale|dolphin|shark|seal|otter|raccoon|panda|giraffe|zebra|kangaroo|koala|parrot|macaw|flamingo|peacock|wood rabbit|retriever|terrier|spaniel|shepherd|poodle|bulldog|beagle|collie|chihuahua|kitten|puppy|sea lion|starfish|jellyfish|crab|lobster|swan|swanling|woodpecker|hummingbird|wild boar|hedgehog|ferret|guinea pig|hamster)\b/i
@@ -55,7 +59,7 @@ const profileKeywords: Record<Exclude<SemanticProfile, "unknown">, RegExp[]> = {
     /\b(anime|manga|comic book|cartoon|animation|animated cartoon|fictional character)\b/i
   ],
   gaming: [
-    /\b(video game|computer game|arcade game|joystick|game controller|gaming console)\b/i
+    /\b(video game|computer game|arcade game|mobile game|gameplay|game screen|game screenshot|gaming|gamer|joystick|game controller|gaming console|battle royale|first-person shooter|third-person shooter|moba|multiplayer online battle arena|esports|e-sports|in-game hud|game interface|game minimap|pubg|pubg mobile|playerunknown|mobile legends|mobile legends bang bang|mlbb|free fire|fortnite|call of duty|cod mobile|minecraft|roblox|genshin impact|valorant|league of legends|dota 2|apex legends|counter-strike|cs2|overwatch|brawl stars|clash royale|clash of clans|standoff 2|warzone|rocket league|world of tanks|world of warcraft|pokemon unite|wild rift)\b/i
   ]
 };
 
@@ -69,6 +73,7 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
     nature: 0,
     food: 0,
     people: 0,
+    sports: 0,
     wildlife: 0,
     "product-diy": 0,
     anime: 0,
@@ -91,7 +96,7 @@ export function inferSemanticProfile(labels: readonly Classification[]): {
   if (!best || best[1] < 0.35) return { profile: "unknown", confidence: 0 };
   const margin = best[1] - (second?.[1] ?? 0);
   // Ambiguous scenes should not force an inappropriate edit profile.
-  if (margin < 0.12 && best[1] < 0.8) return { profile: "unknown", confidence: 0 };
+  if (margin < 0.12) return { profile: "unknown", confidence: 0 };
   return { profile: best[0], confidence: Math.min(1, best[1] / Math.max(1, Math.ceil(labels.length / 5))) };
 }
 

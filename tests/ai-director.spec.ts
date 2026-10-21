@@ -4,6 +4,7 @@ import {
   findNearestDetectedObjects,
   getDirectorFrameBudget,
   inferMotionCues,
+  inferTemporalEventCues,
   inferSceneCategory,
   inferTrackedObjectCues,
   scoreDirectorMoment,
@@ -30,6 +31,15 @@ const personNear: DetectedObject = {
 test("motion cues separate stable shots from sharp movement", () => {
   expect(inferMotionCues(0.2, 0.1, [], [], 0.08)).toContain("Резкое движение");
   expect(inferMotionCues(0.01, 0.1, [], [], 0.08)).toContain("Стабильный кадр");
+});
+
+test("motion cues normalize labels so casing and whitespace do not invent scene changes", () => {
+  expect(inferMotionCues(0.08, 0.1, [" Car "], ["car"], 0.08))
+    .not.toContain("Объект входит в сцену");
+  expect(inferMotionCues(0.08, 0.1, ["Car"], [" CAR "], 0.08))
+    .not.toContain("Смена объектов в сцене");
+  expect(inferMotionCues(0.08, 0.1, [" ", ""], ["  "], 0.08))
+    .not.toContain("Объект входит в сцену");
 });
 
 test("object tracking detects screen movement and apparent approach", () => {
@@ -113,13 +123,13 @@ test("director frame budget rejects zero, negative, and non-finite durations", (
   expect(getDirectorFrameBudget(Number.POSITIVE_INFINITY)).toEqual(emptyBudget);
 });
 
-test("long-video director budget samples an interior scene while staying bounded for mobile", () => {
+test("long-video director samples more interior scenes while keeping a bounded mobile budget", () => {
   expect(getDirectorFrameBudget(30)).toEqual({
-    maxFrames: 3,
-    inferenceBudgetMs: 6500,
+    maxFrames: 5,
+    inferenceBudgetMs: 9000,
     includeEdges: false,
   });
-  expect(getDirectorFrameBudget(300).maxFrames).toBe(3);
+  expect(getDirectorFrameBudget(300).maxFrames).toBe(5);
   expect(getDirectorFrameBudget(29.99).maxFrames).toBe(4);
 });
 
@@ -154,4 +164,55 @@ test("AI Director reports missing samples separately from invalid duration", asy
 
   expect(result.modelLoaded).toBe(false);
   expect(result.note).toContain("Недостаточно кадров");
+});
+
+
+test("temporal event cues distinguish motion build-up, peaks, and settling", () => {
+  expect(inferTemporalEventCues(0.03, 0.18, 0.04, [], [], [], 0.08)).toContain("Пик движения");
+  expect(inferTemporalEventCues(0.03, 0.07, 0.09, [], [], [], 0.08)).toContain("Нарастание движения");
+  expect(inferTemporalEventCues(0.18, 0.1, 0.09, [], [], [], 0.08)).toContain("Затухание движения");
+});
+
+test("temporal event cues flag likely scene changes without inventing an action", () => {
+  expect(inferTemporalEventCues(
+    0.04,
+    0.05,
+    0.04,
+    ["car", "person"],
+    ["dog", "tree"],
+    ["dog", "tree"],
+    0.08
+  )).toContain("Вероятная смена сцены");
+  expect(inferTemporalEventCues(0.04, 0.05, 0.04, [], [], [], 0.08)).toEqual([]);
+});
+
+test("temporal event cues ignore invalid motion values", () => {
+  expect(inferTemporalEventCues(Number.NaN, 0.2, 0.1)).toEqual([]);
+});
+
+test("temporal cues do not invent peaks for steady motion or scene changes for matching labels", () => {
+  expect(inferTemporalEventCues(0.08, 0.08, 0.08, [" Car "], ["car"], ["CAR"], 0.08))
+    .not.toContain("Пик движения");
+  expect(inferTemporalEventCues(0.08, 0.08, 0.08, [" Car "], ["car"], ["CAR"], 0.08))
+    .not.toContain("Вероятная смена сцены");
+});
+
+test("temporal cues safely reject negative motion and normalize empty labels", () => {
+  expect(inferTemporalEventCues(-0.1, 0.2, 0.1, ["car"], ["dog"], ["dog"])).toEqual([]);
+  expect(inferTemporalEventCues(0.04, 0.05, 0.04, [" "], [""], [" "])).toEqual([]);
+});
+
+test("director ranking stays finite and bounded across all edit styles", () => {
+  const moment = { score: 0.7, motion: 0.18, contrast: 0.22 };
+  const objects = [
+    { label: "car", score: 0.91, box: { xmin: 15, ymin: 20, xmax: 175, ymax: 145 } },
+    { label: "person", score: 0.87, box: { xmin: 185, ymin: 25, xmax: 245, ymax: 150 } },
+  ];
+
+  for (const style of ["velocity", "anime", "cinematic", "glitch", "story"] as const) {
+    const score = scoreDirectorMoment(moment, objects, style, 0.08, 0.4);
+    expect(Number.isFinite(score), style).toBe(true);
+    expect(score, style).toBeGreaterThanOrEqual(0);
+    expect(score, style).toBeLessThanOrEqual(1);
+  }
 });

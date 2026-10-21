@@ -48,6 +48,8 @@ const montageVariants: MontageVariant[] = [
 function styleForSemanticProfile(profile: SemanticProfile | undefined, fallback: Exclude<EditStyle, "auto">): Exclude<EditStyle, "auto"> {
   switch (profile) {
     case "automotive": return "velocity";
+    // Action-heavy sports and outdoor activities benefit from tighter pacing.
+    case "sports": return "velocity";
     case "nature":
     case "food":
     case "wildlife": return "cinematic";

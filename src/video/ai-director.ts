@@ -163,6 +163,13 @@ function normalized(value: number, values: number[]): number {
   return Math.max(0, Math.min(1, (value - low) / (high - low)));
 }
 
+function normalizeSceneLabels(labels: readonly string[]): Set<string> {
+  return new Set(labels
+    .filter((label): label is string => typeof label === "string")
+    .map((label) => label.trim().toLowerCase())
+    .filter(Boolean));
+}
+
 export function inferMotionCues(
   motion: number,
   contrast: number,
@@ -176,8 +183,8 @@ export function inferMotionCues(
   else cues.push("Плавное движение");
 
   if (contrast >= 0.24) cues.push("Высокая визуальная выразительность");
-  const previous = new Set(previousLabels);
-  const current = new Set(currentLabels);
+  const previous = normalizeSceneLabels(previousLabels);
+  const current = normalizeSceneLabels(currentLabels);
   if ([...current].some((label) => !previous.has(label)) && previous.size > 0) cues.push("Объект входит в сцену");
   if ([...previous].some((label) => !current.has(label)) && current.size > 0) cues.push("Смена объектов в сцене");
   return cues;
@@ -281,6 +288,70 @@ export function scoreDirectorMoment(
     + change * changeWeight;
 }
 
+/**
+ * Infer temporal editing cues from adjacent samples. These describe visual rhythm,
+ * not verified semantic actions such as a goal, knockout, or completed cooking step.
+ */
+export function inferTemporalEventCues(
+  previousMotion: number,
+  currentMotion: number,
+  nextMotion: number,
+  previousLabels: string[] = [],
+  currentLabels: string[] = [],
+  nextLabels: string[] = [],
+  motionReference = 0.08
+): string[] {
+  const cues: string[] = [];
+  const values = [previousMotion, currentMotion, nextMotion];
+  if (values.some((value) => !Number.isFinite(value) || value < 0)) return cues;
+
+  const reference = Math.max(0.001, motionReference);
+  if (
+    currentMotion >= reference * 1.2 &&
+    currentMotion >= previousMotion * 1.25 &&
+    currentMotion >= nextMotion * 1.25
+  ) {
+    cues.push("Пик движения");
+  } else if (
+    currentMotion >= reference * 0.65 &&
+    currentMotion >= previousMotion * 1.2 &&
+    nextMotion >= currentMotion * 0.95
+  ) {
+    cues.push("Нарастание движения");
+  } else if (
+    previousMotion >= reference * 1.2 &&
+    currentMotion <= previousMotion * 0.75 &&
+    nextMotion <= currentMotion * 1.15
+  ) {
+    cues.push("Затухание движения");
+  }
+
+  const previous = normalizeSceneLabels(previousLabels);
+  const current = normalizeSceneLabels(currentLabels);
+  const next = normalizeSceneLabels(nextLabels);
+  const overlapRatio = (left: Set<string>, right: Set<string>) => {
+    if (!left.size || !right.size) return 1;
+    const overlap = [...left].filter((label) => right.has(label)).length;
+    return overlap / Math.max(left.size, right.size);
+  };
+  if (previous.size && current.size && overlapRatio(previous, current) < 0.25) {
+    cues.push("Вероятная смена сцены");
+  } else if (current.size && next.size && overlapRatio(current, next) < 0.25) {
+    cues.push("Вероятная смена сцены");
+  }
+  return [...new Set(cues)];
+}
+
+function temporalEventBonus(cues: string[], style: DirectorStyle): number {
+  const actionFocused = style === "velocity" || style === "glitch";
+  let bonus = 0;
+  if (cues.includes("Пик движения")) bonus += actionFocused ? 0.1 : 0.035;
+  if (cues.includes("Нарастание движения")) bonus += actionFocused ? 0.055 : 0.025;
+  if (cues.includes("Затухание движения")) bonus += style === "cinematic" || style === "story" ? 0.055 : 0.015;
+  if (cues.includes("Вероятная смена сцены")) bonus += style === "story" || style === "cinematic" ? 0.06 : 0.025;
+  return Math.min(0.12, bonus);
+}
+
 function chooseSampleIndices(count: number, limit: number, includeEdges = true): number[] {
   if (count <= limit) return Array.from({ length: count }, (_, index) => index);
   if (limit <= 1) return [Math.round((count - 1) / 2)];
@@ -303,7 +374,7 @@ export function getDirectorFrameBudget(duration: number): DirectorFrameBudget {
   // Long clips need more than a start/end-adjacent pair to avoid missing a
   // meaningful middle scene, but keep the extra work tightly bounded on phones.
   return duration >= 30
-    ? { maxFrames: 3, inferenceBudgetMs: 6_500, includeEdges: false }
+    ? { maxFrames: 5, inferenceBudgetMs: 9_000, includeEdges: false }
     : { maxFrames: MAX_MODEL_FRAMES, inferenceBudgetMs: 10_000, includeEdges: true };
 }
 
@@ -465,11 +536,35 @@ export async function analyzeWithAIDirector(
       ? labels.filter((label) => !previousLabels.includes(label)).length / Math.max(1, new Set([...labels, ...previousLabels]).size)
       : 0;
     const sample = samples.reduce((best, item) => Math.abs(item.time - candidate.time) < Math.abs(best.time - candidate.time) ? item : best, samples[0]);
+    const previousCandidate = candidates[index - 1];
+    const nextCandidate = candidates[index + 1];
+    const previousCandidateLabels = previousCandidate
+      ? findNearestDetectedObjects(previousCandidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius).map((item) => item.label)
+      : previousLabels;
+    const nextCandidateLabels = nextCandidate
+      ? findNearestDetectedObjects(nextCandidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius).map((item) => item.label)
+      : labels;
+    const temporalCues = previousCandidate && nextCandidate
+      ? inferTemporalEventCues(
+          previousCandidate.motion,
+          candidate.motion,
+          nextCandidate.motion,
+          previousCandidateLabels,
+          labels,
+          nextCandidateLabels,
+          Math.max(0.015, referenceMotion)
+        )
+      : [];
+    const trackedTemporalCues = isModelSample
+      ? inferTrackedObjectCues(previousObjects, objects)
+      : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
-      ...(isModelSample ? inferTrackedObjectCues(previousObjects, objects) : [])
+      ...trackedTemporalCues,
+      ...temporalCues
     ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
-    const directorScore = scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty);
+    const directorScore = Math.min(1, scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty)
+      + temporalEventBonus([...temporalCues, ...trackedTemporalCues], selectedStyle));
     return {
       ...candidate,
       score: directorScore,

@@ -58,6 +58,70 @@ test("recognizes more varied real-world subjects from common classifier labels",
   ]).profile).toBe("product-diy");
 });
 
+test("recognizes common sports and outdoor-action labels separately from general people", () => {
+  expect(inferSemanticProfile([
+    { label: "basketball", score: 0.86 },
+    { label: "basketball hoop", score: 0.72 },
+  ]).profile).toBe("sports");
+
+  expect(inferSemanticProfile([
+    { label: "tennis racket", score: 0.82 },
+    { label: "tennis ball", score: 0.77 },
+  ]).profile).toBe("sports");
+
+  expect(inferSemanticProfile([
+    { label: "skateboard", score: 0.84 },
+    { label: "skateboarding", score: 0.74 },
+  ]).profile).toBe("sports");
+
+  expect(inferSemanticProfile([
+    { label: "surfboard", score: 0.84 },
+    { label: "windsurfing", score: 0.72 },
+  ]).profile).toBe("sports");
+});
+
+test("recognizes popular mobile and PC games including PUBG and MLBB", () => {
+  for (const label of [
+    "PUBG Mobile",
+    "Mobile Legends Bang Bang",
+    "MLBB",
+    "battle royale",
+    "gameplay",
+    "game minimap",
+    "Fortnite",
+    "Free Fire",
+    "Call of Duty",
+    "Minecraft",
+    "Valorant",
+    "League of Legends",
+    "Dota 2",
+    "Genshin Impact",
+    "Roblox",
+  ]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("gaming");
+  }
+});
+
+test("recognizes cooking-process and recipe-video labels", () => {
+  for (const label of [
+    "cooking", "chef", "recipe", "food preparation", "meal prep",
+    "chopping", "slicing", "stirring", "whisking", "kneading",
+    "seasoning", "grilling", "frying", "boiling", "simmering",
+    "saute", "plating", "marinating", "food styling", "kitchen counter",
+  ]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("food");
+  }
+});
+
+test("recognizes travel and social-video labels alongside people and landscapes", () => {
+  for (const label of ["travel", "tourist", "sightseeing", "hiking", "road trip", "cityscape"]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("nature");
+  }
+  for (const label of ["vlog", "vlogger", "video blog", "influencer", "talking head", "podcast", "interview", "content creator"]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("people");
+  }
+});
+
 test("semantic profile inference stays unknown for weak or ambiguous predictions", () => {
   expect(inferSemanticProfile([
     { label: "sports car", score: 0.12 },
@@ -112,3 +176,25 @@ test("recognizes anime and gaming labels as distinct broad content profiles", ()
     { label: "game controller", score: 0.78 },
   ]).profile).toBe("gaming");
 });
+
+test("semantic profile inference remains conservative for low-confidence sports and gaming labels", () => {
+  expect(inferSemanticProfile([
+    { label: "skateboarding", score: 0.14 },
+    { label: "PUBG Mobile", score: 0.12 },
+  ]).profile).toBe("unknown");
+
+  expect(inferSemanticProfile([
+    { label: "skateboarding", score: 0.88 },
+    { label: "PUBG Mobile", score: 0.86 },
+  ]).profile).toBe("unknown");
+});
+
+test("recognizes additional outdoor activities without misclassifying cooking or travel", () => {
+  for (const label of ["rock climbing", "boxing", "skiing", "rowing boat", "soccer ball"]) {
+    expect(inferSemanticProfile([{ label, score: 0.9 }]).profile, label).toBe("sports");
+  }
+
+  expect(inferSemanticProfile([{ label: "camping", score: 0.9 }]).profile).toBe("nature");
+  expect(inferSemanticProfile([{ label: "food preparation", score: 0.9 }]).profile).toBe("food");
+});
+
