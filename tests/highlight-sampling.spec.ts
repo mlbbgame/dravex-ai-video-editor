@@ -21,6 +21,20 @@ test("long clips distribute the bounded samples over the full source", () => {
   expect(getHighlightSamplingInterval(300, 24)).toBe(12.5);
 });
 
+test("aggressive and cinematic variants select different moments for different visual goals", () => {
+  const candidates = [
+    { time: 1, start: 0.5, end: 1.5, score: 0.4, motion: 1, contrast: 0.1 },
+    { time: 2, start: 1.5, end: 2.5, score: 0.7, motion: 0, contrast: 0.1 },
+    { time: 3.5, start: 3, end: 4, score: 0.3, motion: 0.2, contrast: 0.2 },
+  ];
+  const variants = buildHighlightVariants(candidates, 5);
+  const aggressive = variants.find((variant) => variant.id === "aggressive");
+  const cinematic = variants.find((variant) => variant.id === "cinematic");
+
+  expect(aggressive?.moments[0]?.time).toBe(1);
+  expect(cinematic?.moments[0]?.time).toBe(2);
+});
+
 test("invalid sampling inputs fall back safely", () => {
   expect(getHighlightSamplingInterval(Number.NaN, 18)).toBe(2);
   expect(getHighlightSamplingInterval(25, 1)).toBe(2);
