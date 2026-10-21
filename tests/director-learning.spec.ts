@@ -57,7 +57,7 @@ test("experience validation rejects malformed objects without throwing", () => {
     "Experience must be an object.",
   ]);
   expect(validateExperience({ id: 4 } as unknown as MontageExperience)).toContain(
-    "Experience ID is required.",
+    "Experience ID must be a non-empty string of at most 120 characters.",
   );
 });
 
