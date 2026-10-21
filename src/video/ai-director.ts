@@ -274,8 +274,24 @@ export function findNearestDetectedObjects(
     : [];
 }
 
-export function inferTrackedObjectCues(previousObjects: DetectedObject[], currentObjects: DetectedObject[]): string[] {
+export function inferTrackedObjectCues(
+  previousObjects: DetectedObject[],
+  currentObjects: DetectedObject[],
+  previousTime?: number,
+  currentTime?: number,
+  maxGapSeconds = 2.5
+): string[] {
   const cues: string[] = [];
+  const hasAnyTimestamp = previousTime !== undefined || currentTime !== undefined;
+  const hasValidTimestamps = Number.isFinite(previousTime) && Number.isFinite(currentTime);
+  const safeMaxGap = Number.isFinite(maxGapSeconds) ? Math.max(0, maxGapSeconds) : 2.5;
+  // Object motion and apparent approach need nearby observations; distant samples
+  // can represent unrelated scenes even if a detector finds the same object class.
+  if (hasAnyTimestamp && (
+    !hasValidTimestamps ||
+    (currentTime as number) <= (previousTime as number) ||
+    (currentTime as number) - (previousTime as number) > safeMaxGap
+  )) return cues;
   const matchedPrevious = new Set<number>();
   for (const current of currentObjects) {
     const currentCenterX = (current.box.xmin + current.box.xmax) / 2;
@@ -719,8 +735,8 @@ export async function analyzeWithAIDirector(
           nextCandidate.time
         )
       : [];
-    const trackedTemporalCues = isModelSample
-      ? inferTrackedObjectCues(previousObjects, objects)
+    const trackedTemporalCues = isModelSample && previousCandidate
+      ? inferTrackedObjectCues(previousObjects, objects, previousCandidate.time, candidate.time)
       : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
