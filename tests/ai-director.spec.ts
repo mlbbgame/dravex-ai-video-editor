@@ -131,7 +131,21 @@ test("long-video director samples more interior scenes while keeping a bounded m
     inferenceBudgetMs: 9000,
     includeEdges: false,
   });
-  expect(getDirectorFrameBudget(300).maxFrames).toBe(5);
+  expect(getDirectorFrameBudget(30)).toEqual({
+    maxFrames: 5,
+    inferenceBudgetMs: 9_000,
+    includeEdges: false,
+  });
+  expect(getDirectorFrameBudget(60)).toEqual({
+    maxFrames: 6,
+    inferenceBudgetMs: 11_000,
+    includeEdges: false,
+  });
+  expect(getDirectorFrameBudget(300)).toEqual({
+    maxFrames: 8,
+    inferenceBudgetMs: 14_000,
+    includeEdges: false,
+  });
   expect(getDirectorFrameBudget(29.99).maxFrames).toBe(4);
 });
 
