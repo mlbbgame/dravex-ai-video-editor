@@ -4,7 +4,8 @@
 Smart Eye is a separate perception/evidence layer for AI Director. It keeps a structured, timestamped ledger of every event currently emitted by the analysis and a normalized set of detected object labels. The director can use this report for shot ranking, variant differentiation, diagnostics, and later integrations.
 
 ## Current implementation
-- Builds a timestamped memory ledger from the existing event timeline and object labels.
+- Builds a timestamped memory ledger from the event timeline and sampled-frame observations (detected labels and visual cues).
+- Keeps labels attached to sampled timestamps when available; aggregated labels without a frame timestamp remain explicitly untimed rather than being assigned to second zero.
 - Deduplicates entity labels, sorts event evidence by source time, rejects events outside the source duration, and bounds confidence/coverage values.
 - Reports sampling coverage and explicit limitations rather than claiming complete video understanding.
 - The report is returned by the AI Director for the current analysis.
