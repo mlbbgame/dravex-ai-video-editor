@@ -305,6 +305,17 @@ export function evaluateTuningCandidate(
     || !validScore(benchmark.baselineScore) || !validScore(benchmark.candidateScore)) {
     reasons.push("Benchmark scores must be between 0 and 1.");
   } else {
+    const baselineIds = benchmark.baselineSampleIds;
+    const candidateIds = benchmark.candidateSampleIds;
+    const validIds = (ids: unknown): ids is string[] => Array.isArray(ids)
+      && ids.every((id) => typeof id === "string" && id.trim().length > 0 && id.length <= 120)
+      && new Set(ids).size === ids.length;
+    if (!validIds(baselineIds) || !validIds(candidateIds)
+      || baselineIds.length < 5
+      || baselineIds.length !== candidateIds.length
+      || baselineIds.some((id, index) => id !== candidateIds[index])) {
+      reasons.push("Benchmark must use at least 5 identical ordered sample IDs for both versions.");
+    }
     if (!benchmark.baselineRegressionByDimension
       || typeof benchmark.baselineRegressionByDimension !== "object"
       || Array.isArray(benchmark.baselineRegressionByDimension)) {
