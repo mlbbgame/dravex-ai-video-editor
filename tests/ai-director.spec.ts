@@ -77,6 +77,18 @@ test("object matching does not confuse two same-class objects when detector orde
   expect(inferTrackedObjectCues(previous, current)).not.toContain("Объект перемещается по кадру");
 });
 
+test("object tracking ignores implausible jumps between same-class detections", () => {
+  const left: DetectedObject = {
+    label: "person", score: 0.92,
+    box: { xmin: 10, ymin: 25, xmax: 60, ymax: 140 },
+  };
+  const farRight: DetectedObject = {
+    label: "person", score: 0.92,
+    box: { xmin: 280, ymin: 25, xmax: 320, ymax: 140 },
+  };
+  expect(inferTrackedObjectCues([left], [farRight])).toEqual([]);
+});
+
 test("scene category inference identifies food, vehicles, and wildlife from object labels", () => {
   expect(inferSceneCategory(["pizza", "bottle", "cake"]).category).toBe("food");
   expect(inferSceneCategory(["car", "truck", "person"]).category).toBe("vehicles");
