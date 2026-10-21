@@ -23,8 +23,22 @@ export function rankHighlightMomentsForStyle(
   candidates: HighlightMoment[],
   style: HighlightRankingStyle,
 ): HighlightMoment[] {
-  const motions = candidates.map((item) => item.motion);
-  const contrasts = candidates.map((item) => item.contrast);
+  // Keep malformed runtime data out of ranking: a single NaN can otherwise
+  // make sort comparisons unstable and leak an invalid trim into a variant.
+  const safeCandidates = candidates.filter((item) =>
+    Number.isFinite(item.time) &&
+    Number.isFinite(item.start) &&
+    Number.isFinite(item.end) &&
+    Number.isFinite(item.score) &&
+    Number.isFinite(item.motion) &&
+    Number.isFinite(item.contrast) &&
+    item.start >= 0 &&
+    item.end > item.start &&
+    item.time >= item.start &&
+    item.time <= item.end
+  );
+  const motions = safeCandidates.map((item) => item.motion);
+  const contrasts = safeCandidates.map((item) => item.contrast);
   const feature = (value: number, values: number[]) => {
     if (!values.length) return 0.5;
     const low = Math.min(...values);
@@ -43,7 +57,7 @@ export function rankHighlightMomentsForStyle(
       case "story": return visual * 0.4 + contrast * 0.1 + (1 - motion) * 0.5;
     }
   };
-  return [...candidates].sort((a, b) => score(b) - score(a));
+  return [...safeCandidates].sort((a, b) => score(b) - score(a));
 }
 
 export type HighlightVariant = {
