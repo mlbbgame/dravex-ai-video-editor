@@ -208,3 +208,16 @@ test("free local semantic analysis safely skips empty or invalid frame input", a
     { time: 2, imageDataUrl: "" },
   ])).resolves.toBeNull();
 });
+
+
+test("semantic analysis ignores malformed runtime frame records before model loading", async () => {
+  const malformed = [
+    null,
+    undefined,
+    17,
+    { time: 1, imageDataUrl: "https://example.com/frame.png" },
+    { time: Number.POSITIVE_INFINITY, imageDataUrl: "data:image/png;base64,AAAA" },
+  ] as never;
+
+  await expect(classifySemanticFrames(malformed)).resolves.toBeNull();
+});
