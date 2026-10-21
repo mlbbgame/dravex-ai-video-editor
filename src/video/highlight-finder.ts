@@ -75,6 +75,18 @@ export function getHighlightSampleLimit(duration: number): number {
   return 60;
 }
 
+/**
+ * Choose a useful temporal sampling interval for highlight analysis.
+ * Clips under 30 seconds need denser samples to locate brief action peaks;
+ * longer clips keep their existing bounded sample budget for mobile devices.
+ */
+export function getHighlightSamplingInterval(duration: number, sampleLimit: number): number {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleLimit) || sampleLimit < 2) return 2;
+  if (duration < 30) return 1;
+  if (duration < 120) return 1.5;
+  return duration / Math.max(2, Math.floor(sampleLimit));
+}
+
 /** Keep each frame seek inside the overall analysis deadline on slow mobile decoders. */
 export function getBoundedSeekTimeoutMs(
   elapsedMs: number,
@@ -378,7 +390,7 @@ export async function analyzeVideoForHighlights(
     // A dozen representative frames are preferable to leaving the editor blocked for minutes.
     const isLongSource = duration >= 30;
     const sampleLimit = getHighlightSampleLimit(duration);
-    const interval = Math.max(2, duration / sampleLimit);
+    const interval = getHighlightSamplingInterval(duration, sampleLimit);
     const total = Math.max(2, Math.min(sampleLimit, Math.ceil(duration / interval)));
     const raw: Array<{ time: number; motion: number; contrast: number; saturation: number; brightness: number; detail: number }> = [];
     const semanticCanvas = document.createElement("canvas");
@@ -518,7 +530,7 @@ function normalizedFeature(value: number, values: number[]): number {
   return high - low < 0.0001 ? 0.5 : Math.max(0, Math.min(1, (value - low) / (high - low)));
 }
 
-function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number) {
+function chooseSpread(candidates: HighlightMoment[], count: number, spacing: number, mode: HighlightVariant["id"], sourceDuration: number, shotLength: number) {
   const motionValues = candidates.map((item) => item.motion);
   const contrastValues = candidates.map((item) => item.contrast);
   const styleScore = (item: HighlightMoment) => {
@@ -533,8 +545,12 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   const selected: HighlightMoment[] = [];
   // Distinct timestamps can still refer to the same source footage when candidate
   // windows are wide. Reject both near-duplicate centres and overlapping source ranges.
+  // The renderer normalizes each selected moment to shotLength around its center.
+  // Candidate windows may not overlap while those final rendered trims still do,
+  // so enforce spacing against the actual output duration as well.
+  const effectiveGap = Math.max(spacing, shotLength + 0.08);
   const conflicts = (candidate: HighlightMoment, existing: HighlightMoment) =>
-    Math.abs(existing.time - candidate.time) < spacing
+    Math.abs(existing.time - candidate.time) < effectiveGap
     || (candidate.start < existing.end + 0.08 && candidate.end > existing.start - 0.08);
   const canAdd = (candidate: HighlightMoment) => selected.every((item) => !conflicts(candidate, item));
   // Seed the cut with the strongest style-matched moment from evenly spaced time buckets.
@@ -556,7 +572,7 @@ function chooseSpread(candidates: HighlightMoment[], count: number, spacing: num
   for (const item of ranked) {
     if (selected.length >= count) break;
     if (selected.every((existing) =>
-      existing.time !== item.time
+      Math.abs(existing.time - item.time) >= effectiveGap
       && !(item.start < existing.end + 0.08 && item.end > existing.start - 0.08)
     )) selected.push(item);
   }
@@ -609,7 +625,7 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
     }
     const availableCount = Math.max(1, Math.floor(sourceDuration / (config.shotLength + 0.35)));
     const count = Math.max(1, Math.min(config.desired, availableCount, safeCandidates.length));
-    const moments = chooseSpread(safeCandidates, count, config.spacing, config.id, sourceDuration).map((moment) => {
+    const moments = chooseSpread(safeCandidates, count, config.spacing, config.id, sourceDuration, config.shotLength).map((moment) => {
       const shotLength = Math.min(config.shotLength, sourceDuration);
       const start = Math.max(0, Math.min(sourceDuration - shotLength, moment.time - shotLength / 2));
       return {

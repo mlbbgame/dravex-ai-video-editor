@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   analyzeWithAIDirector,
+  chooseAdaptiveDirectorSampleIndices,
   findNearestDetectedObjects,
   getDirectorFrameBudget,
   inferMotionCues,
@@ -215,4 +216,27 @@ test("director ranking stays finite and bounded across all edit styles", () => {
     expect(score, style).toBeGreaterThanOrEqual(0);
     expect(score, style).toBeLessThanOrEqual(1);
   }
+});
+
+
+test("adaptive director sampling prioritizes a sharp temporal peak without losing source coverage", () => {
+  const candidates = Array.from({ length: 20 }, (_, index) => ({
+    score: index === 12 ? 0.98 : 0.3 + (index % 3) * 0.05,
+    motion: index === 12 ? 0.95 : 0.08,
+    contrast: index === 12 ? 0.3 : 0.1,
+  }));
+  const selected = chooseAdaptiveDirectorSampleIndices(candidates, 5, false);
+
+  expect(selected).toHaveLength(5);
+  expect(selected).toEqual([...selected].sort((a, b) => a - b));
+  expect(selected).toContain(12);
+  expect(selected[0]).toBeGreaterThan(0);
+  expect(selected[selected.length - 1]).toBeLessThan(candidates.length - 1);
+});
+
+test("adaptive director sampling handles invalid budgets and small sources safely", () => {
+  const candidates = [{ score: 0.4, motion: 0.1, contrast: 0.1 }, { score: 0.5, motion: 0.2, contrast: 0.2 }];
+  expect(chooseAdaptiveDirectorSampleIndices(candidates, 0)).toEqual([]);
+  expect(chooseAdaptiveDirectorSampleIndices(candidates, Number.NaN)).toEqual([]);
+  expect(chooseAdaptiveDirectorSampleIndices(candidates, 5)).toEqual([0, 1]);
 });
