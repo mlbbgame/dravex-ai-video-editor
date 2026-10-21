@@ -194,6 +194,7 @@ export default function App() {
   const [feedbackDimension, setFeedbackDimension] = useState<keyof MontageQuality>("momentSelection");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState("");
+  const feedbackSubmissionRef = useRef(false);
   const [diagnosticEvents, setDiagnosticEvents] = useState<DirectorDiagnosticEvent[]>([]);
   const learningProfileRef = useRef<LearningProfileId>("general");
   const learningVariantRef = useRef<MontageVariantId>("hype");
@@ -608,7 +609,8 @@ export default function App() {
   };
 
   const recordLearningFeedback = async (rating: "good" | "improve") => {
-    if (!learningEnabled || feedbackSubmitted) return;
+    if (!learningEnabled || feedbackSubmissionRef.current || feedbackSubmitted) return;
+    feedbackSubmissionRef.current = true;
     const score = rating === "good" ? 0.9 : 0.35;
     const quality: Partial<MontageQuality> = { [feedbackDimension]: score };
     if (qualityReport) quality.technicalReliability = qualityReport.severity === "ok" ? 1 : 0;
@@ -637,6 +639,8 @@ export default function App() {
         setLearningStatus(`Гипотеза для проверки: ${hypotheses[0].title}. Автоматически менять монтаж без сравнительных тестов не будем.`);
       }
     } catch {
+      feedbackSubmissionRef.current = false;
+      setFeedbackSubmitted(false);
       setFeedbackStatus("Не удалось сохранить оценку. Проверь доступ браузера к локальному хранилищу.");
     }
   };
@@ -796,6 +800,7 @@ export default function App() {
     setQualityReport(null);
     setQualityCheckBusy(false);
     setFeedbackSubmitted(false);
+    feedbackSubmissionRef.current = false;
     setFeedbackStatus("");
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
