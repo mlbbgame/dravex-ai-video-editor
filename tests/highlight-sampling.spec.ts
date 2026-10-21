@@ -72,7 +72,13 @@ test("director variants use distinct pacing targets", () => {
   const variants = buildHighlightVariants(candidates, 24);
   const shotLengths = new Set(variants.map((variant) => variant.shotLength));
   const momentCounts = new Set(variants.map((variant) => variant.moments.length));
+  const sourceIntervalFingerprints = new Set(variants.map((variant) =>
+    variant.moments.map((moment) => Math.round(moment.time * 10)).join(","),
+  ));
 
   expect(shotLengths.size).toBeGreaterThan(1);
   expect(momentCounts.size).toBeGreaterThan(1);
+  // Variants must make different source-selection decisions, not merely use
+  // different output shot lengths or effects over the same footage.
+  expect(sourceIntervalFingerprints.size).toBe(variants.length);
 });
