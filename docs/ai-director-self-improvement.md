@@ -15,12 +15,12 @@
 ## Current implementation
 
 - `src/video/director-learning.ts` provides typed experience records, validation, per-profile summaries, hypothesis generation, conservative tuning-candidate evaluation, and an injected local JSON store adapter.
-- `src/video/director-knowledge.ts` provides explainable editing heuristics for gaming (including MLBB/PUBG), cars/drift, nature/travel, food, sports, people, products/DIY, and anime. The local plan generator now includes the matching principles, avoid-list, and quality questions when prompt keywords identify a domain.
+- `src/video/director-knowledge.ts` provides explainable editing heuristics for gaming (including MLBB/PUBG), cars/drift, nature/travel, food, sports, people, products/DIY, and anime. The local plan generator includes the matching principles, avoid-list, and quality questions when prompt keywords identify a domain.
 - Experience history is bounded to 500 records and duplicate IDs are ignored by the store adapter.
 - `tests/director-learning.spec.ts` covers validation, profile isolation, hypothesis generation, and acceptance/rollback decisions.
 - The tuning evaluator changes only explicit bounded planner parameters. It does not edit source code or claim to retrain a neural network.
 - Knowledge-domain inference is based on the text prompt, not verified video understanding. The generated plan says this explicitly; visual action recognition and renderer integration remain separate work.
-- The local store adapter requires the app to inject browser storage; production integration must include clear user controls for retention/deletion and must not silently upload history.
+- The editor now exposes an explicit opt-in toggle (off by default) and a delete-memory control. When enabled, export clicks append compact experience records to local browser storage; records contain no media bytes, filenames, or URLs. The history is bounded to 500 records. The user can disable further recording or delete the stored history from the editor.
 
 ## Deliberate limitations
 
