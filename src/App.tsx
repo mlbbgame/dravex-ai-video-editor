@@ -78,7 +78,8 @@ function toLearningProfile(profile: SemanticProfile | undefined): LearningProfil
   }
 }
 
-function toLearningVariant(style: Exclude<EditStyle, "auto">): MontageVariantId {
+function toLearningVariant(style: EditStyle): MontageVariantId {
+  if (style === "auto") return "cinematic";
   if (style === "velocity") return "hype";
   if (style === "cinematic") return "cinematic";
   if (style === "story") return "emotion";
