@@ -60,6 +60,33 @@ test("short clips are partitioned without repeating the same opening frames", ()
   expect(plan.cuts[1].trimEnd).toBeCloseTo(1.2);
 });
 
+test("variant preview plans stay bounded and non-overlapping across duration edge cases", () => {
+  const variants = ["auto", "velocity", "cinema", "pulse", "story"];
+  const sourceDurations = [0.45, 0.9, 1.2, 3.79, 3.8, 3.81, 4, 4.01, 7.6, 15, 60, 60.01];
+
+  for (const sourceDuration of sourceDurations) {
+    for (const variant of variants) {
+      const plan = planVariantPreviewCuts(sourceDuration, 3.8, variant);
+      expect(Number.isFinite(plan.duration), `${variant}: duration=${sourceDuration}`).toBe(true);
+      expect(plan.duration).toBeGreaterThan(0);
+      expect(plan.duration).toBeLessThanOrEqual(sourceDuration + 1e-9);
+      expect(plan.cuts.length).toBeGreaterThan(0);
+
+      for (let index = 0; index < plan.cuts.length; index += 1) {
+        const cut = plan.cuts[index];
+        expect(Number.isFinite(cut.trimStart)).toBe(true);
+        expect(Number.isFinite(cut.trimEnd)).toBe(true);
+        expect(cut.trimStart).toBeGreaterThanOrEqual(-1e-9);
+        expect(cut.trimEnd).toBeLessThanOrEqual(sourceDuration + 1e-9);
+        expect(cut.trimEnd).toBeGreaterThan(cut.trimStart);
+        if (index > 0) {
+          expect(cut.trimStart).toBeGreaterThanOrEqual(plan.cuts[index - 1].trimEnd - 1e-9);
+        }
+      }
+    }
+  }
+});
+
 test("invalid source lengths produce an empty plan", () => {
   expect(planVariantPreviewCuts(0, 3.8, "pulse")).toEqual({ duration: 0, cuts: [] });
   expect(planVariantPreviewCuts(Number.NaN, 3.8, "story")).toEqual({ duration: 0, cuts: [] });
