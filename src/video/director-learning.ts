@@ -279,21 +279,46 @@ export function evaluateTuningCandidate(
   const maximumDimensionRegression = options.maximumDimensionRegression ?? 0.05;
   const reasons: string[] = [];
 
-  for (const [key, value] of Object.entries(candidateValues)) {
-    if (!Number.isFinite(value) || value < 0 || value > 1) {
-      reasons.push(`Candidate tuning '${key}' must be between 0 and 1.`);
+  if (!current || typeof current !== "object" || !Number.isInteger(current.version) || current.version < 1
+    || !current.values || typeof current.values !== "object" || Array.isArray(current.values)) {
+    reasons.push("Current tuning profile is malformed.");
+  }
+  if (!options || !Number.isFinite(minimumGain) || minimumGain < 0 || minimumGain > 1) {
+    reasons.push("Minimum gain must be between 0 and 1.");
+  }
+  if (!Number.isFinite(maximumDimensionRegression)
+    || maximumDimensionRegression < 0 || maximumDimensionRegression > 1) {
+    reasons.push("Maximum dimension regression must be between 0 and 1.");
+  }
+  if (!candidateValues || typeof candidateValues !== "object" || Array.isArray(candidateValues)) {
+    reasons.push("Candidate tuning values must be an object.");
+  } else {
+    for (const [key, value] of Object.entries(candidateValues)) {
+      if (!key.trim() || !Number.isFinite(value) || value < 0 || value > 1) {
+        reasons.push(`Candidate tuning '${key}' must be between 0 and 1.`);
+      }
     }
   }
-  if (!validScore(benchmark.baselineScore) || !validScore(benchmark.candidateScore)) {
+  if (!benchmark || typeof benchmark !== "object"
+    || !validScore(benchmark.baselineScore) || !validScore(benchmark.candidateScore)) {
     reasons.push("Benchmark scores must be between 0 and 1.");
-  } else if (benchmark.candidateScore < benchmark.baselineScore + minimumGain) {
-    reasons.push(`Candidate improvement must be at least ${minimumGain.toFixed(2)}.`);
-  }
-  for (const [dimension, regression] of Object.entries(benchmark.baselineRegressionByDimension)) {
-    if (!Number.isFinite(regression) || regression < 0) {
-      reasons.push(`Regression for ${dimension} must be a non-negative number.`);
-    } else if (regression > maximumDimensionRegression) {
-      reasons.push(`Regression for ${dimension} exceeds the allowed limit.`);
+  } else {
+    if (!benchmark.baselineRegressionByDimension
+      || typeof benchmark.baselineRegressionByDimension !== "object"
+      || Array.isArray(benchmark.baselineRegressionByDimension)) {
+      reasons.push("Dimension regressions must be provided as an object.");
+    } else {
+      for (const [dimension, regression] of Object.entries(benchmark.baselineRegressionByDimension)) {
+        if (!Number.isFinite(regression) || regression < 0 || regression > 1) {
+          reasons.push(`Regression for ${dimension} must be between 0 and 1.`);
+        } else if (regression > maximumDimensionRegression) {
+          reasons.push(`Regression for ${dimension} exceeds the allowed limit.`);
+        }
+      }
+    }
+    if (Number.isFinite(minimumGain) && minimumGain >= 0 && minimumGain <= 1
+      && benchmark.candidateScore < benchmark.baselineScore + minimumGain) {
+      reasons.push(`Candidate improvement must be at least ${minimumGain.toFixed(2)}.`);
     }
   }
 
