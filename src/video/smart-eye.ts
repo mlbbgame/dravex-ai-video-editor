@@ -66,8 +66,11 @@ const LABEL_GROUPS: Record<Exclude<DetectedSceneCategory, "general">, Set<string
  * infinite, cross-session memory or semantic recognition the model did not perform.
  */
 export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport {
-  const duration = Number.isFinite(input.duration) ? Math.max(0, input.duration) : 0;
-  const labels = [...new Set(input.detectedLabels
+  const safeInput = input && typeof input === "object" ? input : {} as SmartEyeReportInput;
+  const rawDuration = safeInput.duration;
+  const duration = typeof rawDuration === "number" && Number.isFinite(rawDuration) ? Math.max(0, rawDuration) : 0;
+  const rawLabels = Array.isArray(safeInput.detectedLabels) ? safeInput.detectedLabels : [];
+  const labels = [...new Set(rawLabels
     .filter((label): label is string => typeof label === "string")
     .map((label) => label.trim().toLowerCase())
     .filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -81,15 +84,16 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
     : "general";
 
   const memory: SmartEyeMemoryEntry[] = [];
-  const observations = (input.observations ?? [])
-    .filter((item) => Number.isFinite(item.time) && item.time >= 0 && item.time <= duration)
+  const rawObservations = Array.isArray(safeInput.observations) ? safeInput.observations : [];
+  const observations = rawObservations
+    .filter((item) => item && typeof item === "object" && typeof item.time === "number" && Number.isFinite(item.time) && item.time >= 0 && item.time <= duration)
     .map((item) => ({
       ...item,
-      sceneLabels: [...new Set(item.sceneLabels
+      sceneLabels: [...new Set((Array.isArray(item.sceneLabels) ? item.sceneLabels : [])
         .filter((label): label is string => typeof label === "string")
         .map((label) => label.trim().toLowerCase())
         .filter(Boolean))],
-      actionCues: [...new Set(item.actionCues
+      actionCues: [...new Set((Array.isArray(item.actionCues) ? item.actionCues : [])
         .filter((cue): cue is string => typeof cue === "string")
         .map((cue) => cue.trim())
         .filter(Boolean))]
@@ -130,34 +134,36 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       evidence: ["Объект обнаружен в анализе, но отдельная временная отметка недоступна"]
     });
   }
-  for (const event of input.events) {
-    if (!Number.isFinite(event.sourceTime) || event.sourceTime < 0 || event.sourceTime > duration) continue;
+  const rawEvents = Array.isArray(safeInput.events) ? safeInput.events : [];
+  for (const event of rawEvents) {
+    if (!event || typeof event !== "object" || typeof event.sourceTime !== "number" || !Number.isFinite(event.sourceTime) || event.sourceTime < 0 || event.sourceTime > duration) continue;
     memory.push({
       id: `event:${event.kind}:${event.sourceTime.toFixed(3)}`,
       time: event.sourceTime,
       kind: event.kind,
-      label: event.label,
-      confidence: Number.isFinite(event.confidence) ? Math.max(0, Math.min(1, event.confidence)) : 0,
+      label: typeof event.label === "string" ? event.label.slice(0, 160) : "Неизвестное событие",
+      confidence: typeof event.confidence === "number" && Number.isFinite(event.confidence) ? Math.max(0, Math.min(1, event.confidence)) : 0,
       certainty: "inferred",
-      evidence: [...new Set(event.evidence.filter((item) => typeof item === "string" && item.trim()))]
+      evidence: [...new Set((Array.isArray(event.evidence) ? event.evidence : []).filter((item) => typeof item === "string" && item.trim()).map((item) => item.slice(0, 160)))].slice(0, 12)
     });
   }
   memory.sort((a, b) => (a.time ?? Number.POSITIVE_INFINITY) - (b.time ?? Number.POSITIVE_INFINITY) || a.id.localeCompare(b.id));
 
-  const candidateCount = Number.isFinite(input.candidateCount) ? Math.max(0, Math.floor(input.candidateCount)) : 0;
-  const sampledFrameCount = Number.isFinite(input.sampledFrameCount)
-    ? Math.max(0, Math.min(candidateCount, Math.floor(input.sampledFrameCount)))
+  const candidateCount = typeof safeInput.candidateCount === "number" && Number.isFinite(safeInput.candidateCount) ? Math.max(0, Math.floor(safeInput.candidateCount)) : 0;
+  const sampledFrameCount = typeof safeInput.sampledFrameCount === "number" && Number.isFinite(safeInput.sampledFrameCount)
+    ? Math.max(0, Math.min(candidateCount, Math.floor(safeInput.sampledFrameCount)))
     : 0;
-  const eventTimes = input.events
+  const eventTimes = rawEvents
+    .filter((event) => event && typeof event === "object")
     .map((event) => event.sourceTime)
-    .filter((time) => Number.isFinite(time) && time >= 0 && time <= duration)
+    .filter((time) => typeof time === "number" && Number.isFinite(time) && time >= 0 && time <= duration)
     .sort((a, b) => a - b);
   // Report temporal blind spots explicitly. Include source boundaries so a set
   // of clustered interior observations cannot look like full-timeline coverage.
   // Candidate observations can include unsampled moments whose cues were inferred
   // from nearby frames. Coverage must use only timestamps actually sent to the model.
-  const suppliedSampleTimes = (input.sampledFrameTimes ?? observations.map((item) => item.time))
-    .filter((time) => Number.isFinite(time) && time >= 0 && time <= duration);
+  const suppliedSampleTimes = (Array.isArray(safeInput.sampledFrameTimes) ? safeInput.sampledFrameTimes : observations.map((item) => item.time))
+    .filter((time): time is number => typeof time === "number" && Number.isFinite(time) && time >= 0 && time <= duration);
   const observationTimes = [...new Set(suppliedSampleTimes)]
     .sort((a, b) => a - b);
   const coverageAnchors = [...new Set([0, ...observationTimes, duration])]
@@ -170,7 +176,7 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
   return {
     version: 1,
     duration,
-    selectedStyle: input.selectedStyle,
+    selectedStyle: safeInput.selectedStyle && ["velocity", "anime", "cinematic", "glitch", "story"].includes(safeInput.selectedStyle) ? safeInput.selectedStyle : "cinematic",
     sceneCategory: category,
     detectedEntities: labels,
     memory,
