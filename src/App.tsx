@@ -14,7 +14,7 @@ import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
-import { JsonLocalExperienceStore, proposeImprovements, type LearningProfileId, type MontageExperience, type MontageVariantId } from "./video/director-learning";
+import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, type LearningProfileId, type MontageExperience, type MontageVariantId } from "./video/director-learning";
 import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -777,6 +777,24 @@ export default function App() {
         actualStyle = style === "auto"
           ? (photoCount >= 4 || (musicFile !== null && beatSync) ? "velocity" : "cinematic")
           : actualStyle;
+        if (style === "auto" && learningEnabled) {
+          try {
+            const history = await new JsonLocalExperienceStore(window.localStorage).load();
+            const preference = recommendPreferredVariant(history, learningProfileRef.current);
+            if (preference) {
+              const preferredStyle: Record<MontageVariantId, Exclude<EditStyle, "auto">> = {
+                hype: "velocity",
+                cinematic: "cinematic",
+                emotion: "story",
+                signature: "anime",
+              };
+              actualStyle = preferredStyle[preference.variant];
+              setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+            }
+          } catch {
+            // Personalization is optional; a storage issue must not block montage.
+          }
+        }
         const shotSeconds = actualStyle === "velocity" ? (musicFile && beatSync ? 1.25 : 1.55)
           : actualStyle === "glitch" ? 1.35
           : actualStyle === "anime" ? 1.65
@@ -810,12 +828,34 @@ export default function App() {
           sourceVideoDuration = analysis.duration;
           learningProfileRef.current = toLearningProfile(analysis.semantic?.profile);
           renderDuration = Math.min(duration, analysis.duration);
+          let learnedStylePreferenceApplied = false;
           if (style === "auto") {
             const averageMotion = analysis.samples.reduce((sum, sample) => sum + sample.motion, 0) / Math.max(1, analysis.samples.length);
             const motionStyle = averageMotion > 0.075 ? "velocity" : "cinematic";
             actualStyle = analysis.semantic?.profile && analysis.semantic.profile !== "unknown"
               ? styleForSemanticProfile(analysis.semantic.profile, motionStyle)
               : motionStyle;
+            // Scene evidence wins when available. Learned preference is a fallback for
+            // ambiguous/general footage, and only after repeated explicit user exports.
+            if ((!analysis.semantic?.profile || analysis.semantic.profile === "unknown") && learningEnabled) {
+              try {
+                const history = await new JsonLocalExperienceStore(window.localStorage).load();
+                const preference = recommendPreferredVariant(history, learningProfileRef.current);
+                if (preference) {
+                  const preferredStyle: Record<MontageVariantId, Exclude<EditStyle, "auto">> = {
+                    hype: "velocity",
+                    cinematic: "cinematic",
+                    emotion: "story",
+                    signature: "anime",
+                  };
+                  actualStyle = preferredStyle[preference.variant];
+                  learnedStylePreferenceApplied = true;
+                  setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+                }
+              } catch {
+                // Personalization is optional; do not block analysis if storage is unavailable.
+              }
+            }
           }
           setMessage("AI Director: загружаем модель распознавания объектов и анализируем сцены…");
           const directorResult = await analyzeWithAIDirector(
@@ -834,7 +874,7 @@ export default function App() {
                 setMessage("AI Director: ранжируем фрагменты под выбранный стиль…");
               }
             },
-            style === "auto"
+            style === "auto" && !learnedStylePreferenceApplied
           );
           actualStyle = directorResult.selectedStyle;
           recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
