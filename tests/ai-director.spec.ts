@@ -240,6 +240,10 @@ test("sparse long-video samples cannot create false motion peaks across wide tim
     0.03, 0.18, 0.04, [], [], [], 0.08,
     2, 1, 3
   )).not.toContain("Пик движения");
+  expect(inferTemporalEventCues(
+    0.03, 0.18, 0.04, [], [], [], 0.08,
+    0, undefined, 2
+  )).not.toContain("Пик движения");
 });
 
 test("temporal event cues flag likely scene changes without inventing an action", () => {
