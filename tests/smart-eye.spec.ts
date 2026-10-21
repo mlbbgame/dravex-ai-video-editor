@@ -23,6 +23,7 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
     selectedStyle: "velocity",
     sampledFrameCount: 8,
     candidateCount: 30,
+    sampledFrameTimes: [2, 31],
   });
   expect(report.memory.filter((entry) => entry.kind !== "detected-object" && entry.kind !== "frame-observation").map((entry) => entry.time))
     .toEqual([3, 31, 58]);
@@ -57,6 +58,27 @@ test("Smart Eye coverage ignores inferred candidate timestamps when detector sam
   expect(report.memory.some((entry) => entry.time === 15 && entry.kind === "frame-observation")).toBe(true);
   expect(report.coverage.sampledFrameCount).toBe(2);
   expect(report.coverage.largestSampleGapSeconds).toBe(29);
+});
+
+test("Smart Eye does not treat inferred observations as confirmed model-sampled frames", () => {
+  const report = buildSmartEyeReport({
+    duration: 60,
+    detectedLabels: ["car"],
+    events: [],
+    observations: [
+      { time: 10, sceneLabels: ["car"], actionCues: ["движение"], score: 0.7 },
+      { time: 50, sceneLabels: ["car"], actionCues: ["движение"], score: 0.8 },
+    ],
+    selectedStyle: "velocity",
+    sampledFrameCount: 2,
+    candidateCount: 60,
+    // No explicit sampledFrameTimes: the report must not guess which frames
+    // reached the detector from general observations alone.
+  });
+
+  expect(report.memory.some((entry) => entry.kind === "frame-observation" && entry.time === 10)).toBe(true);
+  expect(report.coverage.sampledFrameCount).toBe(2);
+  expect(report.coverage.largestSampleGapSeconds).toBe(60);
 });
 
 test("Smart Eye rejects out-of-range events and bounds confidence and coverage", () => {
