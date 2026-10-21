@@ -14,7 +14,7 @@ import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
-import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, type LearningProfileId, type MontageExperience, type MontageVariantId } from "./video/director-learning";
+import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
 import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
@@ -191,6 +191,9 @@ export default function App() {
     catch { return false; }
   });
   const [learningStatus, setLearningStatus] = useState("");
+  const [feedbackDimension, setFeedbackDimension] = useState<keyof MontageQuality>("momentSelection");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
   const [diagnosticEvents, setDiagnosticEvents] = useState<DirectorDiagnosticEvent[]>([]);
   const learningProfileRef = useRef<LearningProfileId>("general");
   const learningVariantRef = useRef<MontageVariantId>("hype");
@@ -604,6 +607,40 @@ export default function App() {
     }
   };
 
+  const recordLearningFeedback = async (rating: "good" | "improve") => {
+    if (!learningEnabled || feedbackSubmitted) return;
+    const score = rating === "good" ? 0.9 : 0.35;
+    const quality: Partial<MontageQuality> = { [feedbackDimension]: score };
+    if (qualityReport) quality.technicalReliability = qualityReport.severity === "ok" ? 1 : 0;
+    const experience: MontageExperience = {
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `feedback-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      createdAt: new Date().toISOString(),
+      profile: learningProfileRef.current,
+      variant: learningVariantRef.current,
+      quality,
+      selectedByUser: learningSelectionRef.current || undefined,
+      editedDimensions: rating === "improve" ? [feedbackDimension] : undefined,
+      contentKind: isImageMode ? "images" : "video",
+    };
+    try {
+      const store = new JsonLocalExperienceStore(window.localStorage);
+      await store.append(experience);
+      const history = await store.load();
+      const hypotheses = proposeImprovements(history, experience.profile);
+      setFeedbackSubmitted(true);
+      setFeedbackStatus(rating === "good"
+        ? "Оценка сохранена локально: этот аспект монтажа получился удачно."
+        : "Оценка сохранена локально: AI Director учтёт слабое место при формировании проверяемых гипотез.");
+      if (hypotheses.length) {
+        setLearningStatus(`Гипотеза для проверки: ${hypotheses[0].title}. Автоматически менять монтаж без сравнительных тестов не будем.`);
+      }
+    } catch {
+      setFeedbackStatus("Не удалось сохранить оценку. Проверь доступ браузера к локальному хранилищу.");
+    }
+  };
+
   const clearLearningMemory = () => {
     try {
       window.localStorage.removeItem("dravex:director-experience:v1");
@@ -758,6 +795,8 @@ export default function App() {
     setOutputUrl("");
     setQualityReport(null);
     setQualityCheckBusy(false);
+    setFeedbackSubmitted(false);
+    setFeedbackStatus("");
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
     recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
@@ -782,14 +821,15 @@ export default function App() {
             const history = await new JsonLocalExperienceStore(window.localStorage).load();
             const preference = recommendPreferredVariant(history, learningProfileRef.current);
             if (preference) {
-              const preferredStyle: Record<MontageVariantId, Exclude<EditStyle, "auto">> = {
-                hype: "velocity",
-                cinematic: "cinematic",
-                emotion: "story",
-                signature: "anime",
-              };
-              actualStyle = preferredStyle[preference.variant];
-              setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+              if (preference.variant !== "signature") {
+                const preferredStyle: Record<Exclude<MontageVariantId, "signature">, Exclude<EditStyle, "auto">> = {
+                  hype: "velocity",
+                  cinematic: "cinematic",
+                  emotion: "story",
+                };
+                actualStyle = preferredStyle[preference.variant];
+                setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+              }
             }
           } catch {
             // Personalization is optional; a storage issue must not block montage.
@@ -842,15 +882,16 @@ export default function App() {
                 const history = await new JsonLocalExperienceStore(window.localStorage).load();
                 const preference = recommendPreferredVariant(history, learningProfileRef.current);
                 if (preference) {
-                  const preferredStyle: Record<MontageVariantId, Exclude<EditStyle, "auto">> = {
-                    hype: "velocity",
-                    cinematic: "cinematic",
-                    emotion: "story",
-                    signature: "anime",
-                  };
-                  actualStyle = preferredStyle[preference.variant];
-                  learnedStylePreferenceApplied = true;
-                  setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+                  if (preference.variant !== "signature") {
+                    const preferredStyle: Record<Exclude<MontageVariantId, "signature">, Exclude<EditStyle, "auto">> = {
+                      hype: "velocity",
+                      cinematic: "cinematic",
+                      emotion: "story",
+                    };
+                    actualStyle = preferredStyle[preference.variant];
+                    learnedStylePreferenceApplied = true;
+                    setLearningStatus(`Авто-режим учёл предпочтение по ${preference.sampleCount} сохранённым выборам (${Math.round(preference.share * 100)}%).`);
+                  }
                 }
               } catch {
                 // Personalization is optional; do not block analysis if storage is unavailable.
@@ -1185,7 +1226,7 @@ export default function App() {
 
         {busy && <div className="dravex-progress"><div className="dravex-progress-top"><strong>{stage === "analyzing" ? "Анализ материала" : "Создание ролика"}</strong><span>{stage === "analyzing" ? `${getScanPercent(scan)}%` : `${renderProgress}%`}</span></div><div className="dravex-progress-track"><span style={{ width: `${stage === "analyzing" ? getScanPercent(scan) : renderProgress}%` }} /></div><p>{message}</p><small>Не закрывай вкладку во время создания видео.</small></div>}
         {error && <div className="dravex-error" role="alert">{error}</div>}
-        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · {quality} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName} onClick={() => { void recordLearningExperience(); }}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>{qualityCheckBusy ? <p className="dravex-quality-report" role="status">Проверяем экспортированные кадры и ищем возможные чёрные или зависшие фрагменты…</p> : qualityReport && <div className={`dravex-quality-report ${qualityReport.severity === "warning" ? "is-warning" : "is-ok"}`} role="status"><strong>{qualityReport.severity === "warning" ? "Проверка просит внимания" : "Автопроверка завершена"}</strong><span>{qualityReport.width && qualityReport.height ? `${qualityReport.width}×${qualityReport.height} · ${qualityReport.duration.toFixed(1)} с · проверено кадров: ${qualityReport.sampledFrames}` : "Проверка видеокадров не завершилась."}</span><ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul></div>}</section>}
+        {stage === "done" && outputUrl && <section className="dravex-result"><div className="dravex-result-title"><CheckCircle2 size={21} /><div><strong>Видео готово!</strong><span>{cutCount} фрагментов · стиль: {usedStyle} · {quality} · формат WebM</span></div></div><video className="dravex-output" src={outputUrl} controls playsInline /><div className="dravex-result-actions"><a href={outputUrl} download={outputName} onClick={() => { void recordLearningExperience(); }}><Download size={17} />Сохранить видео</a><button type="button" onClick={createMontage}><RefreshCw size={16} />Создать ещё</button></div>{learningEnabled && <div className="dravex-project-actions" aria-label="Обратная связь AI Director"><label className="dravex-duration"><span>Что оценить в этом монтаже?</span><select aria-label="Аспект монтажа для оценки" value={feedbackDimension} onChange={(event) => setFeedbackDimension(event.target.value as keyof MontageQuality)} disabled={feedbackSubmitted}><option value="momentSelection">Выбор лучших моментов</option><option value="pacing">Темп и длительность кадров</option><option value="transitions">Переходы</option><option value="musicSync">Синхронизация с музыкой</option><option value="visualConsistency">Цвет и визуальная цельность</option><option value="technicalReliability">Техническое качество экспорта</option></select></label><button type="button" disabled={feedbackSubmitted} onClick={() => void recordLearningFeedback("good")}>Получилось хорошо</button><button type="button" disabled={feedbackSubmitted} onClick={() => void recordLearningFeedback("improve")}>Нужно улучшить</button>{feedbackStatus && <span className="dravex-project-message" role="status">{feedbackStatus}</span>}</div>}{qualityCheckBusy ? <p className="dravex-quality-report" role="status">Проверяем экспортированные кадры и ищем возможные чёрные или зависшие фрагменты…</p> : qualityReport && <div className={`dravex-quality-report ${qualityReport.severity === "warning" ? "is-warning" : "is-ok"}`} role="status"><strong>{qualityReport.severity === "warning" ? "Проверка просит внимания" : "Автопроверка завершена"}</strong><span>{qualityReport.width && qualityReport.height ? `${qualityReport.width}×${qualityReport.height} · ${qualityReport.duration.toFixed(1)} с · проверено кадров: ${qualityReport.sampledFrames}` : "Проверка видеокадров не завершилась."}</span><ul>{qualityReport.findings.map((finding, index) => <li key={`${index}-${finding}`}>{finding}</li>)}</ul></div>}</section>}
           </aside>
         </div>
         </>)}
