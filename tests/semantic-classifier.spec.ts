@@ -221,3 +221,20 @@ test("semantic analysis ignores malformed runtime frame records before model loa
 
   await expect(classifySemanticFrames(malformed)).resolves.toBeNull();
 });
+
+
+test("semantic profile helpers safely ignore malformed runtime records", () => {
+  expect(inferSemanticProfile([
+    null,
+    { label: "sports car", score: 0.95 },
+    { label: 17, score: 0.99 },
+    { label: "forest", score: Number.NaN },
+  ] as never)).toEqual({ profile: "automotive", confidence: 0.95 });
+
+  expect(aggregateSemanticProfiles([
+    null,
+    { profile: "not-a-profile", confidence: 1 },
+    { profile: "nature", confidence: 0.8 },
+    { profile: "nature", confidence: 0.7 },
+  ] as never)).toEqual({ profile: "nature", confidence: 0.75 });
+});
