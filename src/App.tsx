@@ -3,7 +3,7 @@ import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircl
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import type { SemanticProfile } from "./video/semantic-classifier";
-import { analyzeWithAIDirector } from "./video/ai-director";
+import { analyzeWithAIDirector, getDirectorKnowledge, getDirectorShotLength } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type SourceAudioMode, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
@@ -48,20 +48,8 @@ const montageVariants: MontageVariant[] = [
 ];
 
 function styleForSemanticProfile(profile: SemanticProfile | undefined, fallback: Exclude<EditStyle, "auto">): Exclude<EditStyle, "auto"> {
-  switch (profile) {
-    case "automotive": return "velocity";
-    // Action-heavy sports and outdoor activities benefit from tighter pacing.
-    case "sports": return "velocity";
-    case "nature":
-    case "food":
-    case "wildlife": return "cinematic";
-    case "people": return "story";
-    case "product-diy": return "cinematic";
-    case "anime": return "anime";
-    // Gameplay benefits from energetic pacing, while crop safety is handled separately.
-    case "gaming": return "velocity";
-    default: return fallback;
-  }
+  if (!profile || profile === "unknown") return fallback;
+  return getDirectorKnowledge(profile).preferredStyle;
 }
 
 function toLearningProfile(profile: SemanticProfile | undefined): LearningProfileId {
@@ -87,9 +75,9 @@ function toLearningVariant(style: EditStyle): MontageVariantId {
   return "signature";
 }
 
-function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string): VideoSegment[] {
-  // Match each edit style to its intended pacing: action edits cut faster than cinematic ones.
-  const shotLength = style === "velocity" ? 1.05 : style === "glitch" ? 1.35 : style === "anime" ? 1.65 : style === "story" ? 3.2 : 2.2;
+function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string, profile: SemanticProfile = "unknown"): VideoSegment[] {
+  // Use the same explicit genre knowledge for actual trims, not just the UI label.
+  const shotLength = getDirectorShotLength(profile, style);
   const usableDuration = Math.min(sourceDuration, targetDuration);
   const count = Math.max(1, Math.ceil(usableDuration / shotLength));
   const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style, shotLength);
@@ -814,6 +802,7 @@ export default function App() {
       let analysisFallback = false;
       let directorNote = "";
       let actualStyle: Exclude<EditStyle, "auto"> = style === "auto" ? "cinematic" : style;
+      let contentProfile: SemanticProfile = "unknown";
       if (isImageMode) {
         learningProfileRef.current = "general";
         const photoCount = mediaFiles.length;
@@ -871,6 +860,7 @@ export default function App() {
             if (progress.phase === "semantic") setMessage("AI Director: определяем тип сцены; если модель недоступна, продолжим по движению и композиции…");
           });
           sourceVideoDuration = analysis.duration;
+          contentProfile = analysis.semantic?.profile ?? "unknown";
           learningProfileRef.current = toLearningProfile(analysis.semantic?.profile);
           renderDuration = Math.min(duration, analysis.duration);
           let learnedStylePreferenceApplied = false;
@@ -925,18 +915,14 @@ export default function App() {
           actualStyle = directorResult.selectedStyle;
           recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
           directorNote = directorResult.note;
-          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
+          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
           setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
           sourceVideoDuration = await getVideoDuration(videoUrl);
           renderDuration = Math.min(duration, sourceVideoDuration);
           if (style === "auto") actualStyle = "cinematic";
-          const shotLength = actualStyle === "velocity" ? 1.05
-            : actualStyle === "glitch" ? 1.35
-            : actualStyle === "anime" ? 1.65
-            : actualStyle === "story" ? 3.2
-            : 2.2;
+          const shotLength = getDirectorShotLength(contentProfile, actualStyle);
           const fallbackCuts = buildFallbackVideoCuts(sourceVideoDuration, renderDuration, shotLength);
           segments = fallbackCuts.map((cut) => ({
             name: videoFile!.name,
