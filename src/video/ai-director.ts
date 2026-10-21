@@ -365,31 +365,51 @@ export function inferTemporalEventCues(
   previousLabels: string[] = [],
   currentLabels: string[] = [],
   nextLabels: string[] = [],
-  motionReference = 0.08
+  motionReference = 0.08,
+  previousTime?: number,
+  currentTime?: number,
+  nextTime?: number,
+  maxMotionGapSeconds = 2.5
 ): string[] {
   const cues: string[] = [];
   const values = [previousMotion, currentMotion, nextMotion];
   if (values.some((value) => !Number.isFinite(value) || value < 0)) return cues;
 
-  const reference = Math.max(0.001, motionReference);
-  if (
-    currentMotion >= reference * 1.2 &&
-    currentMotion >= previousMotion * 1.25 &&
-    currentMotion >= nextMotion * 1.25
-  ) {
-    cues.push("Пик движения");
-  } else if (
-    currentMotion >= reference * 0.65 &&
-    currentMotion >= previousMotion * 1.2 &&
-    nextMotion >= currentMotion * 0.95
-  ) {
-    cues.push("Нарастание движения");
-  } else if (
-    previousMotion >= reference * 1.2 &&
-    currentMotion <= previousMotion * 0.75 &&
-    nextMotion <= currentMotion * 1.15
-  ) {
-    cues.push("Затухание движения");
+  // Motion peaks only make sense when adjacent samples are close enough in time.
+  // Sparse samples from long videos can span different scenes; comparing them as
+  // if they were consecutive frames creates false "action" events.
+  const hasTimestamps = [previousTime, currentTime, nextTime].every(
+    (value) => typeof value === "number" && Number.isFinite(value)
+  );
+  const safeMaxGap = Number.isFinite(maxMotionGapSeconds) ? Math.max(0, maxMotionGapSeconds) : 2.5;
+  const temporalSpacingIsValid = !hasTimestamps || (
+    (currentTime as number) > (previousTime as number) &&
+    (nextTime as number) > (currentTime as number) &&
+    (currentTime as number) - (previousTime as number) <= safeMaxGap &&
+    (nextTime as number) - (currentTime as number) <= safeMaxGap
+  );
+
+  const reference = Number.isFinite(motionReference) ? Math.max(0.001, motionReference) : 0.08;
+  if (temporalSpacingIsValid) {
+    if (
+      currentMotion >= reference * 1.2 &&
+      currentMotion >= previousMotion * 1.25 &&
+      currentMotion >= nextMotion * 1.25
+    ) {
+      cues.push("Пик движения");
+    } else if (
+      currentMotion >= reference * 0.65 &&
+      currentMotion >= previousMotion * 1.2 &&
+      nextMotion >= currentMotion * 0.95
+    ) {
+      cues.push("Нарастание движения");
+    } else if (
+      previousMotion >= reference * 1.2 &&
+      currentMotion <= previousMotion * 0.75 &&
+      nextMotion <= currentMotion * 1.15
+    ) {
+      cues.push("Затухание движения");
+    }
   }
 
   const previous = normalizeSceneLabels(previousLabels);
@@ -400,6 +420,8 @@ export function inferTemporalEventCues(
     const overlap = [...left].filter((label) => right.has(label)).length;
     return overlap / Math.max(left.size, right.size);
   };
+  // Scene-change evidence may remain useful across a wider gap, but it is
+  // labelled probable because sparse object labels cannot prove a cut.
   if (previous.size && current.size && overlapRatio(previous, current) < 0.25) {
     cues.push("Вероятная смена сцены");
   } else if (current.size && next.size && overlapRatio(current, next) < 0.25) {
@@ -687,7 +709,10 @@ export async function analyzeWithAIDirector(
           previousCandidateLabels,
           labels,
           nextCandidateLabels,
-          Math.max(0.015, referenceMotion)
+          Math.max(0.015, referenceMotion),
+          previousCandidate.time,
+          candidate.time,
+          nextCandidate.time
         )
       : [];
     const trackedTemporalCues = isModelSample
