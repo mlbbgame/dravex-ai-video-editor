@@ -14,7 +14,7 @@ const event = (sourceTime: number, kind: "motion-peak" | "scene-change" = "motio
 test("Smart Eye preserves timestamped event memory across the source timeline", () => {
   const report = buildSmartEyeReport({
     duration: 60,
-    detectedLabels: ["car", "person", "car"],
+    detectedLabels: ["car", "person", "car", "motorcycle"],
     events: [event(3), event(31, "scene-change"), event(58)],
     selectedStyle: "velocity",
     sampledFrameCount: 8,
@@ -22,7 +22,7 @@ test("Smart Eye preserves timestamped event memory across the source timeline", 
   });
   expect(report.memory.filter((entry) => entry.kind !== "detected-object").map((entry) => entry.time))
     .toEqual([3, 31, 58]);
-  expect(report.detectedEntities).toEqual(["car", "person"]);
+  expect(report.detectedEntities).toEqual(["car", "motorcycle", "person"]);
   expect(report.sceneCategory).toBe("vehicles");
   expect(report.coverage.sampledFrameRatio).toBeCloseTo(8 / 30);
   expect(report.coverage.lastEventTime).toBe(58);
