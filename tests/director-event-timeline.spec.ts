@@ -54,3 +54,18 @@ test("timeline returns empty output for invalid duration and does not invent sem
   ], 3);
   expect(timeline.map((event) => event.kind)).toEqual(["visual-highlight"]);
 });
+
+
+test("timeline rejects empty, reversed, and out-of-range collapsed event intervals", () => {
+  const timeline = buildDirectorEventTimeline([
+    { time: 1, start: 1, end: 1, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 2, start: 3, end: 2, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 9, start: 11, end: 12, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 1.5, start: 1, end: 2, score: 0.8, motion: 0.5, contrast: 0.2, actionCues: ["Пик движения"] },
+  ], 10);
+
+  expect(timeline).toHaveLength(1);
+  expect(timeline[0].start).toBe(1);
+  expect(timeline[0].end).toBe(2);
+  expect(timeline.every((event) => event.end > event.start)).toBe(true);
+});
