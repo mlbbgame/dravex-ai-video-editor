@@ -15,6 +15,7 @@ import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 import { JsonLocalExperienceStore, proposeImprovements, type LearningProfileId, type MontageExperience, type MontageVariantId } from "./video/director-learning";
+import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -188,6 +189,7 @@ export default function App() {
     catch { return false; }
   });
   const [learningStatus, setLearningStatus] = useState("");
+  const [diagnosticEvents, setDiagnosticEvents] = useState<DirectorDiagnosticEvent[]>([]);
   const learningProfileRef = useRef<LearningProfileId>("general");
   const learningVariantRef = useRef<MontageVariantId>("hype");
   const learningSelectionRef = useRef(false);
@@ -203,6 +205,21 @@ export default function App() {
   const videoUrl = mediaUrls[0] ?? "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
+
+  const recordDiagnostic = (type: Parameters<typeof createDirectorDiagnostic>[0], details: Parameters<typeof createDirectorDiagnostic>[1] = {}) => {
+    setDiagnosticEvents((events) => [...events, createDirectorDiagnostic(type, details)].slice(-200));
+  };
+
+  const exportDiagnostics = () => {
+    const report = buildDirectorDiagnosticExport(diagnosticEvents);
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `dravex-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => () => { mediaUrls.forEach((url) => URL.revokeObjectURL(url)); }, [mediaUrls]);
 
@@ -732,6 +749,7 @@ export default function App() {
     setQualityCheckBusy(false);
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
+    recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
     try {
       setStage("analyzing");
       setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
@@ -771,6 +789,7 @@ export default function App() {
           duration: renderDuration * weights[index] / totalWeight
         }));
         setScan({ current: mediaFiles.length, total: mediaFiles.length, time: 0 });
+        recordDiagnostic("analysis-completed", { mediaKind: "images", mediaCount: mediaFiles.length, durationSeconds: renderDuration, candidateCount: mediaFiles.length, sampledFrames: mediaFiles.length, style: actualStyle });
       } else {
         try {
           const analysis = await analyzeVideoForHighlights(videoUrl, (progress) => {
@@ -807,6 +826,7 @@ export default function App() {
             style === "auto"
           );
           actualStyle = directorResult.selectedStyle;
+          recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
           directorNote = directorResult.note;
           segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl);
           setMessage(directorNote);
@@ -828,6 +848,7 @@ export default function App() {
             trimEnd: cut.trimEnd
           }));
           analysisFallback = true;
+          recordDiagnostic("analysis-fallback", { mediaKind: "video", mediaCount: 1, durationSeconds: sourceVideoDuration, fallbackUsed: true, reasonCode: "analysis-unavailable", style: actualStyle });
           setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
           if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
         }
@@ -861,6 +882,7 @@ export default function App() {
       learningVariantRef.current = toLearningVariant(actualStyle);
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
+      recordDiagnostic("render-started", { segmentCount: segments.length, durationSeconds: renderDuration, style: actualStyle, quality, fallbackUsed: analysisFallback });
       setStage("rendering");
       setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
       const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }] : [];
@@ -881,19 +903,23 @@ export default function App() {
       const nextUrl = URL.createObjectURL(blob);
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
+      recordDiagnostic("export-ready", { segmentCount: segments.length, durationSeconds: renderDuration, style: actualStyle, quality, fallbackUsed: analysisFallback });
       setQualityReport(null);
       setQualityCheckBusy(true);
       setStage("done");
       // Inspect the encoded WebM without blocking playback or download. The check is advisory.
       void inspectRenderedVideo(blob).then((report) => {
         setQualityReport(report);
-      }).catch((qualityError) => {
+        recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
+      }).catch((_qualityError) => {
+        recordDiagnostic("quality-check-completed", { severity: "warning", reasonCode: "quality-check-unavailable", quality });
         console.warn("DRAVEX output quality check failed:", qualityError);
         setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь воспроизведение вручную."], severity: "warning" });
       }).finally(() => setQualityCheckBusy(false));
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
+      recordDiagnostic("montage-failed", { reasonCode: "render-error", mediaKind: isImageMode ? "images" : "video", mediaCount: mediaFiles.length, quality });
       setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
       setMessage("");
     } finally {
@@ -1084,6 +1110,11 @@ export default function App() {
             <button type="button" onClick={clearEditor} disabled={!mediaFiles.length || busy || previewBusy || projectBusy}><Trash2 size={15} />Очистить редактор</button>
             <button type="button" onClick={saveProject} disabled={!mediaFiles.length || projectBusy}><Save size={15} />{projectBusy ? "Сохраняем…" : "Сохранить проект"}</button>
             <button type="button" onClick={restoreProject} disabled={projectBusy || busy || previewBusy}><FolderOpen size={15} />Восстановить проект</button>
+          </div>
+          <div className="dravex-project-actions" aria-label="Диагностика AI Director">
+            <span className="dravex-project-message">Диагностические события: {diagnosticEvents.length}/200. Сохраняются только в памяти текущей вкладки; видео, фотографии, имена файлов и URL не записываются.</span>
+            <button type="button" onClick={exportDiagnostics} disabled={!diagnosticEvents.length}>Экспортировать отчёт диагностики</button>
+            <button type="button" onClick={() => setDiagnosticEvents([])} disabled={!diagnosticEvents.length}>Очистить диагностику</button>
           </div>
           <div className="dravex-project-actions" aria-label="Память AI Director">
             <label className="dravex-memory-toggle"><input type="checkbox" checked={learningEnabled} onChange={(event) => setLearningEnabled(event.target.checked)} /> Запоминать качество монтажей на этом устройстве</label>
