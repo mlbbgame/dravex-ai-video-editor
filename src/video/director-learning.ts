@@ -76,7 +76,9 @@ export type BenchmarkResult = {
   baselineScore: number;
   candidateScore: number;
   baselineRegressionByDimension: Record<string, number>;
-  /** All scores use the same 0..1 scale and same benchmark set. */
+  /** Ordered stable IDs prove both versions used identical test clips. */
+  baselineSampleIds: string[];
+  candidateSampleIds: string[];
 };
 
 export interface ExperienceStore {
