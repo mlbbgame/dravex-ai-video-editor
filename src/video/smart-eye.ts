@@ -46,6 +46,8 @@ export type SmartEyeReportInput = {
   selectedStyle: DirectorStyle;
   sampledFrameCount: number;
   candidateCount: number;
+  /** Exact source timestamps passed through the object detector, not inferred candidate times. */
+  sampledFrameTimes?: number[];
 };
 
 const LABEL_GROUPS: Record<Exclude<DetectedSceneCategory, "general">, Set<string>> = {
@@ -152,7 +154,11 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
     .sort((a, b) => a - b);
   // Report temporal blind spots explicitly. Include source boundaries so a set
   // of clustered interior observations cannot look like full-timeline coverage.
-  const observationTimes = [...new Set(observations.map((item) => item.time))]
+  // Candidate observations can include unsampled moments whose cues were inferred
+  // from nearby frames. Coverage must use only timestamps actually sent to the model.
+  const suppliedSampleTimes = (input.sampledFrameTimes ?? observations.map((item) => item.time))
+    .filter((time) => Number.isFinite(time) && time >= 0 && time <= duration);
+  const observationTimes = [...new Set(suppliedSampleTimes)]
     .sort((a, b) => a - b);
   const coverageAnchors = [...new Set([0, ...observationTimes, duration])]
     .sort((a, b) => a - b);
