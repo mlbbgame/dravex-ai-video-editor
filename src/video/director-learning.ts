@@ -115,7 +115,7 @@ export function validateExperience(input: MontageExperience): string[] {
   const errors: string[] = [];
   if (!input.id.trim()) errors.push("Experience ID is required.");
   if (!Number.isFinite(Date.parse(input.createdAt))) errors.push("createdAt must be a valid date.");
-  if (!["aggressive-car", "cinematic-travel", "nature-wildlife", "food-cooking", "people-everyday", "product-diy"].includes(input.profile)) {
+  if (!["aggressive-car", "cinematic-travel", "nature-wildlife", "food-cooking", "people-everyday", "product-diy", "gaming", "sports", "anime", "general"].includes(input.profile)) {
     errors.push("Unknown learning profile.");
   }
   if (!["hype", "cinematic", "emotion", "signature"].includes(input.variant)) errors.push("Unknown montage variant.");
