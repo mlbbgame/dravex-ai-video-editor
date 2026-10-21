@@ -143,3 +143,22 @@ test("short aggressive edits relax stylistic spacing before dropping usable non-
     expect(aggressive!.moments[index].start).toBeGreaterThanOrEqual(aggressive!.moments[index - 1].end);
   }
 });
+
+test("style ranking rejects malformed highlight moments without losing valid candidates", () => {
+  const valid = {
+    time: 2,
+    start: 1.5,
+    end: 2.5,
+    score: 0.8,
+    motion: 0.7,
+    contrast: 0.6,
+  };
+  const ranked = rankHighlightMomentsForStyle([
+    { ...valid, time: Number.NaN },
+    { ...valid, start: 3, end: 2 },
+    { ...valid, score: Number.POSITIVE_INFINITY },
+    valid,
+  ], "velocity");
+
+  expect(ranked).toEqual([valid]);
+});
