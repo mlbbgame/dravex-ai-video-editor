@@ -1,4 +1,5 @@
 import type { HighlightMoment, HighlightSample } from "./highlight-finder";
+import { buildDirectorEventTimeline, type DirectorEventEvidence } from "./director-event-timeline";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
@@ -108,6 +109,7 @@ export type AIDirectorResult = {
   modelLoaded: boolean;
   selectedStyle: DirectorStyle;
   note: string;
+  eventTimeline?: DirectorEventEvidence[];
 };
 
 type ObjectDetector = (input: string) => Promise<DetectedObject[]>;
@@ -342,14 +344,34 @@ export function inferTemporalEventCues(
   return [...new Set(cues)];
 }
 
-function temporalEventBonus(cues: string[], style: DirectorStyle): number {
+/**
+ * Turn timestamped evidence into a small, style-aware ranking bonus.
+ * The event timeline is an editing signal, not proof of a named real-world action.
+ */
+export function getDirectorEventRankingBonus(
+  events: DirectorEventEvidence[],
+  time: number,
+  style: DirectorStyle
+): number {
+  if (!Number.isFinite(time)) return 0;
   const actionFocused = style === "velocity" || style === "glitch";
+  const narrative = style === "cinematic" || style === "story";
   let bonus = 0;
-  if (cues.includes("Пик движения")) bonus += actionFocused ? 0.1 : 0.035;
-  if (cues.includes("Нарастание движения")) bonus += actionFocused ? 0.055 : 0.025;
-  if (cues.includes("Затухание движения")) bonus += style === "cinematic" || style === "story" ? 0.055 : 0.015;
-  if (cues.includes("Вероятная смена сцены")) bonus += style === "story" || style === "cinematic" ? 0.06 : 0.025;
-  return Math.min(0.12, bonus);
+  for (const event of events) {
+    if (Math.abs(event.sourceTime - time) > 0.65) continue;
+    const confidence = Math.max(0, Math.min(1, event.confidence));
+    switch (event.kind) {
+      case "motion-peak": bonus += confidence * (actionFocused ? 0.075 : 0.025); break;
+      case "motion-build-up": bonus += confidence * (actionFocused ? 0.04 : 0.02); break;
+      case "motion-settling": bonus += confidence * (narrative ? 0.035 : 0.01); break;
+      case "scene-change": bonus += confidence * (narrative ? 0.035 : 0.015); break;
+      case "object-moving": bonus += confidence * (actionFocused ? 0.025 : 0.01); break;
+      case "subject-approaching":
+      case "subject-receding": bonus += confidence * (actionFocused ? 0.025 : 0.01); break;
+      case "visual-highlight": bonus += confidence * 0.02; break;
+    }
+  }
+  return Math.min(0.1, bonus);
 }
 
 function chooseSampleIndices(count: number, limit: number, includeEdges = true): number[] {
@@ -612,8 +634,7 @@ export async function analyzeWithAIDirector(
       ...trackedTemporalCues,
       ...temporalCues
     ].filter((cue, cueIndex, allCues) => allCues.indexOf(cue) === cueIndex);
-    const directorScore = Math.min(1, scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty)
-      + temporalEventBonus([...temporalCues, ...trackedTemporalCues], selectedStyle));
+    const directorScore = Math.min(1, scoreDirectorMoment(candidate, objects, selectedStyle, referenceMotion, novelty));
     return {
       ...candidate,
       score: directorScore,
@@ -626,11 +647,22 @@ export async function analyzeWithAIDirector(
   });
 
   onProgress?.({ current: 1, total: 1, phase: "ranking" });
-  const movementCues = [...new Set(indexed.flatMap((moment) => moment.actionCues))]
+  // The timeline is now part of ranking, not merely a sidecar diagnostic.
+  // Build from observed cues, apply small style-aware event bonuses, then rebuild
+  // the timeline so returned confidence/labels reflect the final ranked candidates.
+  const initialTimeline = buildDirectorEventTimeline(indexed, duration);
+  const rankedCandidates = indexed.map((moment) => {
+    const bonus = getDirectorEventRankingBonus(initialTimeline, moment.time, selectedStyle);
+    const score = Math.min(1, moment.directorScore + bonus);
+    return { ...moment, score, directorScore: score };
+  });
+  const eventTimeline = buildDirectorEventTimeline(rankedCandidates, duration);
+  const movementCues = [...new Set(rankedCandidates.flatMap((moment) => moment.actionCues))]
     .filter((cue) => cue !== "Стабильный кадр")
     .slice(0, 3);
   return {
-    candidates: indexed,
+    candidates: rankedCandidates,
+    eventTimeline,
     detectedLabels,
     modelLoaded: true,
     selectedStyle,
