@@ -722,6 +722,8 @@ export default function App() {
     }
     setError("");
     setOutputUrl("");
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
     try {
