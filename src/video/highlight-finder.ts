@@ -333,7 +333,8 @@ export function ensureCandidateCoverage(
     return [{ ...candidate, time: Math.max(start, Math.min(end, candidate.time)), start, end }];
   }).sort((a, b) => a.time - b.time);
 
-  const safeSamples = samples.filter((sample) =>
+  const safeSamples = (Array.isArray(samples) ? samples : []).filter((sample) =>
+    sample !== null && typeof sample === "object" &&
     Number.isFinite(sample.time) &&
     Number.isFinite(sample.score) &&
     Number.isFinite(sample.motion) &&
