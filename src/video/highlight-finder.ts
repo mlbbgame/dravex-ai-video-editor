@@ -606,7 +606,7 @@ export function buildHighlightVariants(candidates: HighlightMoment[], sourceDura
 
   // Keep only usable candidates, then clamp their trims to the real source bounds.
   // A single malformed sample should not poison every variant or the final export.
-  const safeCandidates = candidates.flatMap((candidate) => {
+  const safeCandidates = (Array.isArray(candidates) ? candidates : []).flatMap((candidate) => {
     if (!candidate || typeof candidate !== "object") return [];
     if (
       !Number.isFinite(candidate.time) ||
