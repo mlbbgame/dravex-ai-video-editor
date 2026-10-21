@@ -26,6 +26,7 @@ export type SmartEyeReport = {
     sampledFrameRatio: number;
     firstEventTime: number | null;
     lastEventTime: number | null;
+    largestSampleGapSeconds: number;
   };
   limitations: string[];
 };
@@ -149,6 +150,16 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
     .map((event) => event.sourceTime)
     .filter((time) => Number.isFinite(time) && time >= 0 && time <= duration)
     .sort((a, b) => a - b);
+  // Report temporal blind spots explicitly. Include source boundaries so a set
+  // of clustered interior observations cannot look like full-timeline coverage.
+  const observationTimes = [...new Set(observations.map((item) => item.time))]
+    .sort((a, b) => a - b);
+  const coverageAnchors = [...new Set([0, ...observationTimes, duration])]
+    .sort((a, b) => a - b);
+  const largestSampleGapSeconds = coverageAnchors.reduce(
+    (largest, time, index) => index === 0 ? largest : Math.max(largest, time - coverageAnchors[index - 1]),
+    0,
+  );
 
   return {
     version: 1,
@@ -162,7 +173,8 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
       sampledFrameCount,
       sampledFrameRatio: candidateCount ? sampledFrameCount / candidateCount : 0,
       firstEventTime: eventTimes.length ? eventTimes[0] : null,
-      lastEventTime: eventTimes.length ? eventTimes[eventTimes.length - 1] : null
+      lastEventTime: eventTimes.length ? eventTimes[eventTimes.length - 1] : null,
+      largestSampleGapSeconds
     },
     limitations: [
       "Это память доказательств только текущего анализа; постоянное обучение между запусками не включено.",
