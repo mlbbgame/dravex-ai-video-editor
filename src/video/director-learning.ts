@@ -13,7 +13,11 @@ export type LearningProfileId =
   | "nature-wildlife"
   | "food-cooking"
   | "people-everyday"
-  | "product-diy";
+  | "product-diy"
+  | "gaming"
+  | "sports"
+  | "anime"
+  | "general";
 
 export type MontageVariantId = "hype" | "cinematic" | "emotion" | "signature";
 
