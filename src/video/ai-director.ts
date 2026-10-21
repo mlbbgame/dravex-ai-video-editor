@@ -735,9 +735,12 @@ export async function analyzeWithAIDirector(
   const detectedLabels = [...allLabels].sort((a, b) => a.localeCompare(b, "ru"));
   const sceneInference = inferSceneCategory(detectedLabels);
   const selectedStyle = chooseDirectorStyleFromInference(sceneInference, style, allowCategoryStyleAdjustment);
-  const sampledPosition = new Map(selectedIndices.map((candidateIndex, position) => [candidateIndex, position]));
-  const sampleTimes = selectedIndices.map((candidateIndex) => candidates[candidateIndex].time);
-  const sampledDetections = selectedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
+  // Only frames actually submitted to the detector can anchor object evidence.
+  // The planned budget may contain indices never reached when inference times out.
+  const analyzedIndices = [...analyzedFrameIndices].sort((a, b) => candidates[a].time - candidates[b].time);
+  const sampledPosition = new Map(analyzedIndices.map((candidateIndex, position) => [candidateIndex, position]));
+  const sampleTimes = analyzedIndices.map((candidateIndex) => candidates[candidateIndex].time);
+  const sampledDetections = analyzedIndices.map((candidateIndex) => detectionsByCandidate.get(candidateIndex) ?? []);
   const nearbyDetectionRadius = Math.max(1.25, duration / Math.max(2, selectedIndices.length * 2));
   const indexed = candidates.map((candidate, index) => {
     const isModelSample = sampledPosition.has(index);
