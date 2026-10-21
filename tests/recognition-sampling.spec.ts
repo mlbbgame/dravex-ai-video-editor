@@ -56,3 +56,13 @@ test("dense recognition ignores malformed windows and rejects invalid budgets", 
   expect(buildDenseSampleTimes(20, [{ start: 1, end: 2 }], 0)).toEqual([]);
   expect(buildDenseSampleTimes(20, [{ start: 1, end: 2 }], 0.25, 0)).toEqual([]);
 });
+
+test("dense recognition safely ignores malformed window collections and entries", () => {
+  expect(buildDenseSampleTimes(20, null as never)).toEqual([]);
+  expect(buildDenseSampleTimes(20, undefined as never)).toEqual([]);
+  expect(buildDenseSampleTimes(20, [
+    null,
+    17,
+    { start: 2, end: 3 },
+  ] as never, 0.25, 20)).toEqual([2, 2.25, 2.5, 2.75, 3]);
+});
