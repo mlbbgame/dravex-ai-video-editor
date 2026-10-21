@@ -343,6 +343,9 @@ test("adaptive director sampling safely ignores malformed runtime candidate entr
 
   expect(selected).toHaveLength(3);
   expect(selected.every((index) => index >= 0 && index < candidates.length)).toBe(true);
+  expect(selected).not.toContain(0);
+  expect(selected).not.toContain(2);
+  expect(selected).not.toContain(4);
   expect([...selected].sort((a, b) => a - b)).toEqual(selected);
 });
 
