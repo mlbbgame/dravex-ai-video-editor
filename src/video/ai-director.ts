@@ -515,7 +515,7 @@ export function chooseAdaptiveDirectorSampleIndices(
   if (!count) return [];
   const safeLimit = Math.max(1, Math.floor(limit));
   if (count <= safeLimit) return validOriginalIndices;
-  if (safeLimit === 1) return [Math.round((count - 1) / 2)];
+  if (safeLimit === 1) return [validOriginalIndices[Math.round((count - 1) / 2)]];
 
   const anchorCount = Math.max(1, Math.ceil(safeLimit / 2));
   const anchors = chooseSampleIndices(count, Math.min(anchorCount, safeLimit), includeEdges);
