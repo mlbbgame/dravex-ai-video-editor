@@ -985,7 +985,6 @@ export default function App() {
             mediaCount: 1,
             durationSeconds: analysis.duration,
             candidateCount: directorResult.candidates.length,
-            contractValidated: true,
             style: actualStyle,
           });
           segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
