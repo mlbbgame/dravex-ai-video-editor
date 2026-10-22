@@ -24,3 +24,36 @@ test("WebM codec selection prefers mobile-friendly VP8 and falls back safely", (
   expect(chooseSupportedWebmMimeType(() => false)).toBeNull();
   expect(chooseSupportedWebmMimeType(() => { throw new Error("unsupported query"); })).toBeNull();
 });
+
+test("4K export profiles use exact dimensions for every supported aspect ratio", () => {
+  const expected = {
+    "9:16": { width: 2160, height: 3840 },
+    "16:9": { width: 3840, height: 2160 },
+    "1:1": { width: 2160, height: 2160 },
+    "4:5": { width: 2160, height: 2700 },
+  } as const;
+
+  for (const [ratio, dimensions] of Object.entries(expected)) {
+    const profile = getExportProfile(ratio, "4K");
+    expect(profile).toMatchObject({
+      ...dimensions,
+      frameRate: 24,
+      videoBitsPerSecond: 35_000_000,
+    });
+    expect(profile.width / profile.height).toBeCloseTo(
+      dimensions.width / dimensions.height,
+      5,
+    );
+  }
+});
+
+test("invalid 4K requests never produce zero or non-finite dimensions", () => {
+  for (const ratio of ["", "9x16", "0:0", "unknown"]) {
+    const profile = getExportProfile(ratio, "4K");
+    expect(Number.isFinite(profile.width)).toBe(true);
+    expect(Number.isFinite(profile.height)).toBe(true);
+    expect(profile.width).toBeGreaterThan(0);
+    expect(profile.height).toBeGreaterThan(0);
+  }
+});
+
