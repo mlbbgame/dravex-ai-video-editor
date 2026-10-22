@@ -14,6 +14,8 @@ export type VideoSegment = {
   url: string;
   trimStart: number;
   trimEnd: number;
+  /** Planned playback speed multiplier from the validated AI Director plan. */
+  speedFactor?: number;
 };
 
 /** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
@@ -108,6 +110,7 @@ type LoadedVideo = {
   start: number;
   end: number;
   duration: number;
+  speedFactor: number;
 };
 
 type LoadedImage = {
@@ -569,8 +572,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     const video = await pendingVideo;
     if (suppressAudio || sourceAudioMode === "mute") video.muted = true;
-    const { start, end, duration } = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
-    return { kind: "video", name: segment.name, video, start, end, duration };
+    const trim = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
+    const requestedSpeed = videoSegment.speedFactor;
+    const speedFactor = Number.isFinite(requestedSpeed) ? Math.max(0.25, Math.min(4, requestedSpeed as number)) : 1;
+    return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor };
   }));
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
@@ -580,7 +585,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const scale = targetDurationSeconds / sourceDuration;
       for (const item of loaded) {
         item.duration *= scale;
-        if (item.kind === "video") item.end = item.start + item.duration;
+        if (item.kind === "video") item.end = Math.min(item.end, item.start + item.duration * item.speedFactor);
       }
     } else if (loaded.every((item) => item.kind === "image")) {
       // A still-image sequence can hold on its images to fill the requested duration, including when audio is present.
@@ -1078,7 +1083,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         continue;
       }
 
-      const { video, start, end, duration } = item;
+      const { video, start, end, duration, speedFactor } = item;
       let trimBoundaryReached = false;
       video.pause();
       video.playbackRate = 1;
@@ -1112,7 +1117,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
           trimBoundaryReached = true;
         }
         // Apply a smooth, per-style velocity curve while preserving the planned shot length.
-        video.playbackRate = trimBoundaryReached ? 1 : getSpeedRampRate(style, clipProgress, cutIndex);
+        const rampRate = getSpeedRampRate(style, clipProgress, cutIndex);
+        video.playbackRate = trimBoundaryReached ? 1 : Math.max(0.25, Math.min(4, rampRate * speedFactor));
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
       }
