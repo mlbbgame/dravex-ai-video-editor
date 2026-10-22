@@ -1252,8 +1252,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     if (!suppressEffects && effectEnabled("light-leak", style === "cinematic" && cutProgress < 0.42) && cutProgress >= 0 && cutProgress < 0.42) {
       const leakProgress = 1 - cutProgress / 0.42;
       const leak = context.createLinearGradient(0, 0, width * 0.82, height * 0.72);
-      leak.addColorStop(0, \`rgba(255,155,72,\${0.22 * leakProgress * strengthScale})\`);
-      leak.addColorStop(0.38, \`rgba(255,92,54,\${0.09 * leakProgress * strengthScale})\`);
+      leak.addColorStop(0, `rgba(255,155,72,${0.22 * leakProgress * strengthScale})`);
+      leak.addColorStop(0.38, `rgba(255,92,54,${0.09 * leakProgress * strengthScale})`);
       leak.addColorStop(1, "rgba(255,92,54,0)");
       context.fillStyle = leak;
       context.fillRect(0, 0, width, height);
