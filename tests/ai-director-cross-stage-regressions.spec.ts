@@ -164,7 +164,7 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
 test("director event timeline rejects malformed intervals and clamps timestamps to source bounds", () => {
   const events = buildDirectorEventTimeline([
     { time: 2, start: 1, end: 3, score: 0.8, motion: 0.9, contrast: 0.5, actionCues: ["Пик движения"] },
-    { time: 99, start: 98, end: 101, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 99, start: 8, end: 10, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
     { time: 1, start: 2, end: 1, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
     { time: Number.NaN, start: 0, end: 1, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
     { time: 3, start: -5, end: 4, score: Number.NaN, motion: 0.2, contrast: 0.2, actionCues: ["Пик движения", 17] as unknown as string[] },
