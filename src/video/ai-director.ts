@@ -2,6 +2,14 @@ import type { HighlightMoment, HighlightSample } from "./highlight-finder";
 import type { SemanticProfile } from "./semantic-classifier";
 import { buildDirectorEventTimeline, type DirectorEventEvidence } from "./director-event-timeline";
 import { buildSmartEyeReport, type SmartEyeReport } from "./smart-eye";
+import {
+  AI_DIRECTOR_CONTRACT_VERSION,
+  validateDirectorMontagePlan,
+  type DirectorMontagePlan as ContractMontagePlan,
+  type DirectorOutputSettings,
+  type DirectorSourceAsset,
+  type ContractValidation,
+} from "./ai-director-contract";
 
 export type DirectorStyle = "velocity" | "anime" | "cinematic" | "glitch" | "story";
 
@@ -868,4 +876,59 @@ export async function analyzeWithAIDirector(
       ? `${duration >= 30 ? `Для длинного видео проверены ${analyzedFrameIndices.size} контрольных кадров. ` : ""}YOLOS обнаружил объекты: ${detectedLabels.slice(0, 6).join(", ")}. ${sceneInference.category !== "general" ? `Предварительная категория: ${getSceneCategoryLabel(sceneInference.category)} (по найденным объектам). ` : ""}${movementCues.length ? `Подсказки движения: ${movementCues.join(", ").toLowerCase()}. ` : ""}Фрагменты ранжированы под стиль «${selectedStyle}».`
       : `${duration >= 30 ? `Для длинного видео проверены ${selectedIndices.length} контрольных кадра. ` : ""}Модель загрузилась, но уверенных объектов не найдено. Ранжирование опирается на движение и контраст; тип сцены пока не определён.`
   };
+}
+
+
+/**
+ * Convert analyzed AI Director moments into the versioned render-plan contract.
+ * This adapter validates the plan; it does not render media or claim unmeasured quality.
+ */
+export function buildDirectorMontagePlan(input: {
+  id: string;
+  source: DirectorSourceAsset;
+  candidates: readonly DirectedMoment[];
+  style: DirectorStyle;
+  output: DirectorOutputSettings;
+}): { plan: ContractMontagePlan | null; validation: ContractValidation } {
+  const { id, source, candidates, output } = input;
+  const clips = candidates.map((moment, index) => ({
+    id: `${id}-clip-${index + 1}`,
+    sourceId: source.id,
+    sourceStartSeconds: moment.start,
+    sourceEndSeconds: moment.end,
+    speedFactor: 1,
+    transitionOutSeconds: 0,
+    effects: [],
+  }));
+  const evidence = candidates.flatMap((moment) => {
+    const rows = [
+      ...(moment.sceneLabels ?? []).map((label) => ({
+        sourceId: source.id,
+        timestampSeconds: moment.time,
+        kind: "object" as const,
+        label,
+        certainty: "inferred" as const,
+        confidence: Math.max(0, Math.min(1, moment.directorScore)),
+      })),
+      ...(moment.actionCues ?? []).map((label) => ({
+        sourceId: source.id,
+        timestampSeconds: moment.time,
+        kind: "motion" as const,
+        label,
+        certainty: "inferred" as const,
+        confidence: Math.max(0, Math.min(1, moment.directorScore)),
+      })),
+    ];
+    return rows;
+  });
+  const plan: ContractMontagePlan = {
+    contractVersion: AI_DIRECTOR_CONTRACT_VERSION,
+    id,
+    style: input.style,
+    clips,
+    output,
+    evidence,
+  };
+  const validation = validateDirectorMontagePlan(plan, [source]);
+  return validation.valid ? { plan, validation } : { plan: null, validation };
 }
