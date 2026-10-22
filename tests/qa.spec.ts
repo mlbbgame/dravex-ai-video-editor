@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { copyFile, mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { getCameraMotionProfile, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getCameraMotionProfile, getTrimBoundaryFrameTime, renderVideoSequence, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 import { buildQuickVideoCandidates, ensureCandidateCoverage } from "../src/video/highlight-finder";
 import { buildFallbackVideoCuts } from "../src/video/segment-planner";
 import { getMediaKind } from "../src/video/media-kind";
@@ -885,4 +885,21 @@ test("invalid duration never returns malformed highlight candidates", () => {
   const candidate = { time: 1, start: 0, end: 2, score: 1, motion: 0.2, contrast: 0.1 };
   expect(ensureCandidateCoverage([], [candidate], Number.NaN)).toEqual([]);
   expect(ensureCandidateCoverage([], [candidate], 0.1)).toEqual([]);
+});
+
+
+test("render failure stops and settles MediaRecorder before returning the original error", async () => {
+  await expect(renderVideoSequence({
+    segments: [{
+      kind: "image",
+      name: "failure-test.png",
+      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=",
+      duration: 1,
+    }],
+    title: "",
+    aspectRatio: "9:16",
+    quality: "preview",
+    suppressAudio: true,
+    onProgress: () => { throw new Error("synthetic render callback failure"); },
+  })).rejects.toThrow("synthetic render callback failure");
 });
