@@ -28,7 +28,15 @@ const seekTo = async (video: HTMLVideoElement, time: number) => {
   if (!Number.isFinite(time) || time < 0 || time >= video.duration) {
     throw new Error("Выбрана недопустимая точка для проверки видео.");
   }
-  if (Math.abs(video.currentTime - time) < 0.025) return;
+  if (Math.abs(video.currentTime - time) < 0.025) {
+    // A matching timestamp does not prove the frame has decoded. On the first
+    // inspection sample Android Chrome can still be below HAVE_CURRENT_DATA;
+    // drawing immediately may throw or sample an unready frame. Wait for data
+    // rather than assigning the same currentTime (which may never emit seeked).
+    if (video.readyState >= 2) return;
+    await waitForMediaEvent(video, "loadeddata");
+    return;
+  }
 
   // Attach listeners before seeking, and always remove them on success, timeout,
   // decoder error, or a synchronous currentTime exception. A rejected seek must
