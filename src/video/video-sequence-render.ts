@@ -803,47 +803,66 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw new Error("Could not initialize the video renderer.");
   }
 
-  const videoStream = canvas.captureStream(frameRate);
+  let videoStream: MediaStream;
+  try {
+    videoStream = canvas.captureStream(frameRate);
+  } catch (error) {
+    releaseLoadedMedia();
+    const detail = error instanceof Error ? error.message : "неизвестная ошибка захвата холста";
+    throw new Error(`Не удалось подготовить видеопоток (${detail}). Обнови Chrome и попробуй экспорт в 720p.`);
+  }
   // Do not create an AudioContext for a no-music export. On some Android
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
   const hasSourceVideo = !suppressAudio && sourceAudioMode !== "mute" && loaded.some((item) => item.kind === "video");
-  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
-  if (hasSourceVideo && !audioContext) {
-    releaseLoadedMedia();
-    throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
-  }
-  const audioDestination = audioContext?.createMediaStreamDestination();
+  let audioContext: AudioContext | null = null;
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
   const sourceVideoGainNodes = new Map<HTMLVideoElement, GainNode>();
-  if (audioContext && audioDestination) {
-    const connectedVideoElements = new Set<HTMLVideoElement>();
-    for (const item of loaded) {
-      if (item.kind !== "video" || connectedVideoElements.has(item.video)) continue;
-      connectedVideoElements.add(item.video);
-      const source = audioContext.createMediaElementSource(item.video);
-      const sourceGain = audioContext.createGain();
-      // Fade each clip's original audio at cut boundaries to reduce clicks and pops.
-      sourceGain.gain.value = 0;
-      source.connect(sourceGain);
-      sourceGain.connect(audioDestination);
-      sourceVideoGainNodes.set(item.video, sourceGain);
+  let audioDestination: MediaStreamAudioDestinationNode | null = null;
+  try {
+    audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined"
+      ? preparedAudioContext ?? new AudioContext()
+      : null;
+    if (hasSourceVideo && !audioContext) {
+      throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
     }
-    for (const item of loadedAudio) {
-      const source = audioContext.createMediaElementSource(item.audio);
-      const gain = audioContext.createGain();
-      // Fade automation is scheduled once the render starts to avoid abrupt music edges.
-      gain.gain.value = 0;
-      source.connect(gain);
-      gain.connect(audioDestination);
-      item.audio.loop = true;
-      musicGainNodes.set(item.audio, gain);
+    audioDestination = audioContext?.createMediaStreamDestination() ?? null;
+    if (audioContext && audioDestination) {
+      const connectedVideoElements = new Set<HTMLVideoElement>();
+      for (const item of loaded) {
+        if (item.kind !== "video" || connectedVideoElements.has(item.video)) continue;
+        connectedVideoElements.add(item.video);
+        const source = audioContext.createMediaElementSource(item.video);
+        const sourceGain = audioContext.createGain();
+        // Fade each clip's original audio at cut boundaries to reduce clicks and pops.
+        sourceGain.gain.value = 0;
+        source.connect(sourceGain);
+        sourceGain.connect(audioDestination);
+        sourceVideoGainNodes.set(item.video, sourceGain);
+      }
+      for (const item of loadedAudio) {
+        const source = audioContext.createMediaElementSource(item.audio);
+        const gain = audioContext.createGain();
+        // Fade automation is scheduled once the render starts to avoid abrupt music edges.
+        gain.gain.value = 0;
+        source.connect(gain);
+        gain.connect(audioDestination);
+        item.audio.loop = true;
+        musicGainNodes.set(item.audio, gain);
+      }
     }
-  }
-  if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
+    if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
+      throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
+    }
+  } catch (error) {
+    videoStream.getTracks().forEach((track) => track.stop());
     releaseLoadedMedia(audioContext);
-    throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
+    if (error instanceof Error && (error.message.startsWith("Не удалось подготовить звук") || error.message.startsWith("Не удалось подготовить аудио"))) {
+      throw error;
+    }
+    const detail = error instanceof Error ? error.message : "неизвестная ошибка аудиосистемы";
+    throw new Error(`Не удалось настроить аудиосистему экспорта (${detail}). Попробуй отключить музыку или перезапустить экспорт.`);
   }
   const stream = new MediaStream([
     ...videoStream.getVideoTracks(),
