@@ -76,6 +76,11 @@ export function isRenderedDurationWithinTolerance(actualDuration: number, expect
   return Math.abs(actualDuration - expectedDuration) <= tolerance;
 }
 
+/** Avoid treating adjacent samples from very short clips as evidence of a freeze. */
+export function shouldCompareFrameSamples(sampleIntervalSeconds: number): boolean {
+  return Number.isFinite(sampleIntervalSeconds) && sampleIntervalSeconds >= 0.5;
+}
+
 export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false, dimensionMismatch = false): "ok" | "warning" {
   return blackFrameTimes.length || frozenFramePairs.length || durationMismatch || dimensionMismatch ? "warning" : "ok";
 }
@@ -138,7 +143,7 @@ export async function inspectRenderedVideo(
       // the same frame (especially on mobile). Only infer a freeze when samples
       // are at least half a second apart; black-frame and metadata checks still
       // run for every duration.
-      if (previousPixels && video.duration / sampleCount >= 0.5) {
+      if (previousPixels && shouldCompareFrameSamples(video.duration / sampleCount)) {
         let difference = 0;
         for (let offset = 0; offset < pixels.length; offset += 4) {
           difference += (Math.abs(pixels[offset] - previousPixels[offset]) + Math.abs(pixels[offset + 1] - previousPixels[offset + 1]) + Math.abs(pixels[offset + 2] - previousPixels[offset + 2])) / 3;
