@@ -10,18 +10,44 @@ export type OutputQualityReport = {
   severity: "ok" | "warning";
 };
 
+/** Ready-state guard prevents waiting for an event that fired just before listeners attached. */
+export function hasReachedMediaReadyState(successEvent: string, readyState: number): boolean {
+  if (!Number.isFinite(readyState)) return false;
+  if (successEvent === "loadedmetadata") return readyState >= 1;
+  if (successEvent === "loadeddata") return readyState >= 2;
+  return false;
+}
+
 const waitForMediaEvent = (video: HTMLVideoElement, successEvent: string): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => { cleanup(); reject(new Error("Истекло время ожидания декодирования видео.")); }, 12000);
-    const onSuccess = () => { cleanup(); resolve(); };
-    const onError = () => { cleanup(); reject(new Error("Браузер не смог декодировать экспортированное видео.")); };
+    let settled = false;
+    let timeoutId = 0;
     const cleanup = () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(timeoutId);
       video.removeEventListener(successEvent, onSuccess);
       video.removeEventListener("error", onError);
     };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onSuccess = () => finish();
+    const onError = () => finish(new Error("Браузер не смог декодировать экспортированное видео."));
     video.addEventListener(successEvent, onSuccess, { once: true });
     video.addEventListener("error", onError, { once: true });
+    // Register first, then re-check state: media may become ready between the
+    // caller's check and listener registration, especially for local Blob URLs.
+    if (hasReachedMediaReadyState(successEvent, video.readyState)) {
+      finish();
+      return;
+    }
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Истекло время ожидания декодирования видео.")),
+      12000,
+    );
   });
 
 const seekTo = async (video: HTMLVideoElement, time: number) => {
