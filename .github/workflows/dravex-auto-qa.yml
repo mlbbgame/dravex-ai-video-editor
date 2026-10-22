@@ -67,10 +67,16 @@ jobs:
             video_count=$((video_count + 1))
             name="$(basename "${video%.webm}")"
             duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video" 2>/dev/null || true)"
-            if [[ -z "$duration" ]]; then
-              echo "Could not read duration for $video" >&2
-              continue
+            video_stream="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=s=x:p=0 "$video" 2>/dev/null || true)"
+            if [[ -z "$duration" ]] || ! awk -v d="$duration" 'BEGIN { exit !(d+0 > 0) }'; then
+              echo "Could not read a positive duration for $video (duration: ${duration:-missing})" >&2
+              exit 1
             fi
+            if [[ -z "$video_stream" ]]; then
+              echo "Export has no readable video stream: $video" >&2
+              exit 1
+            fi
+            echo "Validated video stream for $video: $video_stream; duration=${duration}s"
             for point in 0 0.5 0.9; do
               timestamp="$(awk -v d="$duration" -v p="$point" 'BEGIN { t=d*p; if (t<0) t=0; if (t>d-0.1) t=(d>0.1 ? d-0.1 : 0); printf "%.3f", t }')"
               if ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/dravex-review-frames/${name}-${point}.png"; then
