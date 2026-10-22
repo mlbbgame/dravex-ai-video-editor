@@ -38,7 +38,7 @@ export function buildMixedMediaSequence(
   if (!Number.isFinite(totalVideoSeconds) || totalVideoSeconds <= 0) return [];
 
   const scale = Math.min(1, videoBudget / totalVideoSeconds);
-  const scaledVideos = videoSegments.map((segment, index) => {
+  const scaledVideos = videoSegments.map((segment) => {
     const sourceSpan = Math.max(0, segment.trimEnd - segment.trimStart);
     const nextSpan = sourceSpan * scale;
     const center = (segment.trimStart + segment.trimEnd) / 2;
