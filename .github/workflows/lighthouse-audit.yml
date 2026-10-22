@@ -30,6 +30,16 @@ jobs:
         with:
           node-version: 20
 
+      # Cache npm's download data; this workflow currently has no lockfile to key
+      # setup-node's built-in npm cache against.
+      - name: Cache npm download data
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: dravex-lighthouse-npm-${{ runner.os }}-node20-${{ hashFiles('package.json') }}
+          restore-keys: |
+            dravex-lighthouse-npm-${{ runner.os }}-node20-
+
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
 
