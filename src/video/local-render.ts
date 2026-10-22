@@ -15,6 +15,12 @@ type RenderOptions = {
   onProgress?: (progress: number) => void;
 };
 
+/** Keep invalid project duration values from producing NaN frame counts or a stuck recorder. */
+export function getSafeRenderDuration(durationSeconds?: number): number {
+  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds)) return 15;
+  return Math.max(5, Math.min(600, durationSeconds));
+}
+
 const dimensionsFor = (aspectRatio: string, quality = "720p") => {
   const multiplier = quality === "4K" ? 3 : quality === "1080p" ? 1.5 : 1;
   let base: { width: number; height: number };
@@ -102,7 +108,7 @@ export async function renderImageSlideshow({
     videoBitsPerSecond: quality === "4K" ? 24_000_000 : quality === "1080p" ? 12_000_000 : 4_000_000
   });
   const chunks: BlobPart[] = [];
-  const safeDuration = Math.max(5, Math.min(600, durationSeconds));
+  const safeDuration = getSafeRenderDuration(durationSeconds);
   const totalFrames = Math.max(24, Math.round(safeDuration * 24));
   const frameDuration = 1000 / 24;
 
