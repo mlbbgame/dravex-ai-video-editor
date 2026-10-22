@@ -159,3 +159,62 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+
+test("Smart Eye coverage uses only valid sampled timestamps and includes source boundaries", () => {
+  const report = buildSmartEyeReport({
+    duration: 20,
+    detectedLabels: ["car"],
+    events: [],
+    selectedStyle: "velocity",
+    sampledFrameCount: 4,
+    candidateCount: 8,
+    sampledFrameTimes: [-1, 0, 2, 2, 8, 19, 20, 21, Number.NaN] as number[],
+  });
+
+  expect(report.coverage.sampledFrameCount).toBe(4);
+  expect(report.coverage.candidateCount).toBe(8);
+  expect(report.coverage.sampledFrameRatio).toBe(0.5);
+  // Invalid/out-of-range values are ignored, duplicate timestamps are deduplicated,
+  // and the report exposes the unobserved tail/head as gaps instead of implying full coverage.
+  expect(report.coverage.largestSampleGapSeconds).toBe(11);
+  expect(report.coverage.firstEventTime).toBeNull();
+  expect(report.coverage.lastEventTime).toBeNull();
+});
+
+test("Smart Eye sanitizes frame observations and bounds cue evidence", () => {
+  const report = buildSmartEyeReport({
+    duration: 10,
+    detectedLabels: [" CAR ", "car", 17, "" as unknown as string],
+    events: [{
+      kind: "motion-peak",
+      evidenceLevel: "visual-heuristic",
+      label: "peak",
+      confidence: 4,
+      sourceTime: 5,
+      start: 4,
+      end: 6,
+      evidence: [" cue ", " cue ", 17 as unknown as string, ...Array.from({ length: 20 }, (_, i) => "e" + i)],
+    }],
+    observations: [
+      { time: 4, sceneLabels: ["Car", " CAR ", 17 as unknown as string], actionCues: Array.from({ length: 20 }, (_, i) => "cue" + i), score: 0.8 },
+      { time: 11, sceneLabels: ["dog"], actionCues: ["out of bounds"], score: 1 },
+      { time: Number.NaN, sceneLabels: ["cat"], actionCues: ["bad timestamp"], score: 1 },
+    ],
+    selectedStyle: "velocity",
+    sampledFrameCount: 2,
+    candidateCount: 2,
+    sampledFrameTimes: [4, 11, Number.NaN],
+  });
+
+  expect(report.detectedEntities).toEqual(["car"]);
+  expect(report.sceneCategory).toBe("vehicles");
+  expect(report.memory.some((entry) => entry.time === 11 || entry.time === null && entry.label === "dog")).toBe(false);
+  const frameEntry = report.memory.find((entry) => entry.kind === "frame-observation");
+  expect(frameEntry?.evidence).toHaveLength(12);
+  expect(new Set(frameEntry?.evidence).size).toBe(12);
+  const eventEntry = report.memory.find((entry) => entry.kind === "motion-peak");
+  expect(eventEntry?.confidence).toBe(1);
+  expect(eventEntry?.evidence.length).toBeLessThanOrEqual(12);
+  expect(eventEntry?.evidence.every((item) => typeof item === "string")).toBe(true);
+});
