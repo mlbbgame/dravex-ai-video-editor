@@ -14,6 +14,7 @@ import { buildMixedMediaSequence } from "./video/mixed-media-planner";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
+import { getExportProfile } from "./video/export-profile";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, shouldApplyLearnedPreference, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
 import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
@@ -1142,7 +1143,8 @@ export default function App() {
       setStage("done");
       // Inspection is advisory; ignore stale results if a newer montage has started.
       const inspectionGeneration = qualityCheckGeneration.current;
-      void inspectRenderedVideo(blob, renderDuration).then((report) => {
+      const expectedExportProfile = getExportProfile(aspectRatio, quality);
+      void inspectRenderedVideo(blob, renderDuration, { width: expectedExportProfile.width, height: expectedExportProfile.height }).then((report) => {
         if (inspectionGeneration !== qualityCheckGeneration.current) return;
         setQualityReport(report);
         recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
