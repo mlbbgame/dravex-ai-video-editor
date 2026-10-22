@@ -21,6 +21,7 @@ export function directorPlanToVideoSegments(
       Number.isFinite(clip.sourceEndSeconds) &&
       Number.isFinite(clip.speedFactor) &&
       clip.speedFactor >= 0.25 && clip.speedFactor <= 4 &&
+      (clip.transitionOutSeconds === undefined || (Number.isFinite(clip.transitionOutSeconds) && clip.transitionOutSeconds >= 0 && clip.transitionOutSeconds <= 2)) &&
       clip.sourceStartSeconds >= 0 &&
       clip.sourceEndSeconds > clip.sourceStartSeconds
     )
@@ -31,5 +32,6 @@ export function directorPlanToVideoSegments(
       trimStart: clip.sourceStartSeconds,
       trimEnd: clip.sourceEndSeconds,
       speedFactor: clip.speedFactor,
+      transitionOutSeconds: clip.transitionOutSeconds,
     }));
 }
