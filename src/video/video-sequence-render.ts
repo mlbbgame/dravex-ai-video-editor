@@ -916,6 +916,16 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       video.removeAttribute("src");
       video.load();
     });
+    // Release decoded image resources on successful exports and recorder errors
+    // too. Previously this cleanup covered videos/audio only, leaving detached
+    // HTMLImageElements referenced until the render promise and closures were
+    // collected; on Android this can retain sizable decoded bitmaps after export.
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      item.image.onload = null;
+      item.image.onerror = null;
+      item.image.src = "";
+    }
     loadedAudio.forEach(({ audio }) => {
       audio.pause();
       audio.removeAttribute("src");
