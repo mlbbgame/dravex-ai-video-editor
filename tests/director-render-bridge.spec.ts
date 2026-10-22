@@ -29,6 +29,21 @@ test("maps plan trims to native renderer segments without changing their boundar
   ]);
 });
 
+test("passes only supported cinematic overlays from Director plans", () => {
+  const effectsPlan = {
+    ...plan,
+    clips: [{
+      ...plan.clips[0],
+      effects: ["light-leak", "chromatic-shift", "letterbox", "untrusted-effect"],
+    }],
+  };
+  expect(directorPlanToVideoSegments(effectsPlan, "source-video", "source.mp4", "blob:video")[0].effects).toEqual([
+    "light-leak",
+    "chromatic-shift",
+    "letterbox",
+  ]);
+});
+
 test("rejects malformed clip ranges and caps renderer segments", () => {
   const malformed = {
     ...plan,
