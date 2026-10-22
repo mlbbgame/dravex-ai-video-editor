@@ -24,7 +24,7 @@ export function buildMixedMediaSequence(
   if (!Number.isFinite(targetDurationSeconds) || targetDurationSeconds <= 0) return [];
 
   const target = Math.max(1, targetDurationSeconds);
-  const imageSeconds = Math.min(MAX_IMAGE_SECONDS, Math.max(MIN_IMAGE_SECONDS, (target - MIN_VIDEO_SECONDS) / images.length));
+  const imageSeconds = Math.min(MAX_IMAGE_SECONDS, Math.max(MIN_IMAGE_SECONDS, Math.min(1.6, (target - MIN_VIDEO_SECONDS) / images.length)));
   const totalImageSeconds = imageSeconds * images.length;
   const videoBudget = target - totalImageSeconds;
   if (videoBudget < MIN_VIDEO_SECONDS) return [];
