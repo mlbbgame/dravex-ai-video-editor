@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTrimBoundaryFrameTime, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -73,4 +73,13 @@ test("source audio gain clamps invalid and out-of-range volume values", () => {
   expect(getSourceAudioGain("keep", 5, false)).toBe(1);
   expect(getSourceAudioGain("keep", -1, false)).toBe(0);
   expect(getSourceAudioGain("auto", Number.NaN, true)).toBeCloseTo(0.224);
+});
+
+
+test("trim boundary holds the last frame inside the selected source range", () => {
+  expect(getTrimBoundaryFrameTime(1, 2)).toBeCloseTo(2 - 1 / 24, 8);
+  expect(getTrimBoundaryFrameTime(0, 0.01)).toBeCloseTo(0.005, 8);
+  expect(getTrimBoundaryFrameTime(3, 3)).toBe(3);
+  expect(getTrimBoundaryFrameTime(4, 2)).toBe(4);
+  expect(getTrimBoundaryFrameTime(Number.NaN, 2)).toBe(0);
 });
