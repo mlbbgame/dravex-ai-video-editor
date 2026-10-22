@@ -752,24 +752,33 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   }
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
   const chunks: BlobPart[] = [];
+  let recorderResourcesCleaned = false;
+  const cleanupRecorderResources = () => {
+    if (recorderResourcesCleaned) return;
+    recorderResourcesCleaned = true;
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    uniqueVideos.forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loadedAudio.forEach(({ audio }) => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    });
+    if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
+  };
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-    recorder.onerror = () => reject(new Error("The browser stopped recording unexpectedly."));
+    recorder.onerror = () => {
+      cleanupRecorderResources();
+      reject(new Error("Chrome остановил запись неожиданно. Проверь, что видео открывается в браузере, затем обнови DRAVEX и повтори экспорт. Если ошибка повторится, попробуй более короткий ролик."));
+    };
     recorder.onstop = async () => {
-      stream.getTracks().forEach((track) => track.stop());
-      videoStream.getTracks().forEach((track) => track.stop());
-      const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
-      uniqueVideos.forEach((video) => {
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-      });
-      loadedAudio.forEach(({ audio }) => {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      });
-      if (audioContext && audioContext !== preparedAudioContext) void audioContext.close();
+      cleanupRecorderResources();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) {
         try {
