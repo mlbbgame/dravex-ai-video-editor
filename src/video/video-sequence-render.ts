@@ -615,7 +615,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const image = await loadImage(segment);
       const requestedTransition = segment.transitionOutSeconds;
       const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
-      const effects = Array.isArray(segment.effects) ? segment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+      const effects = Array.isArray(segment.effects) ? segment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) : undefined;
       return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration), transitionOutSeconds, effects };
     }
     const videoSegment = segment as VideoSegment;
@@ -631,7 +631,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const speedFactor = Number.isFinite(requestedSpeed) ? Math.max(0.25, Math.min(4, requestedSpeed as number)) : 1;
     const requestedTransition = videoSegment.transitionOutSeconds;
     const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
-    const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+    const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) : undefined;
     return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
   });
   let loaded: LoadedSegment[];
@@ -1189,6 +1189,35 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
+    }
+    // Optional cinematic overlays use native canvas only and remain per-clip allowlisted.
+    if (!suppressEffects && effectEnabled("light-leak", style === "cinematic" && cutProgress < 0.42) && cutProgress >= 0 && cutProgress < 0.42) {
+      const leakProgress = 1 - cutProgress / 0.42;
+      const leak = context.createLinearGradient(0, 0, width * 0.82, height * 0.72);
+      leak.addColorStop(0, \`rgba(255,155,72,\${0.22 * leakProgress * strengthScale})\`);
+      leak.addColorStop(0.38, \`rgba(255,92,54,\${0.09 * leakProgress * strengthScale})\`);
+      leak.addColorStop(1, "rgba(255,92,54,0)");
+      context.fillStyle = leak;
+      context.fillRect(0, 0, width, height);
+    }
+    if (!suppressEffects && effectEnabled("chromatic-shift", style === "glitch" && cutProgress < 0.18) && cutProgress >= 0 && cutProgress < 0.18) {
+      const shiftAlpha = Math.min(0.16, (1 - cutProgress / 0.18) * 0.12 * strengthScale);
+      context.save();
+      context.globalAlpha = shiftAlpha;
+      context.globalCompositeOperation = "screen";
+      context.beginPath();
+      context.rect(0, height * 0.16, width, height * 0.68);
+      context.clip();
+      context.drawImage(source, drawX + width * 0.006, drawY, drawWidth, drawHeight);
+      context.fillStyle = "rgba(255,35,90,0.32)";
+      context.fillRect(0, height * 0.16, width, height * 0.68);
+      context.restore();
+    }
+    if (!suppressEffects && effectEnabled("letterbox", style === "cinematic")) {
+      const barHeight = Math.max(2, Math.round(height * 0.045));
+      context.fillStyle = "rgba(0,0,0,0.88)";
+      context.fillRect(0, 0, width, barHeight);
+      context.fillRect(0, height - barHeight, width, barHeight);
     }
     const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 48);
     if (cleanTitle) {
