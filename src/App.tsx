@@ -765,6 +765,16 @@ export default function App() {
             if (generation === previewGeneration.current) {
               setPreviewProgress(Math.round(((index + progress / 100) / pendingVariants.length) * 100));
             }
+          },
+          onStage: (stage) => {
+            if (generation !== previewGeneration.current) return;
+            const stageLabels = {
+              "preparing-media": "Подготавливаем исходные кадры",
+              "preparing-audio": "Подготавливаем звук",
+              rendering: "Рендерим кадры",
+              finalizing: "Сохраняем вариант",
+            };
+            setPreviewStatus(`Вариант ${index + 1} из ${pendingVariants.length} · ${stageLabels[stage]}: ${variant.title}…`);
           }
         });
         if (generation !== previewGeneration.current) return;
@@ -1062,6 +1072,15 @@ export default function App() {
         transitionMode: effectiveTransitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress,
+        onStage: (stage) => {
+          const messages = {
+            "preparing-media": "Подготавливаем видео и фотографии… Прогресс может оставаться 0%, пока браузер читает файлы.",
+            "preparing-audio": "Подготавливаем звуковые дорожки…",
+            rendering: "Обрабатываем кадры и собираем монтаж…",
+            finalizing: "Завершаем запись и сохраняем готовый ролик…",
+          };
+          setMessage(messages[stage]);
+        },
         audioContext: preparedAudioContext
       });
       const nextUrl = URL.createObjectURL(blob);

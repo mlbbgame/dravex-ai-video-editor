@@ -787,7 +787,7 @@ export async function analyzeWithAIDirector(
       ? detectionsByCandidate.get(index) ?? []
       : findNearestDetectedObjects(candidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius);
     const position = sampledPosition.get(index) ?? -1;
-    const previousIndex = isModelSample && position > 0 ? selectedIndices[position - 1] : -1;
+    const previousIndex = isModelSample && position > 0 ? analyzedIndices[position - 1] : -1;
     const previousObjects = previousIndex >= 0 ? detectionsByCandidate.get(previousIndex) ?? [] : [];
     const previousLabels = previousObjects.map((item) => item.label);
     const labels = [...new Set(objects.map((item) => item.label))];
@@ -817,8 +817,8 @@ export async function analyzeWithAIDirector(
           nextCandidate.time
         )
       : [];
-    const trackedTemporalCues = isModelSample && previousCandidate
-      ? inferTrackedObjectCues(previousObjects, objects, previousCandidate.time, candidate.time)
+    const trackedTemporalCues = isModelSample && previousIndex >= 0
+      ? inferTrackedObjectCues(previousObjects, objects, candidates[previousIndex].time, candidate.time)
       : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),

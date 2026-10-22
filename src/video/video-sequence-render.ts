@@ -107,6 +107,7 @@ type SequenceOptions = {
   suppressAudio?: boolean;
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
+  onStage?: (stage: "preparing-media" | "preparing-audio" | "rendering" | "finalizing") => void;
   audioContext?: AudioContext;
 };
 
@@ -561,13 +562,15 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, sourceAudioMode = "auto", sourceAudioVolume = 0.8, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, sourceAudioMode = "auto", sourceAudioVolume = 0.8, targetDurationSeconds, onProgress, onStage, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
   const mimeType = chooseSupportedWebmMimeType((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("Этот браузер не поддерживает экспорт WebM. Открой DRAVEX в актуальном Chrome.");
 
+  // Keep users informed while media metadata is being loaded before frame progress begins.
+  onStage?.("preparing-media");
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
@@ -611,6 +614,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
+  onStage?.("preparing-audio");
   const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
     segment,
     audio: await loadAudio(segment)
@@ -748,24 +752,33 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   }
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
   const chunks: BlobPart[] = [];
+  let recorderResourcesCleaned = false;
+  const cleanupRecorderResources = () => {
+    if (recorderResourcesCleaned) return;
+    recorderResourcesCleaned = true;
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    uniqueVideos.forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loadedAudio.forEach(({ audio }) => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    });
+    if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
+  };
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-    recorder.onerror = () => reject(new Error("The browser stopped recording unexpectedly."));
+    recorder.onerror = () => {
+      cleanupRecorderResources();
+      reject(new Error("Chrome остановил запись неожиданно. Проверь, что видео открывается в браузере, затем обнови DRAVEX и повтори экспорт. Если ошибка повторится, попробуй более короткий ролик."));
+    };
     recorder.onstop = async () => {
-      stream.getTracks().forEach((track) => track.stop());
-      videoStream.getTracks().forEach((track) => track.stop());
-      const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
-      uniqueVideos.forEach((video) => {
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-      });
-      loadedAudio.forEach(({ audio }) => {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      });
-      if (audioContext && audioContext !== preparedAudioContext) void audioContext.close();
+      cleanupRecorderResources();
       const blob = new Blob(chunks, { type: mimeType });
       if (blob.size) {
         try {
@@ -781,6 +794,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
   });
 
+  onStage?.("rendering");
   const previousFrameCanvas = document.createElement("canvas");
   previousFrameCanvas.width = width;
   previousFrameCanvas.height = height;
@@ -1155,6 +1169,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     await new Promise((resolve) => window.setTimeout(resolve, 500));
 
+    onStage?.("finalizing");
     // Flush the final encoded data before stopping; some Android browsers otherwise
     // stop before delivering the last (or only) dataavailable chunk.
     if (recorder.state === "recording" && typeof recorder.requestData === "function") {
@@ -1179,7 +1194,24 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw error;
   }
 
-  const blob = await result;
-  onProgress?.(100);
-  return blob;
+  // Android MediaRecorder can occasionally remain active without dispatching
+  // the final "stop" event. Bound finalization so the UI never waits forever.
+  let finalizationTimeoutId = 0;
+  try {
+    const blob = await Promise.race([
+      result,
+      new Promise<Blob>((_, reject) => {
+        finalizationTimeoutId = window.setTimeout(() => {
+          // Share the idempotent cleanup with recorder error/stop handlers.
+          // A late "stop" event after the watchdog must not clean resources twice.
+          cleanupRecorderResources();
+          reject(new Error("Chrome не завершил запись ролика за 15 секунд. Монтаж не был сохранён. Обнови страницу и попробуй экспорт ещё раз; если ошибка повторится, попробуй более короткий ролик."));
+        }, 15_000);
+      })
+    ]);
+    onProgress?.(100);
+    return blob;
+  } finally {
+    window.clearTimeout(finalizationTimeoutId);
+  }
 }

@@ -9,6 +9,7 @@ import {
 } from "../src/video/highlight-finder";
 import { buildDirectorEventTimeline } from "../src/video/director-event-timeline";
 import { buildSmartEyeReport } from "../src/video/smart-eye";
+import { inferTrackedObjectCues, type DetectedObject } from "../src/video/ai-director";
 
 function makeCandidates(duration: number): HighlightMoment[] {
   const result: HighlightMoment[] = [];
@@ -159,3 +160,25 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+test("tracked object cues require nearby, ordered observations from the actual analyzed samples", () => {
+  const previous: DetectedObject[] = [{
+    label: "car",
+    score: 0.9,
+    box: { xmin: 80, ymin: 50, xmax: 140, ymax: 100 },
+  }];
+  const current: DetectedObject[] = [{
+    label: "car",
+    score: 0.92,
+    box: { xmin: 110, ymin: 50, xmax: 180, ymax: 110 },
+  }];
+
+  // Nearby analyzed frames can support motion/approach cues.
+  expect(inferTrackedObjectCues(previous, current, 4, 5)).not.toHaveLength(0);
+  // A timestamp accidentally taken from a different, much earlier candidate
+  // must not make detections appear temporally adjacent.
+  expect(inferTrackedObjectCues(previous, current, 1, 5)).toEqual([]);
+  expect(inferTrackedObjectCues(previous, current, 5, 4)).toEqual([]);
+  expect(inferTrackedObjectCues(previous, current, Number.NaN, 5)).toEqual([]);
+});
+

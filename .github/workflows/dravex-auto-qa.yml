@@ -67,10 +67,27 @@ jobs:
             video_count=$((video_count + 1))
             name="$(basename "${video%.webm}")"
             duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video" 2>/dev/null || true)"
-            if [[ -z "$duration" ]]; then
-              echo "Could not read duration for $video" >&2
-              continue
+            if [[ ! "$duration" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v d="$duration" 'BEGIN { exit !(d > 0) }'; then
+              echo "Could not read a positive finite duration for $video (got: $duration)" >&2
+              exit 1
             fi
+            if [[ ! -s "$video" ]]; then
+              echo "Exported video is empty: $video" >&2
+              exit 1
+            fi
+            video_stream="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 "$video" 2>/dev/null || true)"
+            if [[ -z "$video_stream" ]]; then
+              echo "No readable video stream in $video" >&2
+              exit 1
+            fi
+            video_codec="$(printf '%s' "$video_stream" | cut -d, -f1)"
+            video_width="$(printf '%s' "$video_stream" | cut -d, -f2)"
+            video_height="$(printf '%s' "$video_stream" | cut -d, -f3)"
+            if [[ -z "$video_codec" || ! "$video_width" =~ ^[0-9]+$ || ! "$video_height" =~ ^[0-9]+$ ]] || (( video_width <= 0 || video_height <= 0 )); then
+              echo "Invalid video codec or dimensions in $video: $video_stream" >&2
+              exit 1
+            fi
+            echo "Validated $video: duration=${duration}s, codec=$video_codec, ${video_width}x${video_height}"
             for point in 0 0.5 0.9; do
               timestamp="$(awk -v d="$duration" -v p="$point" 'BEGIN { t=d*p; if (t<0) t=0; if (t>d-0.1) t=(d>0.1 ? d-0.1 : 0); printf "%.3f", t }')"
               if ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/dravex-review-frames/${name}-${point}.png"; then
