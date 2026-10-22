@@ -10,6 +10,15 @@ import {
   type MontageExperience,
 } from "../src/video/director-learning";
 
+const completeRegressions = (musicSync = 0.01) => ({
+  momentSelection: 0,
+  pacing: 0,
+  transitions: 0,
+  musicSync,
+  visualConsistency: 0,
+  technicalReliability: 0,
+});
+
 function experience(index: number, overrides: Partial<MontageExperience> = {}): MontageExperience {
   return {
     id: `exp-${index}`,
@@ -97,7 +106,7 @@ test("candidate tuning is promoted only after measurable gain and no large regre
   const rejected = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
     baselineScore: 0.7,
     candidateScore: 0.75,
-    baselineRegressionByDimension: { musicSync: 0.08 },
+    baselineRegressionByDimension: completeRegressions(0.08),
     baselineSampleIds: sampleIds,
     candidateSampleIds: sampleIds,
   });
@@ -107,7 +116,7 @@ test("candidate tuning is promoted only after measurable gain and no large regre
   const accepted = evaluateTuningCandidate(current, { transitionDensity: 0.55 }, {
     baselineScore: 0.7,
     candidateScore: 0.74,
-    baselineRegressionByDimension: { musicSync: 0.02 },
+    baselineRegressionByDimension: completeRegressions(0.02),
     baselineSampleIds: sampleIds,
     candidateSampleIds: sampleIds,
   });
@@ -196,12 +205,29 @@ test("learned preferences defer to strong semantic evidence but help when classi
 });
 
 
+
+test("tuning promotion rejects incomplete per-dimension benchmark metrics", () => {
+  const current = { version: 2, values: { transitionDensity: 0.4 } };
+  const result = evaluateTuningCandidate(current, { transitionDensity: 0.6 }, {
+    baselineScore: 0.7,
+    candidateScore: 0.95,
+    baselineRegressionByDimension: { musicSync: 0 },
+    baselineSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"],
+    candidateSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"],
+  });
+
+  expect(result.accepted).toBe(false);
+  expect(result.next).toEqual(current);
+  expect(result.reasons).toContain("Benchmark is missing regression data for momentSelection.");
+  expect(result.reasons).toContain("Benchmark is missing regression data for technicalReliability.");
+});
+
 test("tuning promotion rejects malformed benchmark payloads and invalid thresholds safely", () => {
   const current = { version: 2, values: { transitionDensity: 0.4 } };
   const validBenchmark = {
     baselineScore: 0.7,
     candidateScore: 0.9,
-    baselineRegressionByDimension: { musicSync: 0.01 },
+    baselineRegressionByDimension: completeRegressions(0.01),
     baselineSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"],
     candidateSampleIds: ["clip-01", "clip-02", "clip-03", "clip-04", "clip-05"],
   };

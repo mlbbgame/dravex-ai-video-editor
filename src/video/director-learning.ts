@@ -321,6 +321,15 @@ export function evaluateTuningCandidate(
       || Array.isArray(benchmark.baselineRegressionByDimension)) {
       reasons.push("Dimension regressions must be provided as an object.");
     } else {
+      const requiredDimensions: Array<keyof MontageQuality> = [
+        "momentSelection", "pacing", "transitions", "musicSync",
+        "visualConsistency", "technicalReliability",
+      ];
+      for (const dimension of requiredDimensions) {
+        if (!Object.prototype.hasOwnProperty.call(benchmark.baselineRegressionByDimension, dimension)) {
+          reasons.push(`Benchmark is missing regression data for ${dimension}.`);
+        }
+      }
       for (const [dimension, regression] of Object.entries(benchmark.baselineRegressionByDimension)) {
         if (!Number.isFinite(regression) || regression < 0 || regression > 1) {
           reasons.push(`Regression for ${dimension} must be between 0 and 1.`);
