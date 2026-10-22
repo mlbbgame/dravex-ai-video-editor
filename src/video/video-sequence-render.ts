@@ -18,6 +18,8 @@ export type VideoSegment = {
   speedFactor?: number;
   /** Duration of the transition after this clip, in seconds. */
   transitionOutSeconds?: number;
+  /** Optional allowlisted per-clip visual effects from the Director plan. */
+  effects?: string[];
 };
 
 /** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
@@ -33,6 +35,7 @@ export type ImageSegment = {
   duration?: number;
   /** Duration of the transition after this still, in seconds. */
   transitionOutSeconds?: number;
+  effects?: string[];
 };
 
 export type AudioSegment = {
@@ -116,6 +119,7 @@ type LoadedVideo = {
   duration: number;
   speedFactor: number;
   transitionOutSeconds?: number;
+  effects?: string[];
 };
 
 type LoadedImage = {
@@ -124,6 +128,7 @@ type LoadedImage = {
   image: HTMLImageElement;
   duration: number;
   transitionOutSeconds?: number;
+  effects?: string[];
 };
 
 type LoadedSegment = LoadedVideo | LoadedImage;
@@ -570,7 +575,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const image = await loadImage(segment);
       const requestedTransition = segment.transitionOutSeconds;
       const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
-      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration), transitionOutSeconds };
+      const effects = Array.isArray(segment.effects) ? segment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration), transitionOutSeconds, effects };
     }
     const videoSegment = segment as VideoSegment;
     let pendingVideo = videoCache.get(videoSegment.url);
@@ -585,7 +591,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const speedFactor = Number.isFinite(requestedSpeed) ? Math.max(0.25, Math.min(4, requestedSpeed as number)) : 1;
     const requestedTransition = videoSegment.transitionOutSeconds;
     const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
-    return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds };
+    const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+    return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
   }));
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
@@ -788,6 +795,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   };
 
   const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
+    const plannedEffects = loaded[cutIndex]?.effects;
+    const effectEnabled = (effect: string, fallback: boolean) => plannedEffects === undefined ? fallback : plannedEffects.includes(effect);
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
@@ -968,12 +977,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
+    if (!suppressEffects && !suppressFlashes && effectEnabled("flash", style !== "story") && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
       const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
+    if (!suppressEffects && !suppressFlashes && effectEnabled("glitch-slices", style === "glitch") && cutProgress >= 0 && cutProgress < 0.16) {
       const glitchStrength = (1 - cutProgress / 0.16) * strengthScale;
       // Split short horizontal slices for a more readable digital-impact effect than a full-frame tint alone.
       context.save();
@@ -1000,7 +1009,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
-    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
+    if (!suppressEffects && !suppressFlashes && effectEnabled("speed-lines", style === "velocity") && cutProgress >= 0 && cutProgress < 0.28) {
       const streakAlpha = (1 - cutProgress / 0.28) * 0.27 * strengthScale;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
@@ -1014,7 +1023,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       }
       context.restore();
     }
-    if (!suppressEffects) {
+    if (!suppressEffects && effectEnabled("vignette", true)) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
       vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
