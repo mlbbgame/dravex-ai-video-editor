@@ -14,8 +14,8 @@ test("export quality warns for black frames or nearly frozen frame pairs", () =>
 test("export quality warns when rendered duration materially differs from requested duration", () => {
   expect(isRenderedDurationWithinTolerance(30.5, 30)).toBe(true);
   expect(isRenderedDurationWithinTolerance(31.6, 30)).toBe(false);
-  expect(isRenderedDurationWithinTolerance(28.4, 30)).toBe(true);
-  expect(isRenderedDurationWithinTolerance(27.9, 30)).toBe(false);
+  expect(isRenderedDurationWithinTolerance(28.6, 30)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(28.4, 30)).toBe(false);
   expect(isRenderedDurationWithinTolerance(Number.NaN, 30)).toBe(false);
   expect(isRenderedDurationWithinTolerance(30, Number.POSITIVE_INFINITY)).toBe(false);
   expect(getOutputQualitySeverity([], [], true)).toBe("warning");
