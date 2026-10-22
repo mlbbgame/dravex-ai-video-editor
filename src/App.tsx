@@ -1062,6 +1062,15 @@ export default function App() {
         transitionMode: effectiveTransitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress,
+        onStage: (stage) => {
+          const messages = {
+            "preparing-media": "Подготавливаем видео и фотографии… Прогресс может оставаться 0%, пока браузер читает файлы.",
+            "preparing-audio": "Подготавливаем звуковые дорожки…",
+            rendering: "Обрабатываем кадры и собираем монтаж…",
+            finalizing: "Завершаем запись и сохраняем готовый ролик…",
+          };
+          setMessage(messages[stage]);
+        },
         audioContext: preparedAudioContext
       });
       const nextUrl = URL.createObjectURL(blob);
