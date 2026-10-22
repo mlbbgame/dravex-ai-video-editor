@@ -100,3 +100,27 @@ test("Smart Eye carries timeline evidence through the cross-stage quality contra
   expect(report.coverage.largestSampleGapSeconds).toBeLessThanOrEqual(duration / 2);
   expect(report.limitations.some((item) => item.includes("постоянное обучение"))).toBe(true);
 });
+
+test("five-minute sources produce bounded, distinct montage variants without overlapping source ranges", () => {
+  const duration = 300;
+  const variants = buildHighlightVariants(makeCandidates(duration), duration);
+  expect(variants).toHaveLength(3);
+
+  for (const variant of variants) {
+    expect(variant.moments.length).toBeGreaterThan(0);
+    for (const moment of variant.moments) {
+      expect(Number.isFinite(moment.start)).toBe(true);
+      expect(Number.isFinite(moment.end)).toBe(true);
+      expect(moment.start).toBeGreaterThanOrEqual(0);
+      expect(moment.end).toBeLessThanOrEqual(duration);
+      expect(moment.end).toBeGreaterThan(moment.start);
+    }
+    const ordered = [...variant.moments].sort((a, b) => a.start - b.start);
+    for (let index = 1; index < ordered.length; index += 1) {
+      expect(ordered[index].start).toBeGreaterThanOrEqual(ordered[index - 1].end - 0.001);
+    }
+  }
+
+  const signatures = variants.map((variant) => variant.moments.map((moment) => moment.time.toFixed(2)).join(","));
+  expect(new Set(signatures).size).toBe(variants.length);
+});
