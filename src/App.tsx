@@ -801,6 +801,7 @@ export default function App() {
   const createMontage = async () => {
     if (!mediaFiles.length || busy) return;
     qualityCheckGeneration.current += 1;
+    setQualityCheckBusy(false);
     // Unlock Web Audio immediately during the tap, before long source-video analysis
     // can outlive the browser's transient user activation.
     let preparedAudioContext: AudioContext | undefined;
