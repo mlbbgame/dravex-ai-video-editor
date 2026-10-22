@@ -3,12 +3,15 @@ import {
   getHighlightSampleLimit,
   getHighlightSamplingInterval,
   getHighlightSampleTime,
+  shouldUseQuickVideoCandidates,
+  buildQuickVideoCandidates,
   rankHighlightMomentsForStyle,
   buildHighlightVariants,
   type HighlightMoment,
 } from "../src/video/highlight-finder";
 import { buildDirectorEventTimeline } from "../src/video/director-event-timeline";
 import { buildSmartEyeReport } from "../src/video/smart-eye";
+import { aggregateSemanticProfiles } from "../src/video/semantic-classifier";
 
 function makeCandidates(duration: number): HighlightMoment[] {
   const result: HighlightMoment[] = [];
@@ -158,4 +161,58 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
       expect(moment.end).toBeGreaterThan(moment.start);
     }
   }
+});
+
+
+test("quick short-video candidates cover the source with valid contiguous ranges", () => {
+  for (const duration of [0.25, 0.5, 1.5, 3]) {
+    expect(shouldUseQuickVideoCandidates(duration)).toBe(true);
+    const candidates = buildQuickVideoCandidates(duration);
+    expect(candidates.length).toBeGreaterThanOrEqual(2);
+    expect(candidates.length).toBeLessThanOrEqual(8);
+    expect(candidates[0].start).toBe(0);
+    expect(candidates[candidates.length - 1].end).toBeCloseTo(duration, 8);
+
+    for (const candidate of candidates) {
+      expect(Number.isFinite(candidate.time)).toBe(true);
+      expect(candidate.start).toBeGreaterThanOrEqual(0);
+      expect(candidate.end).toBeLessThanOrEqual(duration);
+      expect(candidate.end).toBeGreaterThan(candidate.start);
+      expect(candidate.time).toBeGreaterThanOrEqual(candidate.start);
+      expect(candidate.time).toBeLessThanOrEqual(candidate.end);
+    }
+    for (let index = 1; index < candidates.length; index += 1) {
+      expect(candidates[index].start).toBeCloseTo(candidates[index - 1].end, 8);
+    }
+  }
+  expect(shouldUseQuickVideoCandidates(3.01)).toBe(false);
+  expect(shouldUseQuickVideoCandidates(Number.NaN)).toBe(false);
+  expect(buildQuickVideoCandidates(0.24)).toEqual([]);
+  expect(buildQuickVideoCandidates(Number.POSITIVE_INFINITY)).toEqual([]);
+});
+
+test("semantic profile aggregation requires repeated frame evidence and rejects ties", () => {
+  expect(aggregateSemanticProfiles([
+    { profile: "automotive", confidence: 0.8 },
+    { profile: "automotive", confidence: 0.7 },
+    { profile: "nature", confidence: 0.9 },
+  ])).toEqual({ profile: "automotive", confidence: 0.75 });
+
+  expect(aggregateSemanticProfiles([
+    { profile: "automotive", confidence: 0.8 },
+    { profile: "nature", confidence: 0.9 },
+  ])).toEqual({ profile: "unknown", confidence: 0 });
+
+  expect(aggregateSemanticProfiles([
+    { profile: "automotive", confidence: 0.8 },
+    { profile: "automotive", confidence: 0.7 },
+    { profile: "nature", confidence: 0.9 },
+    { profile: "nature", confidence: 0.6 },
+  ])).toEqual({ profile: "unknown", confidence: 0 });
+
+  expect(aggregateSemanticProfiles([
+    { profile: "automotive", confidence: Number.NaN },
+    { profile: "unknown", confidence: 0.9 },
+    { profile: "invalid-profile" as "unknown", confidence: 0.9 },
+  ])).toEqual({ profile: "unknown", confidence: 0 });
 });
