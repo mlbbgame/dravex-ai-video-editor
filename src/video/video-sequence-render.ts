@@ -729,7 +729,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         timelineStart,
         timelineEnd,
         sourceRange: { start: item.start, end: item.end },
-        playbackRate: 1,
+        playbackRate: item.speedFactor,
       };
     }
 
