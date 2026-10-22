@@ -121,6 +121,16 @@ export function shouldCompareFrameSamples(sampleIntervalSeconds: number): boolea
   return Number.isFinite(sampleIntervalSeconds) && sampleIntervalSeconds >= 0.5;
 }
 
+/** Sample near both ends as well as across the middle so brief black lead-in/out frames are less likely to be missed. */
+export function getOutputInspectionTimes(duration: number, sampleCount: number): number[] {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount) || sampleCount < 1) return [];
+  const count = Math.max(1, Math.min(9, Math.floor(sampleCount)));
+  const start = Math.min(0.04, duration / 2);
+  const end = Math.max(start, duration - Math.min(0.08, duration / 2));
+  if (count === 1) return [start];
+  return Array.from({ length: count }, (_, index) => start + (end - start) * index / (count - 1));
+}
+
 export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false, dimensionMismatch = false): "ok" | "warning" {
   return blackFrameTimes.length || frozenFramePairs.length || durationMismatch || dimensionMismatch ? "warning" : "ok";
 }
@@ -158,7 +168,7 @@ export async function inspectRenderedVideo(
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Canvas недоступен для проверки кадров.");
     const sampleCount = Math.min(9, Math.max(3, Math.ceil(video.duration / 3)));
-    const times = Array.from({ length: sampleCount }, (_, index) => Math.min(Math.max(0, video.duration - 0.08), (video.duration * (index + 0.5)) / sampleCount));
+    const times = getOutputInspectionTimes(video.duration, sampleCount);
     const blackFrameTimes: number[] = [];
     const frozenFramePairs: number[] = [];
     let previousPixels: Uint8ClampedArray | null = null;
