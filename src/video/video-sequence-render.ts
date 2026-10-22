@@ -402,6 +402,11 @@ export function isUsableRenderDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
 }
 
+/** MediaRecorder is unreliable for effectively empty timelines, even when the value is positive. */
+export function isUsableFinalRenderDuration(duration: number): boolean {
+  return Number.isFinite(duration) && duration >= 0.1;
+}
+
 export type VideoTrimRange = { start: number; end: number; duration: number };
 
 /** Hold the last in-range frame when a speed ramp reaches a clip's trim end early. */
@@ -732,6 +737,24 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
+  if (!isUsableFinalRenderDuration(totalDuration)) {
+    // The requested target can be positive but too short to encode reliably.
+    // Release decoded sources before rejecting so a malformed target cannot leave
+    // media decoders/bitmaps alive on Android after a failed export attempt.
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    for (const video of uniqueVideos) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      item.image.onload = null;
+      item.image.onerror = null;
+      item.image.src = "";
+    }
+    throw new Error("Длительность итогового монтажа меньше 0,1 секунды или некорректна. Увеличь длительность ролика и попробуй снова.");
+  }
   onStage?.("preparing-audio");
   const audioLoads = audioTracks.map(async (segment) => ({
     segment,
