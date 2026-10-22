@@ -985,7 +985,7 @@ export default function App() {
             trimEnd: cut.trimEnd
           }));
           analysisFallback = true;
-          recordDiagnostic("analysis-fallback", { mediaKind: "video", mediaCount: 1, durationSeconds: sourceVideoDuration, fallbackUsed: true, reasonCode: "analysis-unavailable", style: actualStyle });
+          recordDiagnostic("analysis-fallback", { mediaKind: isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: sourceVideoDuration, fallbackUsed: true, reasonCode: "analysis-unavailable", style: actualStyle });
           setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
           if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
         }
