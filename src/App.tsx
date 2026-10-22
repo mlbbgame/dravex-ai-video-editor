@@ -801,6 +801,9 @@ export default function App() {
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
     recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
+    // Keep failure diagnostics tied to the operation that actually failed. This is
+    // especially useful on Android, where analysis, audio setup and encoding can fail differently.
+    let operationPhase: "analysis" | "music-analysis" | "render" = "analysis";
     try {
       setStage("analyzing");
       setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
@@ -986,6 +989,7 @@ export default function App() {
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
       if (musicUrl && musicFile && beatSync) {
+        operationPhase = "music-analysis";
         setMessage("Анализируем музыкальный ритм…");
         try {
           const beatAnalysis = await detectMusicBeats(musicUrl);
@@ -1014,6 +1018,7 @@ export default function App() {
       setUsedStyle(style === "auto" ? (actualStyle === "velocity" ? "Динамичный" : actualStyle === "story" ? "Спокойный" : actualStyle === "anime" ? "Аниме" : actualStyle === "glitch" ? "Глитч" : "Кинематографичный") : montageVariants.find((item) => item.style === style)?.title ?? "Автоматический");
       setCutCount(segments.length);
       recordDiagnostic("render-started", { segmentCount: segments.length, durationSeconds: renderDuration, style: actualStyle, quality, fallbackUsed: analysisFallback });
+      operationPhase = "render";
       setStage("rendering");
       setMessage(analysisFallback ? "Анализ кадров недоступен — собираем равномерный монтаж…" : "Собираем видео и применяем выбранный стиль…");
       const audioTracks: AudioSegment[] = musicUrl && musicFile ? [{ name: musicFile.name, url: musicUrl, volume: musicVolume }] : [];
@@ -1059,8 +1064,16 @@ export default function App() {
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
-      recordDiagnostic("montage-failed", { reasonCode: "render-error", mediaKind: isImageMode ? "images" : "video", mediaCount: mediaFiles.length, quality });
-      setError(caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.");
+      const failureMessage = caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.";
+      recordDiagnostic("montage-failed", {
+        // Keep reasonCode within the diagnostic schema; phase carries the finer distinction.
+        reasonCode: operationPhase === "render" ? "render-error" : "analysis-unavailable",
+        phase: operationPhase,
+        mediaKind: isImageMode ? "images" : "video",
+        mediaCount: mediaFiles.length,
+        quality
+      });
+      setError(failureMessage);
       setMessage("");
     } finally {
       if (preparedAudioContext && preparedAudioContext.state !== "closed") {
