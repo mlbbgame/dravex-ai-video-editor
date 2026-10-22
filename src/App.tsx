@@ -803,7 +803,7 @@ export default function App() {
     setFeedbackStatus("");
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
-    recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
+    recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
     // Keep failure diagnostics tied to the operation that actually failed. This is
     // especially useful on Android, where analysis, audio setup and encoding can fail differently.
     let operationPhase: "analysis" | "music-analysis" | "render" = "analysis";
@@ -931,7 +931,7 @@ export default function App() {
             style === "auto" && !learnedStylePreferenceApplied
           );
           actualStyle = directorResult.selectedStyle;
-          recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
+          recordDiagnostic("analysis-completed", { mediaKind: isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
           const smartEyeSummary = directorResult.smartEye
             ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
             : "";
