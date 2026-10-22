@@ -899,9 +899,10 @@ export function buildDirectorMontagePlan(input: {
     speedFactor: 1,
     transitionOutSeconds: input.style === "cinematic" || input.style === "story" ? 0.45 : input.style === "velocity" || input.style === "glitch" ? 0.28 : 0.36,
     effects: input.style === "velocity" ? ["flash", "speed-lines", "vignette"]
-      : input.style === "glitch" ? ["flash", "glitch-slices", "vignette"]
-        : input.style === "anime" ? ["flash", "vignette"]
-          : ["vignette"],
+      : input.style === "glitch" ? ["flash", "glitch-slices", "chromatic-shift", "vignette"]
+        : input.style === "cinematic" ? ["light-leak", "letterbox", "vignette"]
+          : input.style === "anime" ? ["flash", "vignette"]
+            : ["vignette"],
   }));
   const evidence = candidates.flatMap((moment) => {
     const rows = [
