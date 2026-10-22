@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -152,4 +152,16 @@ test("video trim normalization never emits non-finite values or extends beyond t
     expect(range.duration).toBeGreaterThanOrEqual(0.1);
     expect(range.duration).toBeCloseTo(range.end - range.start, 6);
   }
+});
+
+
+test("music volume is clamped and invalid values fall back safely", () => {
+  expect(getSafeAudioTrackVolume()).toBe(0.65);
+  expect(getSafeAudioTrackVolume(Number.NaN)).toBe(0.65);
+  expect(getSafeAudioTrackVolume(Number.POSITIVE_INFINITY)).toBe(0.65);
+  expect(getSafeAudioTrackVolume(Number.NEGATIVE_INFINITY)).toBe(0.65);
+  expect(getSafeAudioTrackVolume(-1)).toBe(0);
+  expect(getSafeAudioTrackVolume(0)).toBe(0);
+  expect(getSafeAudioTrackVolume(0.4)).toBe(0.4);
+  expect(getSafeAudioTrackVolume(2)).toBe(1);
 });
