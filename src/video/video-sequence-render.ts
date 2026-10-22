@@ -846,7 +846,6 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     releaseLoadedMedia(audioContext);
     throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
   const chunks: BlobPart[] = [];
   let recorderResourcesCleaned = false;
   const cleanupRecorderResources = () => {
@@ -867,6 +866,17 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     });
     if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
   };
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
+  } catch (error) {
+    // MediaRecorder construction can fail on mobile even after isTypeSupported()
+    // reports success (for example, when the encoder is temporarily unavailable).
+    // Release every stream, decoder and owned AudioContext before surfacing the error.
+    cleanupRecorderResources();
+    const detail = error instanceof Error ? error.message : "неизвестная ошибка кодека";
+    throw new Error(`Не удалось запустить запись видео (${detail}). Освободи память телефона, обнови страницу и повтори экспорт.`);
+  }
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = () => {
