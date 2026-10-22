@@ -875,6 +875,7 @@ export default function App() {
     // Keep failure diagnostics tied to the operation that actually failed. This is
     // especially useful on Android, where analysis, audio setup and encoding can fail differently.
     let operationPhase: "analysis" | "music-analysis" | "render" = "analysis";
+    let sourceMetadataUnavailable = false;
     try {
       setStage("analyzing");
       setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
@@ -1041,7 +1042,15 @@ export default function App() {
           setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
-          sourceVideoDuration = await getVideoDuration(videoUrl);
+          try {
+            sourceVideoDuration = await getVideoDuration(videoUrl);
+          } catch (sourceReadError) {
+            // If both frame analysis and metadata-only fallback fail, classify this as
+            // an unreadable source rather than a generic AI-analysis failure. This helps
+            // distinguish unsupported codecs/invalid media URLs from montage logic bugs.
+            sourceMetadataUnavailable = true;
+            throw sourceReadError;
+          }
           renderDuration = Math.min(duration, sourceVideoDuration);
           if (style === "auto") actualStyle = "cinematic";
           const shotLength = getDirectorShotLength(contentProfile, actualStyle);
@@ -1169,7 +1178,7 @@ export default function App() {
       const failureMessage = caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.";
       recordDiagnostic("montage-failed", {
         // Keep reasonCode within the diagnostic schema; phase carries the finer distinction.
-        reasonCode: operationPhase === "render" ? "render-error" : "analysis-unavailable",
+        reasonCode: operationPhase === "render" ? "render-error" : sourceMetadataUnavailable ? "source-unreadable" : "analysis-unavailable",
         phase: operationPhase,
         mediaKind: isImageMode ? "images" : "video",
         mediaCount: mediaFiles.length,
