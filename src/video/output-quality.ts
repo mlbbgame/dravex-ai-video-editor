@@ -66,7 +66,13 @@ const seekTo = async (video: HTMLVideoElement, time: number) => {
 
 export function isRenderedDurationWithinTolerance(actualDuration: number, expectedDuration: number, toleranceSeconds = 0.75): boolean {
   if (!Number.isFinite(actualDuration) || actualDuration <= 0 || !Number.isFinite(expectedDuration) || expectedDuration <= 0) return false;
-  const tolerance = Math.max(toleranceSeconds, expectedDuration * 0.05);
+  // Keep the guard deterministic if callers accidentally pass NaN, Infinity,
+  // or a negative tolerance. Invalid tolerances use the same conservative
+  // default as an omitted tolerance rather than disabling the duration check.
+  const safeTolerance = Number.isFinite(toleranceSeconds) && toleranceSeconds >= 0
+    ? toleranceSeconds
+    : 0.75;
+  const tolerance = Math.max(safeTolerance, expectedDuration * 0.05);
   return Math.abs(actualDuration - expectedDuration) <= tolerance;
 }
 
