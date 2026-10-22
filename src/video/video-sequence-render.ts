@@ -781,6 +781,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
   });
 
+  // A recorder error can reject before the render loop exits. Mark the promise as
+  // handled immediately so a simultaneous render failure never becomes an
+  // unhandled rejection while cleanup is stopping the recorder.
+  void result.catch(() => undefined);
+
   const previousFrameCanvas = document.createElement("canvas");
   previousFrameCanvas.width = width;
   previousFrameCanvas.height = height;
@@ -1175,7 +1180,15 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     recorder.stop();
   } catch (error) {
-    if (recorder.state !== "inactive") recorder.stop();
+    // Stop and settle the recorder before propagating the original render error.
+    // This lets the onstop handler release media elements, tracks, and owned audio
+    // contexts, and prevents an empty-recording rejection from escaping separately.
+    try {
+      if (recorder.state !== "inactive") recorder.stop();
+    } catch {
+      // Preserve the render error; recorder cleanup may already have started.
+    }
+    await result.catch(() => undefined);
     throw error;
   }
 
