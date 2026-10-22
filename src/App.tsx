@@ -10,6 +10,7 @@ import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
+import { buildMixedMediaSequence } from "./video/mixed-media-planner";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
@@ -203,9 +204,11 @@ export default function App() {
   const videoInput = useRef<HTMLInputElement>(null);
   const mediaSelectionMode = useRef<"replace" | "add">("replace");
   const musicInput = useRef<HTMLInputElement>(null);
-  const videoFile = mediaFiles[0] ?? null;
-  const videoUrl = mediaUrls[0] ?? "";
+  const videoIndex = mediaFiles.findIndex((file) => getMediaKind(file) === "video");
+  const videoFile = videoIndex >= 0 ? mediaFiles[videoIndex] : null;
+  const videoUrl = videoIndex >= 0 ? mediaUrls[videoIndex] ?? "" : "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
+  const isMixedMode = videoIndex >= 0 && mediaFiles.some((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
 
   const recordDiagnostic = (type: Parameters<typeof createDirectorDiagnostic>[0], details: Parameters<typeof createDirectorDiagnostic>[1] = {}) => {
@@ -446,8 +449,8 @@ export default function App() {
       setError("Не удалось определить формат одного из файлов. Выбери видео MP4, WebM или MOV либо фотографии JPG, PNG или WebP.");
       return;
     }
-    if (videos.length && (videos.length !== 1 || images.length)) {
-      setError("Сейчас можно добавить одно видео за раз или подборку фотографий. Смешивание видео с фото и несколько видео в одном проекте пока не поддерживаются.");
+    if (videos.length > 1) {
+      setError("В одном проекте пока поддерживается одно видео. Убери лишние видео, оставив фотографии и один видеоклип.");
       return;
     }
 
@@ -800,7 +803,7 @@ export default function App() {
     setFeedbackStatus("");
     setRenderProgress(0);
     setScan({ current: 0, total: 0, time: 0 });
-    recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
+    recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
     // Keep failure diagnostics tied to the operation that actually failed. This is
     // especially useful on Android, where analysis, audio setup and encoding can fail differently.
     let operationPhase: "analysis" | "music-analysis" | "render" = "analysis";
@@ -928,7 +931,7 @@ export default function App() {
             style === "auto" && !learnedStylePreferenceApplied
           );
           actualStyle = directorResult.selectedStyle;
-          recordDiagnostic("analysis-completed", { mediaKind: "video", mediaCount: 1, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
+          recordDiagnostic("analysis-completed", { mediaKind: isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
           const smartEyeSummary = directorResult.smartEye
             ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
             : "";
@@ -982,10 +985,26 @@ export default function App() {
             trimEnd: cut.trimEnd
           }));
           analysisFallback = true;
-          recordDiagnostic("analysis-fallback", { mediaKind: "video", mediaCount: 1, durationSeconds: sourceVideoDuration, fallbackUsed: true, reasonCode: "analysis-unavailable", style: actualStyle });
+          recordDiagnostic("analysis-fallback", { mediaKind: isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: sourceVideoDuration, fallbackUsed: true, reasonCode: "analysis-unavailable", style: actualStyle });
           setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
           if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
         }
+      }
+      if (isMixedMode) {
+        const orderedMedia = mediaFiles.map((file, index) => ({
+          kind: getMediaKind(file) as "image" | "video",
+          name: file.name,
+          url: mediaUrls[index] ?? "",
+        })).filter((item) => item.kind === "image" || item.kind === "video");
+        const mixedSegments = buildMixedMediaSequence(orderedMedia, segments.filter((segment) => segment.kind !== "image") as VideoSegment[], renderDuration);
+        if (!mixedSegments.length) {
+          throw new Error("Не удалось согласовать длительность видео и фотографий. Попробуй сократить проект или выбрать меньше фотографий.");
+        }
+        segments = mixedSegments;
+        renderDuration = segments.reduce((sum, segment) => segment.kind === "image"
+          ? sum + (segment.duration ?? 3)
+          : sum + Math.max(0, (segment.trimEnd - segment.trimStart) / (segment.speedFactor ?? 1)), 0);
+        setMessage("Смешанный монтаж: фотографии встроены в порядок материала, длительность видеокадров подогнана под общий ролик.");
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
       if (musicUrl && musicFile && beatSync) {

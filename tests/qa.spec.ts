@@ -151,7 +151,7 @@ test("real browser-recorded video uploads and decodes in the editor", async ({ p
   expect(duration).toBeLessThan(3);
 });
 
-test("media picker explains unsupported file formats and mixed media selections", async ({ page }) => {
+test("media picker explains unsupported formats and rejects multiple source videos", async ({ page }) => {
   await page.goto("/");
   const input = page.locator('input[accept="video/*,image/*"]');
 
@@ -163,10 +163,58 @@ test("media picker explains unsupported file formats and mixed media selections"
   await expect(page.getByText(/Не удалось определить формат одного из файлов/i)).toBeVisible();
 
   await input.setInputFiles([
-    { name: "clip.mp4", mimeType: "video/mp4", buffer: Buffer.from("fake video") },
+    { name: "clip-one.mp4", mimeType: "video/mp4", buffer: Buffer.from("fake video one") },
+    { name: "clip-two.mp4", mimeType: "video/mp4", buffer: Buffer.from("fake video two") },
     { name: "photo.jpg", mimeType: "image/jpeg", buffer: Buffer.from("fake photo") }
   ]);
-  await expect(page.getByText(/Смешивание видео с фото/i)).toBeVisible();
+  await expect(page.getByText(/В одном проекте пока поддерживается одно видео/i)).toBeVisible();
+});
+
+
+test("mixed media selection accepts one real video together with a photo", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const videoBase64 = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 160;
+    canvas.height = 120;
+    const context = canvas.getContext("2d");
+    if (!context || typeof MediaRecorder === "undefined") throw new Error("MediaRecorder is unavailable");
+    const stream = canvas.captureStream(8);
+    const chunks: BlobPart[] = [];
+    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    const finished = new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error("Browser video recording failed"));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: "video/webm" }));
+    });
+    recorder.start();
+    const start = performance.now();
+    await new Promise<void>((resolve) => {
+      const draw = (now: number) => {
+        context!.fillStyle = now % 2 ? "#fca311" : "#14213d";
+        context!.fillRect(0, 0, canvas.width, canvas.height);
+        if (now - start < 900) requestAnimationFrame(draw);
+        else resolve();
+      };
+      requestAnimationFrame(draw);
+    });
+    recorder.stop();
+    const blob = await finished;
+    stream.getTracks().forEach((track) => track.stop());
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    return btoa(binary);
+  });
+  const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=", "base64");
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles([
+    { name: "mixed-video.webm", mimeType: "video/webm", buffer: Buffer.from(videoBase64, "base64") },
+    { name: "mixed-photo.png", mimeType: "image/png", buffer: onePixelPng },
+  ]);
+  await expect(page.locator(".dravex-source-video-wrap video.dravex-preview")).toBeVisible();
+  await expect(page.getByText(/Смешивание видео с фото/i)).toHaveCount(0);
+  await expect(page.getByText(/В одном проекте пока поддерживается одно видео/i)).toHaveCount(0);
 });
 
 test("editor and music studio avoid horizontal overflow on narrow Android screens", async ({ page }) => {
