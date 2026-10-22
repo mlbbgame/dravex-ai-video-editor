@@ -124,3 +124,38 @@ test("five-minute sources produce bounded, distinct montage variants without ove
   const signatures = variants.map((variant) => variant.moments.map((moment) => moment.time.toFixed(2)).join(","));
   expect(new Set(signatures).size).toBe(variants.length);
 });
+
+test("malformed highlight candidates cannot poison otherwise valid montage variants", () => {
+  const valid: HighlightMoment = {
+    time: 4,
+    start: 3.5,
+    end: 4.5,
+    score: 0.8,
+    motion: 0.6,
+    contrast: 0.7,
+  };
+  const malformed = [
+    { ...valid, time: Number.NaN },
+    { ...valid, start: Number.POSITIVE_INFINITY },
+    { ...valid, end: Number.NaN },
+    { ...valid, score: Number.NaN },
+    { ...valid, motion: Number.POSITIVE_INFINITY },
+    { ...valid, contrast: Number.NaN },
+    { ...valid, start: 5, end: 4 },
+  ] as HighlightMoment[];
+
+  const variants = buildHighlightVariants([...malformed, valid], 12);
+  expect(variants).toHaveLength(3);
+  for (const variant of variants) {
+    expect(variant.moments.length).toBeGreaterThan(0);
+    for (const moment of variant.moments) {
+      expect(Number.isFinite(moment.time)).toBe(true);
+      expect(Number.isFinite(moment.start)).toBe(true);
+      expect(Number.isFinite(moment.end)).toBe(true);
+      expect(Number.isFinite(moment.score)).toBe(true);
+      expect(moment.start).toBeGreaterThanOrEqual(0);
+      expect(moment.end).toBeLessThanOrEqual(12);
+      expect(moment.end).toBeGreaterThan(moment.start);
+    }
+  }
+});
