@@ -22,18 +22,48 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
-  video.src = url;
+  video.playsInline = true;
+
   try {
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Unable to read video metadata for AI Director validation."));
+      let timeoutId = 0;
+      let settled = false;
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        video.removeEventListener("loadedmetadata", loaded);
+        video.removeEventListener("error", failed);
+      };
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      };
+      const loaded = () => {
+        if (!Number.isFinite(video.duration) || video.duration <= 0) {
+          finish(new Error("Не удалось определить длительность видео для AI Director. Попробуй MP4 (H.264) или другой файл."));
+          return;
+        }
+        if (!Number.isFinite(video.videoWidth) || video.videoWidth <= 0
+          || !Number.isFinite(video.videoHeight) || video.videoHeight <= 0) {
+          finish(new Error("Не удалось определить размер кадра для AI Director. Попробуй MP4 (H.264) или другой файл."));
+          return;
+        }
+        finish();
+      };
+      const failed = () => finish(new Error("Не удалось прочитать метаданные видео для AI Director. Попробуй MP4 (H.264) или другой файл."));
+      video.addEventListener("loadedmetadata", loaded);
+      video.addEventListener("error", failed);
+      timeoutId = window.setTimeout(() => {
+        finish(new Error("Видео не открылось за 20 секунд при проверке AI Director. Попробуй MP4 (H.264) или более короткий файл."));
+      }, 20_000);
+      video.src = url;
+      video.load();
     });
-    if (!Number.isFinite(video.videoWidth) || video.videoWidth <= 0
-      || !Number.isFinite(video.videoHeight) || video.videoHeight <= 0) {
-      throw new Error("Video dimensions are invalid.");
-    }
     return { width: video.videoWidth, height: video.videoHeight };
   } finally {
+    video.pause();
     video.removeAttribute("src");
     video.load();
   }
