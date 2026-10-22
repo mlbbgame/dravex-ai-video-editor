@@ -888,18 +888,30 @@ test("invalid duration never returns malformed highlight candidates", () => {
 });
 
 
-test("render failure stops and settles MediaRecorder before returning the original error", async () => {
-  await expect(renderVideoSequence({
-    segments: [{
-      kind: "image",
-      name: "failure-test.png",
-      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=",
-      duration: 1,
-    }],
-    title: "",
-    aspectRatio: "9:16",
-    quality: "preview",
-    suppressAudio: true,
-    onProgress: () => { throw new Error("synthetic render callback failure"); },
-  })).rejects.toThrow("synthetic render callback failure");
+test("render failure stops and settles MediaRecorder before returning the original error", async ({ page }) => {
+  // Exercise the renderer in the real browser context: Playwright's Node test
+  // process has no MediaRecorder, which would fail before the cleanup path runs.
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const { renderVideoSequence } = await import("/src/video/video-sequence-render.ts");
+    try {
+      await renderVideoSequence({
+        segments: [{
+          kind: "image",
+          name: "failure-test.png",
+          url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=",
+          duration: 1,
+        }],
+        title: "",
+        aspectRatio: "9:16",
+        quality: "preview",
+        suppressAudio: true,
+        onProgress: () => { throw new Error("synthetic render callback failure"); },
+      });
+      return "render unexpectedly succeeded";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  });
+  expect(result).toContain("synthetic render callback failure");
 });
