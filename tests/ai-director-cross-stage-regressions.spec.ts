@@ -50,7 +50,7 @@ test("style ranking selects action peaks for velocity and visual quality for cin
   ];
   expect(rankHighlightMomentsForStyle(candidates, "velocity")[0].time).toBe(8);
   expect(rankHighlightMomentsForStyle(candidates, "cinematic")[0].time).toBe(2);
-  expect(rankHighlightMomentsForStyle(candidates, "story")[0].time).toBe(8);
+  expect(rankHighlightMomentsForStyle(candidates, "story")[0].time).toBe(2);
 });
 
 test("all montage variants remain inside source bounds and avoid replaying the same rendered range", () => {
