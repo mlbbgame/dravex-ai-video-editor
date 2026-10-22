@@ -86,3 +86,36 @@ test("beat analysis cache evicts rejected work so the user can retry", async () 
   const retry = getOrCreateCachedAnalysis(cache, "bad-track", () => Promise.resolve("recovered"));
   await expect(retry).resolves.toBe("recovered");
 });
+
+test("beat snapping preserves strict in-range boundaries across tiny and long timelines", () => {
+  const cases = [
+    { duration: 0.01, segments: 20, shot: 0.001 },
+    { duration: 0.25, segments: 12, shot: 0.02 },
+    { duration: 3.2, segments: 5, shot: 0.6 },
+    { duration: 60, segments: 80, shot: 0.75 },
+    { duration: 300, segments: 120, shot: 2.5 },
+  ];
+
+  for (const item of cases) {
+    const beats = Array.from({ length: 150 }, (_, index) => index * item.duration / 149);
+    const boundaries = snapCutBoundariesToBeats(beats, item.duration, item.segments, item.shot);
+
+    expect(boundaries).toHaveLength(item.segments + 1);
+    expect(boundaries[0]).toBe(0);
+    expect(boundaries.at(-1)).toBe(item.duration);
+    expect(boundaries.every(Number.isFinite)).toBe(true);
+    expect(boundaries.every((value) => value >= 0 && value <= item.duration)).toBe(true);
+    expect(boundaries.every((value, index) => index === 0 || value > boundaries[index - 1])).toBe(true);
+  }
+});
+
+test("beat snapping safely falls back to even cuts when beat input is absent at runtime", () => {
+  const boundaries = snapCutBoundariesToBeats(
+    null as unknown as number[],
+    8,
+    4,
+    2
+  );
+
+  expect(boundaries).toEqual([0, 2, 4, 6, 8]);
+});
