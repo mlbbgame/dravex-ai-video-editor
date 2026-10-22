@@ -393,6 +393,11 @@ export function hasUsableImageDimensions(width: number, height: number): boolean
   return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
 }
 
+/** Video decoders may expose malformed NaN/Infinity dimensions for damaged media. */
+export function hasUsableVideoDimensions(width: number, height: number): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+}
+
 export function hasUsableAudioDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
 }
@@ -457,7 +462,7 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
         reject(new Error(`У видео «${segment.name}» не удалось определить длительность. Попробуй MP4 (H.264) или другой файл.`));
         return;
       }
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+      if (!hasUsableVideoDimensions(video.videoWidth, video.videoHeight)) {
         cleanup();
         video.pause();
         video.removeAttribute("src");
