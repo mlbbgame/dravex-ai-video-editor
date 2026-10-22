@@ -159,3 +159,47 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+
+test("director event timeline rejects malformed intervals and clamps timestamps to source bounds", () => {
+  const events = buildDirectorEventTimeline([
+    { time: 2, start: 1, end: 3, score: 0.8, motion: 0.9, contrast: 0.5, actionCues: ["Пик движения"] },
+    { time: 99, start: 8, end: 10, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 1, start: 2, end: 1, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: Number.NaN, start: 0, end: 1, score: 1, motion: 1, contrast: 1, actionCues: ["Пик движения"] },
+    { time: 3, start: -5, end: 4, score: Number.NaN, motion: 0.2, contrast: 0.2, actionCues: ["Пик движения", 17] as unknown as string[] },
+  ], 10);
+
+  expect(events.length).toBeGreaterThan(0);
+  for (const event of events) {
+    expect(Number.isFinite(event.sourceTime)).toBe(true);
+    expect(Number.isFinite(event.start)).toBe(true);
+    expect(Number.isFinite(event.end)).toBe(true);
+    expect(event.sourceTime).toBeGreaterThanOrEqual(0);
+    expect(event.sourceTime).toBeLessThanOrEqual(10);
+    expect(event.start).toBeGreaterThanOrEqual(0);
+    expect(event.end).toBeLessThanOrEqual(10);
+    expect(event.end).toBeGreaterThan(event.start);
+    expect(event.confidence).toBeGreaterThanOrEqual(0.05);
+    expect(event.confidence).toBeLessThanOrEqual(0.95);
+    expect(event.evidence.every((item) => typeof item === "string")).toBe(true);
+  }
+  expect(events.some((event) => event.sourceTime === 10)).toBe(true);
+});
+
+test("director event timeline safely handles invalid duration, empty input, and duplicate nearby cues", () => {
+  expect(buildDirectorEventTimeline([], 12)).toEqual([]);
+  expect(buildDirectorEventTimeline([
+    { time: 1, start: 0.5, end: 1.5, score: 0.8, motion: 0.8, contrast: 0.8, actionCues: ["Пик движения"] },
+  ], Number.NaN)).toEqual([]);
+
+  const events = buildDirectorEventTimeline([
+    { time: 4, start: 3.5, end: 4.5, score: 0.7, motion: 0.9, contrast: 0.5, actionCues: ["Пик движения"] },
+    { time: 4.3, start: 4, end: 4.7, score: 0.9, motion: 0.9, contrast: 0.5, actionCues: ["Пик движения"] },
+  ], 12, 0.65);
+  const peaks = events.filter((event) => event.kind === "motion-peak");
+  expect(peaks).toHaveLength(1);
+  expect(peaks[0].start).toBe(3.5);
+  expect(peaks[0].end).toBe(4.7);
+  expect(peaks[0].evidence).toContain("Пик движения");
+});
