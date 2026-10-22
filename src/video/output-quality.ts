@@ -25,10 +25,43 @@ const waitForMediaEvent = (video: HTMLVideoElement, successEvent: string): Promi
   });
 
 const seekTo = async (video: HTMLVideoElement, time: number) => {
+  if (!Number.isFinite(time) || time < 0 || time >= video.duration) {
+    throw new Error("Выбрана недопустимая точка для проверки видео.");
+  }
   if (Math.abs(video.currentTime - time) < 0.025) return;
-  const seeked = waitForMediaEvent(video, "seeked");
-  video.currentTime = time;
-  await seeked;
+
+  // Attach listeners before seeking, and always remove them on success, timeout,
+  // decoder error, or a synchronous currentTime exception. A rejected seek must
+  // not leave a dangling 12-second promise/listener on mobile.
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onSeeked = () => finish();
+    const onError = () => finish(new Error("Браузер не смог перейти к кадру для проверки экспорта."));
+    video.addEventListener("seeked", onSeeked, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Истекло время ожидания перехода к кадру экспортированного видео.")),
+      12000,
+    );
+    try {
+      video.currentTime = time;
+    } catch {
+      finish(new Error("Не удалось перейти к кадру экспортированного видео."));
+    }
+  });
 };
 
 export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[]): "ok" | "warning" {
