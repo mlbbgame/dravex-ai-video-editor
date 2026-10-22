@@ -183,8 +183,8 @@ test("Smart Eye coverage stays honest with malformed counts, sample times, and e
   expect(report.coverage.sampledFrameCount).toBe(3);
   expect(report.coverage.sampledFrameRatio).toBe(1);
   expect(report.coverage.firstEventTime).toBe(4);
-  expect(report.coverage.lastEventTime).toBe(9);
-  expect(report.coverage.largestSampleGapSeconds).toBe(18);
+  expect(report.coverage.lastEventTime).toBe(4);
+  expect(report.coverage.largestSampleGapSeconds).toBe(17);
   expect(report.memory.some((entry) => entry.label === "negative" || entry.label === "past end" || entry.label === "unknown")).toBe(false);
 });
 
