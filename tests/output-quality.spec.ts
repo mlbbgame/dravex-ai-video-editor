@@ -18,6 +18,10 @@ test("export quality warns when rendered duration materially differs from reques
   expect(isRenderedDurationWithinTolerance(28.4, 30)).toBe(false);
   expect(isRenderedDurationWithinTolerance(Number.NaN, 30)).toBe(false);
   expect(isRenderedDurationWithinTolerance(30, Number.POSITIVE_INFINITY)).toBe(false);
+  expect(isRenderedDurationWithinTolerance(30, 30, Number.NaN)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(30, 30, Number.POSITIVE_INFINITY)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(30, 30, -5)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(31, 30, -5)).toBe(true);
   expect(getOutputQualitySeverity([], [], true)).toBe("warning");
   expect(getOutputQualitySeverity([], [], false)).toBe("ok");
 });
