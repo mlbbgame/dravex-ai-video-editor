@@ -81,6 +81,12 @@ export function getCameraMotionProfile(
 
 export type SourceAudioMode = "auto" | "keep" | "mute";
 
+export function getSafeAudioTrackVolume(volume?: number): number {
+  // Invalid values can otherwise propagate NaN into the timeline validator and
+  // abort a valid export. Use the same default as an omitted music-volume setting.
+  return Number.isFinite(volume) ? Math.max(0, Math.min(1, volume as number)) : 0.65;
+}
+
 export function getSourceAudioGain(mode: SourceAudioMode, volume: number, hasMusic: boolean): number {
   if (mode === "mute") return 0;
   const safeVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.8;
@@ -792,7 +798,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       timelineStart: 0,
       timelineEnd: totalDuration,
       sourceRange: { start: 0, end: audio.duration },
-      gain: Math.max(0, Math.min(1, segment.volume ?? 0.65)),
+      gain: getSafeAudioTrackVolume(segment.volume),
       fadeInSeconds: Math.min(0.65, totalDuration * 0.15),
       fadeOutSeconds: Math.min(0.9, totalDuration * 0.2),
       loop: true,
