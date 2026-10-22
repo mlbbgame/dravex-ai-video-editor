@@ -1181,14 +1181,39 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     recorder.stop();
   } catch (error) {
     // Stop and settle the recorder before propagating the original render error.
-    // This lets the onstop handler release media elements, tracks, and owned audio
-    // contexts, and prevents an empty-recording rejection from escaping separately.
+    // Some browser implementations may fail to dispatch "stop"; bound the wait so
+    // an export error cannot leave the UI stuck forever.
     try {
       if (recorder.state !== "inactive") recorder.stop();
     } catch {
       // Preserve the render error; recorder cleanup may already have started.
     }
-    await result.catch(() => undefined);
+    let cleanupTimer = 0;
+    await Promise.race([
+      result.catch(() => undefined),
+      new Promise<void>((resolve) => {
+        cleanupTimer = window.setTimeout(resolve, 3000);
+      }),
+    ]);
+    window.clearTimeout(cleanupTimer);
+
+    // Defensive fallback if "stop" never settles: release owned tracks/media anyway.
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    uniqueVideos.forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    loadedAudio.forEach(({ audio }) => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    });
+    if (audioContext && audioContext !== preparedAudioContext && audioContext.state !== "closed") {
+      await audioContext.close().catch(() => undefined);
+    }
     throw error;
   }
 
