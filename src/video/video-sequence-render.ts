@@ -517,7 +517,13 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       if (finish()) resolve(audio);
     };
     const failed = () => {
-      if (finish()) reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
+      if (!finish()) return;
+      // Release the decoder and backing URL on media errors too. Android Chrome
+      // can otherwise retain failed audio elements until the whole page is closed.
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
     };
     const timeoutId = window.setTimeout(() => {
       if (!finish()) return;
