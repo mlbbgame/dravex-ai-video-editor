@@ -20,6 +20,7 @@ export type DirectorDiagnosticDetails = {
   findingCount?: number;
   fallbackUsed?: boolean;
   reasonCode?: "analysis-unavailable" | "render-error" | "quality-check-unavailable";
+  phase?: "analysis" | "music-analysis" | "render";
 };
 
 export type DirectorDiagnosticEvent = {
@@ -38,10 +39,11 @@ const ALLOWED_QUALITIES = new Set(["720p", "1080p", "4K", "unknown"]);
 const ALLOWED_MEDIA_KINDS = new Set(["video", "images", "mixed"]);
 const ALLOWED_SEVERITIES = new Set(["ok", "warning"]);
 const ALLOWED_REASON_CODES = new Set(["analysis-unavailable", "render-error", "quality-check-unavailable"]);
+const ALLOWED_FAILURE_PHASES = new Set(["analysis", "music-analysis", "render"]);
 const INTEGER_KEYS = new Set(["mediaCount", "sampledFrames", "candidateCount", "segmentCount", "findingCount"]);
 const ALLOWED_KEYS = new Set([
   "mediaKind", "mediaCount", "durationSeconds", "sampledFrames", "candidateCount",
-  "segmentCount", "style", "quality", "severity", "findingCount", "fallbackUsed", "reasonCode"
+  "segmentCount", "style", "quality", "severity", "findingCount", "fallbackUsed", "reasonCode", "phase"
 ]);
 
 function safeTimestamp(value: unknown): string {
@@ -71,6 +73,7 @@ export function createDirectorDiagnostic(
     if (key === "quality" && !(typeof value === "string" && ALLOWED_QUALITIES.has(value))) continue;
     if (key === "severity" && !(typeof value === "string" && ALLOWED_SEVERITIES.has(value))) continue;
     if (key === "reasonCode" && !(typeof value === "string" && ALLOWED_REASON_CODES.has(value))) continue;
+    if (key === "phase" && !(typeof value === "string" && ALLOWED_FAILURE_PHASES.has(value))) continue;
     if (key === "fallbackUsed" && typeof value !== "boolean") continue;
     if (typeof value === "number" && (!Number.isFinite(value) || value < 0)) continue;
     if (INTEGER_KEYS.has(key) && typeof value === "number" && !Number.isInteger(value)) continue;
