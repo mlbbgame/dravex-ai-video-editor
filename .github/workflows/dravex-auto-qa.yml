@@ -28,6 +28,17 @@ jobs:
         with:
           node-version: 22
 
+      # There is currently no committed package-lock.json, so cache npm's
+      # downloaded package data keyed by package.json instead of using
+      # setup-node's lockfile-dependent cache option.
+      - name: Cache npm download data
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: dravex-npm-${{ runner.os }}-node22-${{ hashFiles('package.json') }}
+          restore-keys: |
+            dravex-npm-${{ runner.os }}-node22-
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
