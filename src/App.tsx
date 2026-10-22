@@ -3,7 +3,7 @@ import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircl
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import type { SemanticProfile } from "./video/semantic-classifier";
-import { analyzeWithAIDirector, getDirectorKnowledge, getDirectorShotLength } from "./video/ai-director";
+import { analyzeWithAIDirector, buildDirectorMontagePlan, getDirectorKnowledge, getDirectorShotLength } from "./video/ai-director";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type SourceAudioMode, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
@@ -16,6 +16,43 @@ import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-q
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, shouldApplyLearnedPreference, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
 import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
+
+async function readVideoDimensions(url: string): Promise<{ width: number; height: number }> {
+  const video = document.createElement("video");
+  video.preload = "metadata";
+  video.muted = true;
+  video.src = url;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Unable to read video metadata for AI Director validation."));
+    });
+    if (!Number.isFinite(video.videoWidth) || video.videoWidth <= 0
+      || !Number.isFinite(video.videoHeight) || video.videoHeight <= 0) {
+      throw new Error("Video dimensions are invalid.");
+    }
+    return { width: video.videoWidth, height: video.videoHeight };
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+function getDirectorOutputSize(
+  ratio: "9:16" | "16:9" | "1:1" | "4:5",
+  quality: "720p" | "1080p" | "4K",
+): { width: number; height: number } {
+  const longEdge = quality === "720p" ? 1280 : quality === "1080p" ? 1920 : 3840;
+  switch (ratio) {
+    case "9:16": return { width: Math.round(longEdge * 9 / 16), height: longEdge };
+    case "16:9": return { width: longEdge, height: Math.round(longEdge * 9 / 16) };
+    case "1:1": return { width: quality === "4K" ? 2160 : quality === "1080p" ? 1080 : 720, height: quality === "4K" ? 2160 : quality === "1080p" ? 1080 : 720 };
+    case "4:5": {
+      const height = quality === "4K" ? 2700 : quality === "1080p" ? 1350 : 900;
+      return { width: Math.round(height * 4 / 5), height };
+    }
+  }
+}
 
 type EditStyle = "auto" | "velocity" | "cinematic" | "story" | "anime" | "glitch";
 type Stage = "empty" | "ready" | "analyzing" | "rendering" | "done" | "error";
@@ -918,6 +955,38 @@ export default function App() {
             ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
             : "";
           directorNote = `${directorResult.note}${smartEyeSummary} Режиссёрский ориентир: ${getDirectorKnowledge(contentProfile).editingGoal}`;
+          const sourceDimensions = await readVideoDimensions(videoUrl);
+          const outputDimensions = getDirectorOutputSize(aspectRatio, quality);
+          const contractResult = buildDirectorMontagePlan({
+            id: `director-${Date.now()}`,
+            source: {
+              id: "source-video",
+              kind: "video",
+              durationSeconds: analysis.duration,
+              width: sourceDimensions.width,
+              height: sourceDimensions.height,
+            },
+            candidates: directorResult.candidates,
+            style: actualStyle,
+            output: {
+              aspectRatio,
+              ...outputDimensions,
+              fps: 30,
+              includeOriginalAudio: sourceAudioMode !== "mute",
+              includeMusic: Boolean(musicUrl && musicFile),
+              includeBackgroundAudio: false,
+            },
+          });
+          if (!contractResult.plan) {
+            throw new Error(`AI Director montage plan rejected: ${contractResult.validation.issues.join("; ")}`);
+          }
+          recordDiagnostic("analysis-completed", {
+            mediaKind: "video",
+            mediaCount: 1,
+            durationSeconds: analysis.duration,
+            candidateCount: directorResult.candidates.length,
+            style: actualStyle,
+          });
           segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
           setMessage(directorNote);
         } catch (analysisError) {
