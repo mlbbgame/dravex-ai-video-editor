@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -96,4 +96,18 @@ test("video trim ranges recover safely from invalid trim values and reject unusa
   expect(resolveVideoTrimRange(5, 3, 2)).toEqual({ start: 3, end: 3.1, duration: 0.1 });
   expect(() => resolveVideoTrimRange(Number.NaN, 0, 1)).toThrow();
   expect(() => resolveVideoTrimRange(0.05, 0, 0.05)).toThrow();
+});
+
+
+test("cinematic and automatic transitions provide varied but repeatable cut sequences", () => {
+  const cinematic = Array.from({ length: 6 }, (_, index) => getTransitionSequenceType("cinematic", "cinematic", index + 1));
+  const calm = Array.from({ length: 6 }, (_, index) => getTransitionSequenceType("story", "auto", index + 1));
+  const action = Array.from({ length: 5 }, (_, index) => getTransitionSequenceType("velocity", "action", index + 1));
+
+  expect(new Set(cinematic).size).toBeGreaterThanOrEqual(3);
+  expect(new Set(calm).size).toBeGreaterThanOrEqual(4);
+  expect(new Set(action).size).toBe(5);
+  expect(getTransitionSequenceType("cinematic", "cinematic", 1)).toBe(8);
+  expect(getTransitionSequenceType("story", "auto", 0)).toBe(0);
+  expect(getTransitionSequenceType("story", "auto", Number.NaN)).toBe(0);
 });
