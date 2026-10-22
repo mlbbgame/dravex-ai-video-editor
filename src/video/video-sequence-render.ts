@@ -140,6 +140,29 @@ type LoadedImage = {
 
 type LoadedSegment = LoadedVideo | LoadedImage;
 
+/**
+ * Limit simultaneous media decodes to protect mobile browsers from allocating
+ * too many decoded frames/bitmaps at once. Tasks still settle in input order via
+ * Promise.all at the call site; the limiter only controls when each task starts.
+ */
+function createMediaLoadLimiter(maxConcurrent: number) {
+  const limit = Number.isFinite(maxConcurrent) ? Math.max(1, Math.floor(maxConcurrent)) : 1;
+  let active = 0;
+  const queue: Array<() => void> = [];
+  return async function run<T>(task: () => Promise<T>): Promise<T> {
+    if (active >= limit) await new Promise<void>((resolve) => queue.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      queue.shift()?.();
+    }
+  };
+}
+
+export const MAX_CONCURRENT_MEDIA_LOADS = 3;
+
 export type SourceFrameRect = { x: number; y: number; width: number; height: number };
 export type FrameFit = "contain" | "cover";
 
@@ -651,7 +674,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   onStage?.("preparing-media");
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
-  const segmentLoads = segments.map(async (segment): Promise<LoadedSegment> => {
+  const limitMediaLoad = createMediaLoadLimiter(MAX_CONCURRENT_MEDIA_LOADS);
+  const segmentLoads = segments.map((segment) => limitMediaLoad(async (): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
       const requestedTransition = segment.transitionOutSeconds;
@@ -674,7 +698,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
     const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) : undefined;
     return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
-  });
+  }));
   let loaded: LoadedSegment[];
   try {
     loaded = await Promise.all(segmentLoads);
