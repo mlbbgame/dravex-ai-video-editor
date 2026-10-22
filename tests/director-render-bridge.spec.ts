@@ -16,7 +16,7 @@ const plan: DirectorMontagePlan = {
     includeBackgroundAudio: false,
   },
   clips: [
-    { id: "clip-1", sourceId: "source-video", sourceStartSeconds: 1.25, sourceEndSeconds: 2.75, speedFactor: 1.5, transitionOutSeconds: 0.28 },
+    { id: "clip-1", sourceId: "source-video", sourceStartSeconds: 1.25, sourceEndSeconds: 2.75, speedFactor: 1.5, transitionOutSeconds: 0.28, effects: ["flash", "untrusted-effect"] },
     { id: "clip-2", sourceId: "other-source", sourceStartSeconds: 3, sourceEndSeconds: 4, speedFactor: 1 },
     { id: "clip-3", sourceId: "source-video", sourceStartSeconds: 7, sourceEndSeconds: 9, speedFactor: 0.75, transitionOutSeconds: 0.45 },
   ],
@@ -24,7 +24,7 @@ const plan: DirectorMontagePlan = {
 
 test("maps plan trims to native renderer segments without changing their boundaries", () => {
   expect(directorPlanToVideoSegments(plan, "source-video", "source.mp4", "blob:video")).toEqual([
-    { name: "source.mp4", url: "blob:video", trimStart: 1.25, trimEnd: 2.75, speedFactor: 1.5, transitionOutSeconds: 0.28 },
+    { name: "source.mp4", url: "blob:video", trimStart: 1.25, trimEnd: 2.75, speedFactor: 1.5, transitionOutSeconds: 0.28, effects: ["flash"] },
     { name: "source.mp4", url: "blob:video", trimStart: 7, trimEnd: 9, speedFactor: 0.75, transitionOutSeconds: 0.45 },
   ]);
 });
