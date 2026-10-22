@@ -159,3 +159,33 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+
+test("style ranking ignores malformed candidates and clamps visual scores", () => {
+  const valid: HighlightMoment[] = [
+    { time: 2, start: 1.5, end: 2.5, score: 2, motion: 0.2, contrast: 0.3 },
+    { time: 8, start: 7.5, end: 8.5, score: -1, motion: 0.9, contrast: 0.8 },
+  ];
+  const malformed = [
+    { ...valid[0], time: Number.NaN },
+    { ...valid[0], start: Number.NEGATIVE_INFINITY },
+    { ...valid[0], end: 1 },
+    { ...valid[0], motion: Number.NaN },
+    { ...valid[0], contrast: Number.POSITIVE_INFINITY },
+  ] as HighlightMoment[];
+
+  for (const style of ["velocity", "cinematic", "story", "anime", "glitch"] as const) {
+    const ranked = rankHighlightMomentsForStyle([...malformed, ...valid], style);
+    expect(ranked).toHaveLength(2);
+    expect(ranked.every((item) => Number.isFinite(item.time) && Number.isFinite(item.start) &&
+      Number.isFinite(item.end) && Number.isFinite(item.score))).toBe(true);
+    expect(ranked.map((item) => item.time).sort()).toEqual([2, 8]);
+  }
+});
+
+test("style ranking safely returns an empty list when there are no valid candidates", () => {
+  expect(rankHighlightMomentsForStyle([], "velocity")).toEqual([]);
+  expect(rankHighlightMomentsForStyle([
+    { time: 1, start: 2, end: 1, score: 0.8, motion: 0.4, contrast: 0.4 },
+  ], "cinematic")).toEqual([]);
+});
