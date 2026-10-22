@@ -14,6 +14,12 @@ export type VideoSegment = {
   url: string;
   trimStart: number;
   trimEnd: number;
+  /** Planned playback speed multiplier from the validated AI Director plan. */
+  speedFactor?: number;
+  /** Duration of the transition after this clip, in seconds. */
+  transitionOutSeconds?: number;
+  /** Optional allowlisted per-clip visual effects from the Director plan. */
+  effects?: string[];
 };
 
 /** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
@@ -27,6 +33,9 @@ export type ImageSegment = {
   name: string;
   url: string;
   duration?: number;
+  /** Duration of the transition after this still, in seconds. */
+  transitionOutSeconds?: number;
+  effects?: string[];
 };
 
 export type AudioSegment = {
@@ -108,6 +117,9 @@ type LoadedVideo = {
   start: number;
   end: number;
   duration: number;
+  speedFactor: number;
+  transitionOutSeconds?: number;
+  effects?: string[];
 };
 
 type LoadedImage = {
@@ -115,6 +127,8 @@ type LoadedImage = {
   name: string;
   image: HTMLImageElement;
   duration: number;
+  transitionOutSeconds?: number;
+  effects?: string[];
 };
 
 type LoadedSegment = LoadedVideo | LoadedImage;
@@ -559,7 +573,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
-      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration) };
+      const requestedTransition = segment.transitionOutSeconds;
+      const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
+      const effects = Array.isArray(segment.effects) ? segment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration), transitionOutSeconds, effects };
     }
     const videoSegment = segment as VideoSegment;
     let pendingVideo = videoCache.get(videoSegment.url);
@@ -569,8 +586,13 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     const video = await pendingVideo;
     if (suppressAudio || sourceAudioMode === "mute") video.muted = true;
-    const { start, end, duration } = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
-    return { kind: "video", name: segment.name, video, start, end, duration };
+    const trim = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
+    const requestedSpeed = videoSegment.speedFactor;
+    const speedFactor = Number.isFinite(requestedSpeed) ? Math.max(0.25, Math.min(4, requestedSpeed as number)) : 1;
+    const requestedTransition = videoSegment.transitionOutSeconds;
+    const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
+    const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+    return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
   }));
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
@@ -580,7 +602,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const scale = targetDurationSeconds / sourceDuration;
       for (const item of loaded) {
         item.duration *= scale;
-        if (item.kind === "video") item.end = item.start + item.duration;
+        if (item.kind === "video") item.end = Math.min(item.end, item.start + item.duration * item.speedFactor);
       }
     } else if (loaded.every((item) => item.kind === "image")) {
       // A still-image sequence can hold on its images to fill the requested duration, including when audio is present.
@@ -773,10 +795,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   };
 
   const draw = (source: HTMLVideoElement | HTMLImageElement, progress = 0, cutProgress = 1, cutIndex = 0) => {
+    const plannedEffects = loaded[cutIndex]?.effects;
+    const effectEnabled = (effect: string, fallback: boolean) => plannedEffects === undefined ? fallback : plannedEffects.includes(effect);
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const plannedTransition = cutIndex > 0 ? loaded[cutIndex - 1]?.transitionOutSeconds : undefined;
+    const defaultTransitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionDuration = plannedTransition === undefined ? defaultTransitionDuration : plannedTransition;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
@@ -951,12 +977,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillRect(0, 0, width, height);
     }
     // A short, restrained flash and edge darkening make cuts feel deliberate without burying the footage.
-    if (!suppressEffects && !suppressFlashes && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
+    if (!suppressEffects && !suppressFlashes && effectEnabled("flash", style !== "story") && cutProgress >= 0 && cutProgress < 0.14 && style !== "story") {
       const flash = (1 - cutProgress / 0.14) * (style === "velocity" ? 0.32 : style === "glitch" ? 0.24 : style === "anime" ? 0.2 : 0.12) * strengthScale;
       context.fillStyle = `rgba(245,248,255,${flash})`;
       context.fillRect(0, 0, width, height);
     }
-    if (!suppressEffects && !suppressFlashes && style === "glitch" && cutProgress >= 0 && cutProgress < 0.16) {
+    if (!suppressEffects && !suppressFlashes && effectEnabled("glitch-slices", style === "glitch") && cutProgress >= 0 && cutProgress < 0.16) {
       const glitchStrength = (1 - cutProgress / 0.16) * strengthScale;
       // Split short horizontal slices for a more readable digital-impact effect than a full-frame tint alone.
       context.save();
@@ -983,7 +1009,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
 
     // Directional light streaks add a quick action accent without obscuring the photo.
-    if (!suppressEffects && !suppressFlashes && style === "velocity" && cutProgress >= 0 && cutProgress < 0.28) {
+    if (!suppressEffects && !suppressFlashes && effectEnabled("speed-lines", style === "velocity") && cutProgress >= 0 && cutProgress < 0.28) {
       const streakAlpha = (1 - cutProgress / 0.28) * 0.27 * strengthScale;
       context.save();
       context.strokeStyle = `rgba(235,245,255,${streakAlpha})`;
@@ -997,7 +1023,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       }
       context.restore();
     }
-    if (!suppressEffects) {
+    if (!suppressEffects && effectEnabled("vignette", true)) {
       const vignette = context.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.18, width / 2, height / 2, Math.max(width, height) * 0.72);
       vignette.addColorStop(0, "rgba(0,0,0,0)");
       vignette.addColorStop(1, style === "story" ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.14)");
@@ -1078,7 +1104,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         continue;
       }
 
-      const { video, start, end, duration } = item;
+      const { video, start, end, duration, speedFactor } = item;
       let trimBoundaryReached = false;
       video.pause();
       video.playbackRate = 1;
@@ -1112,7 +1138,8 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
           trimBoundaryReached = true;
         }
         // Apply a smooth, per-style velocity curve while preserving the planned shot length.
-        video.playbackRate = trimBoundaryReached ? 1 : getSpeedRampRate(style, clipProgress, cutIndex);
+        const rampRate = getSpeedRampRate(style, clipProgress, cutIndex);
+        video.playbackRate = trimBoundaryReached ? 1 : Math.max(0.25, Math.min(4, rampRate * speedFactor));
         draw(video, clipProgress, elapsedSeconds, cutIndex);
         onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
       }

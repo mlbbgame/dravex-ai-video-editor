@@ -19,6 +19,9 @@ export function directorPlanToVideoSegments(
       clip.sourceId === sourceId &&
       Number.isFinite(clip.sourceStartSeconds) &&
       Number.isFinite(clip.sourceEndSeconds) &&
+      Number.isFinite(clip.speedFactor) &&
+      clip.speedFactor >= 0.25 && clip.speedFactor <= 4 &&
+      (clip.transitionOutSeconds === undefined || (Number.isFinite(clip.transitionOutSeconds) && clip.transitionOutSeconds >= 0 && clip.transitionOutSeconds <= 2)) &&
       clip.sourceStartSeconds >= 0 &&
       clip.sourceEndSeconds > clip.sourceStartSeconds
     )
@@ -28,5 +31,8 @@ export function directorPlanToVideoSegments(
       url,
       trimStart: clip.sourceStartSeconds,
       trimEnd: clip.sourceEndSeconds,
+      speedFactor: clip.speedFactor,
+      transitionOutSeconds: clip.transitionOutSeconds,
+      ...(Array.isArray(clip.effects) ? { effects: clip.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) } : {}),
     }));
 }
