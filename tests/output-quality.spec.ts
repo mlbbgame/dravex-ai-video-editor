@@ -26,3 +26,19 @@ test("export quality warns when rendered duration materially differs from reques
   expect(getOutputQualitySeverity([], [], true)).toBe("warning");
   expect(getOutputQualitySeverity([], [], false)).toBe("ok");
 });
+
+test("duration tolerance uses the greater of the explicit tolerance and five percent", () => {
+  // Short exports retain a practical minimum tolerance for browser metadata rounding.
+  expect(isRenderedDurationWithinTolerance(4.7, 5)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(4.2, 5)).toBe(false);
+  // Long exports use a proportional tolerance instead of a fixed sub-second window.
+  expect(isRenderedDurationWithinTolerance(102, 100)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(106, 100)).toBe(false);
+});
+
+test("duration tolerance is inclusive at its exact boundary", () => {
+  expect(isRenderedDurationWithinTolerance(30.75, 30, 0.75)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(29.25, 30, 0.75)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(30.751, 30, 0.75)).toBe(false);
+  expect(isRenderedDurationWithinTolerance(29.249, 30, 0.75)).toBe(false);
+});
