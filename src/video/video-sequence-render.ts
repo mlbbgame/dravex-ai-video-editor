@@ -425,6 +425,11 @@ export function hasUsableAudioDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
 }
 
+/** Some browsers initially expose Infinity for WebM duration until more metadata arrives. */
+export function isPendingVideoDuration(duration: number): boolean {
+  return duration === Number.POSITIVE_INFINITY;
+}
+
 /** Reject zero, non-finite, or overflowed summed durations before allocating the renderer. */
 export function isUsableRenderDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
@@ -471,9 +476,14 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     const cleanup = () => {
       window.clearTimeout(timeoutId);
       video.removeEventListener("loadedmetadata", loaded);
+      video.removeEventListener("durationchange", loaded);
       video.removeEventListener("error", failed);
     };
     const loaded = () => {
+      // WebM duration can initially be Infinity while the browser is still
+      // resolving metadata. Wait for durationchange instead of rejecting a
+      // valid source immediately; the existing watchdog still bounds the wait.
+      if (isPendingVideoDuration(video.duration)) return;
       // A metadata event alone is not enough: malformed/unsupported files can
       // report loadedmetadata with unusable dimensions or a non-finite duration.
       // Reject them here so the montage planner never receives NaN/Infinity.
@@ -510,7 +520,8 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
       video.load();
       reject(new Error(`Видео «${segment.name}» не открылось за 20 секунд. Попробуй MP4 (H.264) или более короткий файл.`));
     }, 20_000);
-    video.addEventListener("loadedmetadata", loaded, { once: true });
+    video.addEventListener("loadedmetadata", loaded);
+    video.addEventListener("durationchange", loaded);
     video.addEventListener("error", failed, { once: true });
     video.src = segment.url;
     video.load();
