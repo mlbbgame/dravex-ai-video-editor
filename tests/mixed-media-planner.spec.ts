@@ -16,12 +16,16 @@ test("preserves selected media order and caps a mixed sequence to its duration b
 
   expect(result.map((segment) => segment.kind ?? "video")).toEqual(["image", "video", "video", "image"]);
   expect(result[0]).toMatchObject({ name: "first.jpg", duration: 1.6 });
-  expect(result[3]).toMatchObject({ name: "last.jpg", duration: 4.75 });
+  expect(result[3]).toMatchObject({ name: "last.jpg", duration: 1.6 });
   const videoDuration = result.filter((segment) => segment.kind !== "image").reduce((sum, segment) => {
     const video = segment as VideoSegment;
     return sum + (video.trimEnd - video.trimStart) / (video.speedFactor ?? 1);
   }, 0);
   expect(videoDuration).toBeLessThanOrEqual(6.8);
+  const totalDuration = result.reduce((sum, segment) => segment.kind === "image"
+    ? sum + (segment.duration ?? 0)
+    : sum + ((segment as VideoSegment).trimEnd - (segment as VideoSegment).trimStart) / ((segment as VideoSegment).speedFactor ?? 1), 0);
+  expect(totalDuration).toBeLessThanOrEqual(10);
 });
 
 test("rejects invalid duration, missing cuts, or multiple source videos", () => {
