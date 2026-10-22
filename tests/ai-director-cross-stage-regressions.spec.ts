@@ -159,3 +159,34 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+
+test("semantic inference rejects weak, ambiguous, and malformed frame labels", async () => {
+  const { inferSemanticProfile, classifySemanticFrames } = await import("../src/video/semantic-classifier");
+
+  expect(inferSemanticProfile([])).toEqual({ profile: "unknown", confidence: 0 });
+  expect(inferSemanticProfile([
+    { label: "car", score: 0.2 },
+  ])).toEqual({ profile: "unknown", confidence: 0 });
+  expect(inferSemanticProfile([
+    { label: "car", score: 0.8 },
+    { label: "mountain", score: 0.8 },
+  ])).toEqual({ profile: "unknown", confidence: 0 });
+  expect(inferSemanticProfile([
+    { label: "car", score: Number.NaN },
+    { label: "car", score: Number.POSITIVE_INFINITY },
+    { label: 17 as unknown as string, score: 1 },
+  ])).toEqual({ profile: "unknown", confidence: 0 });
+  expect(inferSemanticProfile([
+    { label: "sports car", score: 1.7 },
+  ])).toEqual({ profile: "automotive", confidence: 1 });
+
+  // Invalid payloads should fail closed before loading model weights or touching
+  // browser timers, keeping optional local AI from blocking the montage path.
+  expect(await classifySemanticFrames([])).toBeNull();
+  expect(await classifySemanticFrames([
+    { time: -1, imageDataUrl: "data:image/png;base64,AA==" },
+    { time: Number.NaN, imageDataUrl: "data:image/png;base64,AA==" },
+    { time: 0, imageDataUrl: "https://example.com/frame.png" },
+  ])).toBeNull();
+});
