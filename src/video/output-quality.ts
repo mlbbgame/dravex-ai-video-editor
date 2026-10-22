@@ -80,9 +80,15 @@ export function getOutputQualitySeverity(blackFrameTimes: readonly number[], fro
   return blackFrameTimes.length || frozenFramePairs.length || durationMismatch ? "warning" : "ok";
 }
 
+export function assertNonEmptyRenderedBlob(blob: Pick<Blob, "size">): void {
+  if (!Number.isFinite(blob.size) || blob.size <= 0) {
+    throw new Error("Экспорт вернул пустой файл. Повтори монтаж; если ошибка повторится, попробуй более короткий ролик.");
+  }
+}
+
 export async function inspectRenderedVideo(blob: Blob, expectedDuration?: number): Promise<OutputQualityReport> {
   // Fail immediately for an empty recorder result instead of waiting for a media metadata timeout.
-  if (blob.size <= 0) throw new Error("Экспорт вернул пустой файл. Повтори монтаж; если ошибка повторится, попробуй более короткий ролик.");
+  assertNonEmptyRenderedBlob(blob);
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
