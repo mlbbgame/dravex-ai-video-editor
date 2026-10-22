@@ -16,6 +16,8 @@ export type VideoSegment = {
   trimEnd: number;
   /** Planned playback speed multiplier from the validated AI Director plan. */
   speedFactor?: number;
+  /** Duration of the transition after this clip, in seconds. */
+  transitionOutSeconds?: number;
 };
 
 /** Normalize optional photo durations so malformed saved/project data cannot poison the render timeline. */
@@ -29,6 +31,8 @@ export type ImageSegment = {
   name: string;
   url: string;
   duration?: number;
+  /** Duration of the transition after this still, in seconds. */
+  transitionOutSeconds?: number;
 };
 
 export type AudioSegment = {
@@ -111,6 +115,7 @@ type LoadedVideo = {
   end: number;
   duration: number;
   speedFactor: number;
+  transitionOutSeconds?: number;
 };
 
 type LoadedImage = {
@@ -118,6 +123,7 @@ type LoadedImage = {
   name: string;
   image: HTMLImageElement;
   duration: number;
+  transitionOutSeconds?: number;
 };
 
 type LoadedSegment = LoadedVideo | LoadedImage;
@@ -562,7 +568,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
-      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration) };
+      const requestedTransition = segment.transitionOutSeconds;
+      const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
+      return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration), transitionOutSeconds };
     }
     const videoSegment = segment as VideoSegment;
     let pendingVideo = videoCache.get(videoSegment.url);
@@ -575,7 +583,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const trim = resolveVideoTrimRange(video.duration, videoSegment.trimStart, videoSegment.trimEnd);
     const requestedSpeed = videoSegment.speedFactor;
     const speedFactor = Number.isFinite(requestedSpeed) ? Math.max(0.25, Math.min(4, requestedSpeed as number)) : 1;
-    return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor };
+    const requestedTransition = videoSegment.transitionOutSeconds;
+    const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
+    return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds };
   }));
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
@@ -781,7 +791,9 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
     if (!sourceWidth || !sourceHeight) return;
-    const transitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const plannedTransition = cutIndex > 0 ? loaded[cutIndex - 1]?.transitionOutSeconds : undefined;
+    const defaultTransitionDuration = transitionMode === "cinematic" ? 0.58 : transitionMode === "action" ? 0.3 : style === "velocity" ? 0.34 : style === "glitch" ? 0.3 : 0.42;
+    const transitionDuration = plannedTransition === undefined ? defaultTransitionDuration : plannedTransition;
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
