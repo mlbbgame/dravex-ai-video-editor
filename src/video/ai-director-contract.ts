@@ -20,7 +20,8 @@ export type DirectorSourceAsset = {
   width: number;
   height: number;
   fps?: number;
-  hasAudio: boolean;
+  /** Omit when the intake layer has not verified whether an audio stream exists. */
+  hasAudio?: boolean;
 };
 
 export type DirectorEvidence = {
