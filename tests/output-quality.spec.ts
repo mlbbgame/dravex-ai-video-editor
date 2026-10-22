@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getOutputQualitySeverity, isRenderedDurationWithinTolerance } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, isRenderedDurationWithinTolerance } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -41,4 +41,12 @@ test("duration tolerance is inclusive at its exact boundary", () => {
   expect(isRenderedDurationWithinTolerance(29.25, 30, 0.75)).toBe(true);
   expect(isRenderedDurationWithinTolerance(30.751, 30, 0.75)).toBe(false);
   expect(isRenderedDurationWithinTolerance(29.249, 30, 0.75)).toBe(false);
+});
+
+
+test("empty export blobs fail immediately with an actionable error", () => {
+  expect(() => assertNonEmptyRenderedBlob({ size: 0 })).toThrow(/пустой файл/i);
+  expect(() => assertNonEmptyRenderedBlob({ size: -1 })).toThrow(/пустой файл/i);
+  expect(() => assertNonEmptyRenderedBlob({ size: Number.NaN })).toThrow(/пустой файл/i);
+  expect(() => assertNonEmptyRenderedBlob({ size: 1 })).not.toThrow();
 });
