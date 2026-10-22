@@ -6,6 +6,7 @@ import {
   scoreFrameQuality,
   getHighlightSampleLimit,
   getHighlightSamplingInterval,
+  getVideoReadErrorMessage,
 } from "../src/video/highlight-finder";
 
 test("short action clips use denser samples to locate brief highlights", () => {
@@ -253,4 +254,13 @@ test("frame quality scoring safely rejects missing runtime feature payloads", ()
     brightness: Number.NaN,
     detail: 2,
   })).toBeCloseTo(0.14);
+});
+
+
+test("video read errors distinguish unsupported codecs from decode and network failures", () => {
+  expect(getVideoReadErrorMessage(4)).toContain("кодек не поддерживается");
+  expect(getVideoReadErrorMessage(3)).toContain("ошибку декодирования");
+  expect(getVideoReadErrorMessage(2)).toContain("Проверь, что файл полностью сохранён");
+  expect(getVideoReadErrorMessage(1)).toContain("загрузка видео была прервана");
+  expect(getVideoReadErrorMessage()).toContain("Браузер не смог прочитать видео");
 });
