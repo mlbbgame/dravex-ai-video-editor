@@ -156,10 +156,17 @@ export function buildSmartEyeReport(input: SmartEyeReportInput): SmartEyeReport 
   const sampledFrameCount = typeof safeInput.sampledFrameCount === "number" && Number.isFinite(safeInput.sampledFrameCount)
     ? Math.max(0, Math.min(candidateCount, Math.floor(safeInput.sampledFrameCount)))
     : 0;
+  // Coverage must count only events that are eligible for the evidence memory.
+  // Otherwise malformed/unknown event kinds can make the report claim a later
+  // event exists even though that event was correctly rejected from memory.
   const eventTimes = rawEvents
-    .filter((event) => event && typeof event === "object")
+    .filter((event) => event && typeof event === "object"
+      && ALLOWED_EVENT_KINDS.has(event.kind)
+      && typeof event.sourceTime === "number"
+      && Number.isFinite(event.sourceTime)
+      && event.sourceTime >= 0
+      && event.sourceTime <= duration)
     .map((event) => event.sourceTime)
-    .filter((time) => typeof time === "number" && Number.isFinite(time) && time >= 0 && time <= duration)
     .sort((a, b) => a - b);
   // Report temporal blind spots explicitly. Include source boundaries so a set
   // of clustered interior observations cannot look like full-timeline coverage.
