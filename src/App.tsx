@@ -10,6 +10,7 @@ import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
+import { buildMixedMediaSequence } from "./video/mixed-media-planner";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
@@ -203,9 +204,11 @@ export default function App() {
   const videoInput = useRef<HTMLInputElement>(null);
   const mediaSelectionMode = useRef<"replace" | "add">("replace");
   const musicInput = useRef<HTMLInputElement>(null);
-  const videoFile = mediaFiles[0] ?? null;
-  const videoUrl = mediaUrls[0] ?? "";
+  const videoIndex = mediaFiles.findIndex((file) => getMediaKind(file) === "video");
+  const videoFile = videoIndex >= 0 ? mediaFiles[videoIndex] : null;
+  const videoUrl = videoIndex >= 0 ? mediaUrls[videoIndex] ?? "" : "";
   const isImageMode = mediaFiles.length > 0 && mediaFiles.every((file) => getMediaKind(file) === "image");
+  const isMixedMode = videoIndex >= 0 && mediaFiles.some((file) => getMediaKind(file) === "image");
   const busy = stage === "analyzing" || stage === "rendering";
 
   const recordDiagnostic = (type: Parameters<typeof createDirectorDiagnostic>[0], details: Parameters<typeof createDirectorDiagnostic>[1] = {}) => {
@@ -446,8 +449,8 @@ export default function App() {
       setError("Не удалось определить формат одного из файлов. Выбери видео MP4, WebM или MOV либо фотографии JPG, PNG или WebP.");
       return;
     }
-    if (videos.length && (videos.length !== 1 || images.length)) {
-      setError("Сейчас можно добавить одно видео за раз или подборку фотографий. Смешивание видео с фото и несколько видео в одном проекте пока не поддерживаются.");
+    if (videos.length > 1) {
+      setError("В одном проекте пока поддерживается одно видео. Убери лишние видео, оставив фотографии и один видеоклип.");
       return;
     }
 
@@ -986,6 +989,22 @@ export default function App() {
           setMessage("Не удалось разобрать отдельные кадры — собираем равномерный монтаж из исходного видео.");
           if (analysisError instanceof Error) console.warn("DRAVEX highlight scan fallback:", analysisError.message);
         }
+      }
+      if (isMixedMode) {
+        const orderedMedia = mediaFiles.map((file, index) => ({
+          kind: getMediaKind(file) as "image" | "video",
+          name: file.name,
+          url: mediaUrls[index] ?? "",
+        })).filter((item) => item.kind === "image" || item.kind === "video");
+        const mixedSegments = buildMixedMediaSequence(orderedMedia, segments.filter((segment) => segment.kind !== "image") as VideoSegment[], renderDuration);
+        if (!mixedSegments.length) {
+          throw new Error("Не удалось согласовать длительность видео и фотографий. Попробуй сократить проект или выбрать меньше фотографий.");
+        }
+        segments = mixedSegments;
+        renderDuration = segments.reduce((sum, segment) => segment.kind === "image"
+          ? sum + (segment.duration ?? 3)
+          : sum + Math.max(0, (segment.trimEnd - segment.trimStart) / (segment.speedFactor ?? 1)), 0);
+        setMessage("Смешанный монтаж: фотографии встроены в порядок материала, длительность видеокадров подогнана под общий ролик.");
       }
       if (!segments.length) throw new Error("Не удалось собрать ролик. Попробуй другой файл.");
       if (musicUrl && musicFile && beatSync) {
