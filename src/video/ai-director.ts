@@ -817,8 +817,8 @@ export async function analyzeWithAIDirector(
           nextCandidate.time
         )
       : [];
-    const trackedTemporalCues = isModelSample && previousCandidate
-      ? inferTrackedObjectCues(previousObjects, objects, previousCandidate.time, candidate.time)
+    const trackedTemporalCues = isModelSample && previousIndex >= 0
+      ? inferTrackedObjectCues(previousObjects, objects, candidates[previousIndex].time, candidate.time)
       : [];
     const actionCues = [
       ...inferMotionCues(candidate.motion, candidate.contrast, previousLabels, labels, Math.max(0.015, referenceMotion)),
