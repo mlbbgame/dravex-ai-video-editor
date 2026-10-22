@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -73,4 +73,17 @@ test("quality inspection only compares frames far enough apart to avoid short-cl
   expect(shouldCompareFrameSamples(Number.NaN)).toBe(false);
   expect(shouldCompareFrameSamples(Number.POSITIVE_INFINITY)).toBe(false);
   expect(shouldCompareFrameSamples(-1)).toBe(false);
+});
+
+
+test("media readiness checks handle metadata and decoded-frame states without missed-event waits", () => {
+  expect(hasReachedMediaReadyState("loadedmetadata", 0)).toBe(false);
+  expect(hasReachedMediaReadyState("loadedmetadata", 1)).toBe(true);
+  expect(hasReachedMediaReadyState("loadedmetadata", 4)).toBe(true);
+  expect(hasReachedMediaReadyState("loadeddata", 1)).toBe(false);
+  expect(hasReachedMediaReadyState("loadeddata", 2)).toBe(true);
+  expect(hasReachedMediaReadyState("loadeddata", 4)).toBe(true);
+  expect(hasReachedMediaReadyState("canplay", 4)).toBe(false);
+  expect(hasReachedMediaReadyState("loadeddata", Number.NaN)).toBe(false);
+  expect(hasReachedMediaReadyState("loadeddata", Number.POSITIVE_INFINITY)).toBe(false);
 });
