@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -110,4 +110,46 @@ test("cinematic and automatic transitions provide varied but repeatable cut sequ
   expect(getTransitionSequenceType("cinematic", "cinematic", 1)).toBe(8);
   expect(getTransitionSequenceType("story", "auto", 0)).toBe(0);
   expect(getTransitionSequenceType("story", "auto", Number.NaN)).toBe(0);
+});
+
+
+test("media metadata guards reject zero, negative, NaN, and infinite dimensions", () => {
+  expect(hasUsableImageDimensions(1920, 1080)).toBe(true);
+  expect(hasUsableImageDimensions(1, 1)).toBe(true);
+  expect(hasUsableImageDimensions(0, 1080)).toBe(false);
+  expect(hasUsableImageDimensions(1920, 0)).toBe(false);
+  expect(hasUsableImageDimensions(-1, 1080)).toBe(false);
+  expect(hasUsableImageDimensions(Number.NaN, 1080)).toBe(false);
+  expect(hasUsableImageDimensions(1920, Number.POSITIVE_INFINITY)).toBe(false);
+});
+
+test("audio metadata guard rejects unusable durations but accepts finite positive durations", () => {
+  expect(hasUsableAudioDuration(0.01)).toBe(true);
+  expect(hasUsableAudioDuration(120)).toBe(true);
+  expect(hasUsableAudioDuration(0)).toBe(false);
+  expect(hasUsableAudioDuration(-1)).toBe(false);
+  expect(hasUsableAudioDuration(Number.NaN)).toBe(false);
+  expect(hasUsableAudioDuration(Number.POSITIVE_INFINITY)).toBe(false);
+  expect(hasUsableAudioDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+});
+
+test("video trim normalization never emits non-finite values or extends beyond the source", () => {
+  const cases = [
+    [0.1, 0, 0.1],
+    [1, Number.NaN, Number.POSITIVE_INFINITY],
+    [2, -100, 100],
+    [8, 7.99, 8],
+    [15, Number.POSITIVE_INFINITY, Number.NaN],
+  ] as const;
+
+  for (const [sourceDuration, requestedStart, requestedEnd] of cases) {
+    const range = resolveVideoTrimRange(sourceDuration, requestedStart, requestedEnd);
+    expect(Number.isFinite(range.start)).toBe(true);
+    expect(Number.isFinite(range.end)).toBe(true);
+    expect(Number.isFinite(range.duration)).toBe(true);
+    expect(range.start).toBeGreaterThanOrEqual(0);
+    expect(range.end).toBeLessThanOrEqual(sourceDuration);
+    expect(range.duration).toBeGreaterThanOrEqual(0.1);
+    expect(range.duration).toBeCloseTo(range.end - range.start, 6);
+  }
 });
