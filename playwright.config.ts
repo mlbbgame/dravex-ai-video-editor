@@ -19,7 +19,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run build:qa && npm run preview -- --base=/ --host 127.0.0.1 --port 4173",
+    // Build the production bundle above, then use Vite's module server for browser QA.
+    // This lets targeted regression tests import the exact TypeScript renderer in-browser.
+    command: "npm run build:qa && npm run dev -- --config vite.config.qa.ts --host 127.0.0.1 --port 4173",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
