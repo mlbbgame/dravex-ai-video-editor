@@ -573,7 +573,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   onStage?.("preparing-media");
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
-  const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
+  const segmentLoads = segments.map(async (segment): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
       const requestedTransition = segment.transitionOutSeconds;
@@ -596,7 +596,33 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
     const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
     return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
-  }));
+  });
+  let loaded: LoadedSegment[];
+  try {
+    loaded = await Promise.all(segmentLoads);
+  } catch (error) {
+    // Promise.all rejects as soon as one source fails, but other sources may still
+    // finish decoding. Wait for them and release every successfully loaded element
+    // so a failed import does not leave video decoders or image memory alive on mobile.
+    const results = await Promise.allSettled(segmentLoads);
+    const videos = new Set<HTMLVideoElement>();
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const item = result.value;
+      if (item.kind === "video") videos.add(item.video);
+      else {
+        item.image.onload = null;
+        item.image.onerror = null;
+        item.image.src = "";
+      }
+    }
+    for (const video of videos) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    throw error;
+  }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
   // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
@@ -615,10 +641,39 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
   onStage?.("preparing-audio");
-  const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
+  const audioLoads = audioTracks.map(async (segment) => ({
     segment,
     audio: await loadAudio(segment)
-  })));
+  }));
+  let loadedAudio: Array<{ segment: AudioSegment; audio: HTMLAudioElement }>;
+  try {
+    loadedAudio = await Promise.all(audioLoads);
+  } catch (error) {
+    // Audio setup can fail after video/image decoding has succeeded. Release both
+    // completed audio elements and the already-loaded visual sources before exiting.
+    const audioResults = await Promise.allSettled(audioLoads);
+    for (const result of audioResults) {
+      if (result.status !== "fulfilled") continue;
+      result.value.audio.pause();
+      result.value.audio.removeAttribute("src");
+      result.value.audio.load();
+    }
+    const videos = new Set<HTMLVideoElement>();
+    for (const item of loaded) {
+      if (item.kind === "video") videos.add(item.video);
+      else {
+        item.image.onload = null;
+        item.image.onerror = null;
+        item.image.src = "";
+      }
+    }
+    for (const video of videos) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    throw error;
+  }
 
   // Validate the actual, metadata-resolved render sequence before allocating the
   // canvas/recorder. This checks the plan the browser will really render, not
