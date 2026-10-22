@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -144,6 +144,16 @@ test("final render duration rejects positive but effectively empty timelines", (
   expect(isUsableFinalRenderDuration(Number.NaN)).toBe(false);
   expect(isUsableFinalRenderDuration(Number.POSITIVE_INFINITY)).toBe(false);
   expect(isUsableFinalRenderDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+});
+
+test("video metadata guard rejects invalid decoded dimensions", () => {
+  expect(hasUsableVideoDimensions(1920, 1080)).toBe(true);
+  expect(hasUsableVideoDimensions(0, 1080)).toBe(false);
+  expect(hasUsableVideoDimensions(1920, 0)).toBe(false);
+  expect(hasUsableVideoDimensions(Number.NaN, 1080)).toBe(false);
+  expect(hasUsableVideoDimensions(1920, Number.NaN)).toBe(false);
+  expect(hasUsableVideoDimensions(Number.POSITIVE_INFINITY, 1080)).toBe(false);
+  expect(hasUsableVideoDimensions(1920, Number.POSITIVE_INFINITY)).toBe(false);
 });
 
 test("audio metadata guard rejects unusable durations but accepts finite positive durations", () => {
