@@ -33,7 +33,7 @@ const seekTo = async (video: HTMLVideoElement, time: number) => {
     // inspection sample Android Chrome can still be below HAVE_CURRENT_DATA;
     // drawing immediately may throw or sample an unready frame. Wait for data
     // rather than assigning the same currentTime (which may never emit seeked).
-    if (video.readyState >= 2) return;
+    if (!shouldWaitForDecodedFrame(video.currentTime, time, video.readyState)) return;
     await waitForMediaEvent(video, "loadeddata");
     return;
   }
@@ -82,6 +82,12 @@ export function isRenderedDurationWithinTolerance(actualDuration: number, expect
     : 0.75;
   const tolerance = Math.max(safeTolerance, expectedDuration * 0.05);
   return Math.abs(actualDuration - expectedDuration) <= tolerance;
+}
+
+/** Whether the current frame must finish decoding before it can be sampled. */
+export function shouldWaitForDecodedFrame(currentTime: number, targetTime: number, readyState: number): boolean {
+  if (!Number.isFinite(currentTime) || !Number.isFinite(targetTime) || !Number.isFinite(readyState)) return true;
+  return Math.abs(currentTime - targetTime) < 0.025 && readyState < 2;
 }
 
 /** Avoid treating adjacent samples from very short clips as evidence of a freeze. */
