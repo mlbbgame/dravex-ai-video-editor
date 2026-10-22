@@ -515,6 +515,10 @@ export default function App() {
       return;
     }
 
+    // Invalidate any asynchronous inspection of an older export before the media changes.
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     clearRenderedVariants();
     if (appendPhotos) {
       setMediaFiles(nextFiles);
@@ -541,6 +545,9 @@ export default function App() {
     if (!isImageMode) return;
     const target = index + direction;
     if (target < 0 || target >= mediaFiles.length) return;
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     const nextFiles = [...mediaFiles];
     const [moved] = nextFiles.splice(index, 1);
     nextFiles.splice(target, 0, moved);
@@ -559,6 +566,9 @@ export default function App() {
   const removePhoto = (index: number) => {
     if (!isImageMode) return;
     const nextFiles = mediaFiles.filter((_, fileIndex) => fileIndex !== index);
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     clearRenderedVariants();
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
@@ -581,6 +591,9 @@ export default function App() {
   };
 
   const invalidateOutput = () => {
+    // A previous export inspection may finish after the user changes settings.
+    // Invalidate its generation so stale diagnostics cannot be attached to a new edit.
+    qualityCheckGeneration.current += 1;
     setQualityReport(null);
     setQualityCheckBusy(false);
     setOutputUrl("");
@@ -593,8 +606,11 @@ export default function App() {
   };
 
   const chooseMontageVariant = (variant: MontageVariant) => {
-    // Prevent a slow render of the previously selected style from replacing this selection.
+    // Prevent stale previews and export-quality reports from replacing this selection.
     previewGeneration.current += 1;
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     const hasRealPreview = renderedVariants.some((item) => item.id === variant.id);
     setStyle(variant.style);
     learningVariantRef.current = toLearningVariant(variant.style);
