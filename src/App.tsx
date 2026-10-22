@@ -803,7 +803,7 @@ export default function App() {
     recordDiagnostic("montage-started", { mediaKind: isImageMode ? "images" : mediaFiles.length > 1 ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: duration, style: style === "auto" ? "auto" : style, quality });
     // Keep failure diagnostics tied to the operation that actually failed. This is
     // especially useful on Android, where analysis, audio setup and encoding can fail differently.
-    let operationPhase = "analysis";
+    let operationPhase: "analysis" | "music-analysis" | "render" = "analysis";
     try {
       setStage("analyzing");
       setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
