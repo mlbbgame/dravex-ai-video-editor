@@ -72,7 +72,7 @@ test("all montage variants remain inside source bounds and avoid replaying the s
   }
 
   const signatures = variants.map((variant) => variant.moments.map((moment) => moment.time.toFixed(2)).join(","));
-  expect(new Set(signatures).size).toBeGreaterThan(1);
+  expect(new Set(signatures).size).toBe(variants.length);
 });
 
 test("Smart Eye carries timeline evidence through the cross-stage quality contract", () => {
