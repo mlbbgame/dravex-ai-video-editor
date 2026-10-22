@@ -472,6 +472,10 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
     };
     image.onload = () => {
       if (!finish()) return;
+      // Detach callbacks once the image settles. This prevents stale handlers
+      // retaining project closures after a successful decode or a rejected file.
+      image.onload = null;
+      image.onerror = null;
       if (!hasUsableImageDimensions(image.naturalWidth, image.naturalHeight)) {
         image.src = "";
         reject(new Error(`У фото «${segment.name}» не удалось определить размер изображения. Попробуй другое фото.`));
@@ -480,7 +484,11 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
       resolve(image);
     };
     image.onerror = () => {
-      if (finish()) reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
+      if (!finish()) return;
+      image.onload = null;
+      image.onerror = null;
+      image.src = "";
+      reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
     };
     image.src = segment.url;
   });
