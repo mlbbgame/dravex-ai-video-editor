@@ -3,6 +3,9 @@ import {
   getHighlightSampleLimit,
   getHighlightSamplingInterval,
   getHighlightSampleTime,
+  getBoundedSeekTimeoutMs,
+  getRemainingAnalysisBudgetMs,
+  scoreFrameQuality,
   rankHighlightMomentsForStyle,
   buildHighlightVariants,
   type HighlightMoment,
@@ -158,4 +161,43 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
       expect(moment.end).toBeGreaterThan(moment.start);
     }
   }
+});
+
+
+test("Smart Eye frame seeks never exceed the remaining global analysis budget", () => {
+  expect(getBoundedSeekTimeoutMs(0, 5000, 12000)).toBe(5000);
+  expect(getBoundedSeekTimeoutMs(1200, 5000, 12000)).toBe(3800);
+  expect(getBoundedSeekTimeoutMs(4900, 5000, 12000)).toBe(100);
+  expect(getBoundedSeekTimeoutMs(5000, 5000, 12000)).toBe(0);
+  expect(getBoundedSeekTimeoutMs(-250, 5000, 12000)).toBe(5000);
+  expect(getBoundedSeekTimeoutMs(0, 5000, 700)).toBe(700);
+  expect(getBoundedSeekTimeoutMs(0, Number.NaN, 700)).toBe(0);
+});
+
+test("Smart Eye optional analysis stages receive only the remaining time budget", () => {
+  expect(getRemainingAnalysisBudgetMs(0, 8000)).toBe(8000);
+  expect(getRemainingAnalysisBudgetMs(2500, 8000)).toBe(5500);
+  expect(getRemainingAnalysisBudgetMs(9000, 8000)).toBe(0);
+  expect(getRemainingAnalysisBudgetMs(-500, 8000)).toBe(8000);
+  expect(getRemainingAnalysisBudgetMs(500, Number.POSITIVE_INFINITY)).toBe(0);
+});
+
+test("frame quality scoring stays bounded and tolerates malformed runtime features", () => {
+  const balanced = scoreFrameQuality({
+    motion: 0.8,
+    contrast: 0.7,
+    saturation: 0.5,
+    brightness: 0.48,
+    detail: 0.6,
+  });
+  expect(balanced).toBeGreaterThan(0);
+  expect(balanced).toBeLessThanOrEqual(1);
+  expect(scoreFrameQuality({
+    motion: Number.NaN,
+    contrast: Number.POSITIVE_INFINITY,
+    saturation: -10,
+    brightness: Number.NaN,
+    detail: Number.NaN,
+  })).toBe(0);
+  expect(scoreFrameQuality(null as never)).toBe(0);
 });
