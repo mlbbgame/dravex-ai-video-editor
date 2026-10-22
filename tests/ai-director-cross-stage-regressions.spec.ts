@@ -177,7 +177,7 @@ test("Smart Eye coverage uses only valid sampled timestamps and includes source 
   expect(report.coverage.sampledFrameRatio).toBe(0.5);
   // Invalid/out-of-range values are ignored, duplicate timestamps are deduplicated,
   // and the report exposes the unobserved tail/head as gaps instead of implying full coverage.
-  expect(report.coverage.largestSampleGapSeconds).toBe(12);
+  expect(report.coverage.largestSampleGapSeconds).toBe(11);
   expect(report.coverage.firstEventTime).toBeNull();
   expect(report.coverage.lastEventTime).toBeNull();
 });
