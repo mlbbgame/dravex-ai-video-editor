@@ -19,7 +19,7 @@ export type DirectorDiagnosticDetails = {
   severity?: "ok" | "warning";
   findingCount?: number;
   fallbackUsed?: boolean;
-  reasonCode?: "analysis-unavailable" | "render-error" | "quality-check-unavailable";
+  reasonCode?: "analysis-unavailable" | "source-unreadable" | "render-error" | "quality-check-unavailable";
   phase?: "analysis" | "music-analysis" | "render";
 };
 
@@ -38,7 +38,7 @@ const ALLOWED_STYLES = new Set(["auto", "velocity", "cinematic", "story", "anime
 const ALLOWED_QUALITIES = new Set(["720p", "1080p", "4K", "unknown"]);
 const ALLOWED_MEDIA_KINDS = new Set(["video", "images", "mixed"]);
 const ALLOWED_SEVERITIES = new Set(["ok", "warning"]);
-const ALLOWED_REASON_CODES = new Set(["analysis-unavailable", "render-error", "quality-check-unavailable"]);
+const ALLOWED_REASON_CODES = new Set(["analysis-unavailable", "source-unreadable", "render-error", "quality-check-unavailable"]);
 const ALLOWED_FAILURE_PHASES = new Set(["analysis", "music-analysis", "render"]);
 const INTEGER_KEYS = new Set(["mediaCount", "sampledFrames", "candidateCount", "segmentCount", "findingCount"]);
 const ALLOWED_KEYS = new Set([
