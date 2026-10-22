@@ -159,3 +159,51 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+
+test("Smart Eye coverage stays honest with malformed counts, sample times, and event timestamps", () => {
+  const report = buildSmartEyeReport({
+    duration: 20,
+    detectedLabels: ["car", "dog", "car", "  "],
+    events: [
+      { kind: "motion-peak", evidenceLevel: "visual-heuristic", label: "valid", confidence: 0.8, sourceTime: 4, start: 3, end: 5, evidence: ["motion"] },
+      { kind: "motion-peak", evidenceLevel: "visual-heuristic", label: "negative", confidence: 0.8, sourceTime: -1, start: 0, end: 1, evidence: ["bad"] },
+      { kind: "motion-peak", evidenceLevel: "visual-heuristic", label: "past end", confidence: 0.8, sourceTime: 21, start: 20, end: 21, evidence: ["bad"] },
+      { kind: "not-an-event" as never, evidenceLevel: "visual-heuristic", label: "unknown", confidence: 0.8, sourceTime: 9, start: 8, end: 10, evidence: ["bad"] },
+    ],
+    selectedStyle: "cinematic",
+    sampledFrameCount: 99,
+    candidateCount: 3,
+    sampledFrameTimes: [-1, 0, 0, 2, 2, 19, 20, 21, Number.NaN, Number.POSITIVE_INFINITY] as number[],
+  });
+
+  expect(report.detectedEntities).toEqual(["car", "dog"]);
+  expect(report.sceneCategory).toBe("general");
+  expect(report.coverage.candidateCount).toBe(3);
+  expect(report.coverage.sampledFrameCount).toBe(3);
+  expect(report.coverage.sampledFrameRatio).toBe(1);
+  expect(report.coverage.firstEventTime).toBe(4);
+  expect(report.coverage.lastEventTime).toBe(4);
+  expect(report.coverage.largestSampleGapSeconds).toBe(17);
+  expect(report.memory.some((entry) => entry.label === "negative" || entry.label === "past end" || entry.label === "unknown")).toBe(false);
+});
+
+test("Smart Eye coverage reports zero safely when counts and duration are unusable", () => {
+  const report = buildSmartEyeReport({
+    duration: Number.NaN,
+    detectedLabels: [],
+    events: [],
+    selectedStyle: "cinematic",
+    sampledFrameCount: Number.POSITIVE_INFINITY,
+    candidateCount: Number.NaN,
+    sampledFrameTimes: [0, 1, Number.NaN],
+  });
+
+  expect(report.duration).toBe(0);
+  expect(report.coverage.candidateCount).toBe(0);
+  expect(report.coverage.sampledFrameCount).toBe(0);
+  expect(report.coverage.sampledFrameRatio).toBe(0);
+  expect(report.coverage.firstEventTime).toBeNull();
+  expect(report.coverage.lastEventTime).toBeNull();
+  expect(report.coverage.largestSampleGapSeconds).toBe(0);
+});
