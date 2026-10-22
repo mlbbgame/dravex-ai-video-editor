@@ -119,7 +119,9 @@ export function snapCutBoundariesToBeats(
 
   const evenlySpaced = () =>
     Array.from({ length: safeSegmentCount + 1 }, (_, index) => targetDuration * index / safeSegmentCount);
-  const validBeats = beats.filter(Number.isFinite).filter((beat) => beat >= 0 && beat <= targetDuration);
+  const validBeats = (Array.isArray(beats) ? beats : [])
+    .filter(Number.isFinite)
+    .filter((beat) => beat >= 0 && beat <= targetDuration);
   if (safeSegmentCount === 1 || validBeats.length < 2) return evenlySpaced();
 
   const boundaries = [0];
