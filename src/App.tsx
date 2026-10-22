@@ -381,6 +381,8 @@ export default function App() {
 
   const clearEditor = () => {
     if (busy || previewBusy || projectBusy) return;
+    // Invalidate any in-flight output inspection before clearing its result state.
+    qualityCheckGeneration.current += 1;
     if (!window.confirm("Очистить текущий проект? Исходные файлы и настройки редактора будут убраны из рабочего пространства.")) return;
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
     if (musicUrl) URL.revokeObjectURL(musicUrl);
