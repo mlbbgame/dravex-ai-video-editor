@@ -32,6 +32,7 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
       const cleanup = () => {
         window.clearTimeout(timeoutId);
         video.removeEventListener("loadedmetadata", loaded);
+        video.removeEventListener("durationchange", loaded);
         video.removeEventListener("error", failed);
       };
       const finish = (error?: Error) => {
@@ -42,6 +43,9 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
         else resolve();
       };
       const loaded = () => {
+        // Some valid WebM files initially expose NaN/Infinity until durationchange.
+        // Wait for the metadata to settle instead of incorrectly rejecting the source.
+        if (Number.isNaN(video.duration) || video.duration === Number.POSITIVE_INFINITY) return;
         if (!Number.isFinite(video.duration) || video.duration <= 0) {
           finish(new Error("Не удалось определить длительность видео для AI Director. Попробуй MP4 (H.264) или другой файл."));
           return;
@@ -55,6 +59,7 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
       };
       const failed = () => finish(new Error("Не удалось прочитать метаданные видео для AI Director. Попробуй MP4 (H.264) или другой файл."));
       video.addEventListener("loadedmetadata", loaded);
+      video.addEventListener("durationchange", loaded);
       video.addEventListener("error", failed);
       timeoutId = window.setTimeout(() => {
         finish(new Error("Видео не открылось за 20 секунд при проверке AI Director. Попробуй MP4 (H.264) или более короткий файл."));
