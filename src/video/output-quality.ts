@@ -81,6 +81,8 @@ export function getOutputQualitySeverity(blackFrameTimes: readonly number[], fro
 }
 
 export async function inspectRenderedVideo(blob: Blob, expectedDuration?: number): Promise<OutputQualityReport> {
+  // Fail immediately for an empty recorder result instead of waiting for a media metadata timeout.
+  if (blob.size <= 0) throw new Error("Экспорт вернул пустой файл. Повтори монтаж; если ошибка повторится, попробуй более короткий ролик.");
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
