@@ -425,6 +425,11 @@ export function hasUsableAudioDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
 }
 
+/** Audio and video elements can briefly expose unresolved metadata before durationchange. */
+export function isPendingAudioDuration(duration: number): boolean {
+  return Number.isNaN(duration) || duration === Number.POSITIVE_INFINITY;
+}
+
 /** Some browsers initially expose Infinity for WebM duration until more metadata arrives. */
 export function isPendingVideoDuration(duration: number): boolean {
   return duration === Number.POSITIVE_INFINITY;
@@ -584,17 +589,19 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       return true;
     };
     const loaded = () => {
+      if (isPendingAudioDuration(audio.duration)) {
+        // Like video elements, audio elements can briefly expose NaN before
+        // durationchange settles metadata. Do not reject a valid track early.
+        // The existing timeout still bounds files whose metadata never settles.
+        return;
+      }
       if (!hasUsableAudioDuration(audio.duration)) {
-        if (Number.isNaN(audio.duration) || audio.duration <= 0) {
-          if (finish()) {
-            audio.pause();
-            audio.removeAttribute("src");
-            audio.load();
-            reject(new Error(`У аудио «${segment.name}» не удалось определить длительность. Попробуй другой аудиофайл.`));
-          }
+        if (finish()) {
+          audio.pause();
+          audio.removeAttribute("src");
+          audio.load();
+          reject(new Error(`У аудио «${segment.name}» не удалось определить длительность. Попробуй другой аудиофайл.`));
         }
-        // Infinity can be reported temporarily by some browsers while metadata
-        // is incomplete. Wait for durationchange or the existing timeout.
         return;
       }
       if (finish()) resolve(audio);
