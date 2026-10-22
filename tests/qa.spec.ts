@@ -893,7 +893,7 @@ test("render failure stops and settles MediaRecorder before returning the origin
   // process has no MediaRecorder, which would fail before the cleanup path runs.
   await page.goto("/");
   const result = await page.evaluate(async () => {
-    const { renderVideoSequence } = await import("/src/video/video-sequence-render.ts");
+    const { renderVideoSequence } = await import("/dravex-ai-video-editor/src/video/video-sequence-render.ts");
     try {
       await renderVideoSequence({
         segments: [{
