@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTrimBoundaryFrameTime, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -82,4 +82,18 @@ test("trim boundary holds the last frame inside the selected source range", () =
   expect(getTrimBoundaryFrameTime(3, 3)).toBe(3);
   expect(getTrimBoundaryFrameTime(4, 2)).toBe(4);
   expect(getTrimBoundaryFrameTime(Number.NaN, 2)).toBe(0);
+});
+
+test("video trim ranges remain inside source bounds and last at least 0.1 seconds", () => {
+  expect(resolveVideoTrimRange(10, 2, 5)).toEqual({ start: 2, end: 5, duration: 3 });
+  expect(resolveVideoTrimRange(10, -4, 3)).toEqual({ start: 0, end: 3, duration: 3 });
+  expect(resolveVideoTrimRange(10, 8, 20)).toEqual({ start: 8, end: 10, duration: 2 });
+  expect(resolveVideoTrimRange(10, 9.95, 9.96)).toEqual({ start: 9.9, end: 10, duration: 0.1 });
+});
+
+test("video trim ranges recover safely from invalid trim values and reject unusable sources", () => {
+  expect(resolveVideoTrimRange(5, Number.NaN, Number.NaN)).toEqual({ start: 0, end: 5, duration: 5 });
+  expect(resolveVideoTrimRange(5, 3, 2)).toEqual({ start: 3, end: 3.1, duration: 0.1 });
+  expect(() => resolveVideoTrimRange(Number.NaN, 0, 1)).toThrow();
+  expect(() => resolveVideoTrimRange(0.05, 0, 0.05)).toThrow();
 });
