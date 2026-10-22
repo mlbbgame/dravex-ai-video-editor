@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, isRenderedDurationWithinTolerance, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -62,4 +62,15 @@ test("quality inspection waits when the requested timestamp matches an undecoded
   expect(shouldWaitForDecodedFrame(1, 1.01, 2)).toBe(false);
   expect(shouldWaitForDecodedFrame(1, 2, 0)).toBe(false);
   expect(shouldWaitForDecodedFrame(Number.NaN, 1, 2)).toBe(true);
+});
+
+
+test("quality inspection only compares frames far enough apart to avoid short-clip false positives", () => {
+  expect(shouldCompareFrameSamples(0)).toBe(false);
+  expect(shouldCompareFrameSamples(0.49)).toBe(false);
+  expect(shouldCompareFrameSamples(0.5)).toBe(true);
+  expect(shouldCompareFrameSamples(1)).toBe(true);
+  expect(shouldCompareFrameSamples(Number.NaN)).toBe(false);
+  expect(shouldCompareFrameSamples(Number.POSITIVE_INFINITY)).toBe(false);
+  expect(shouldCompareFrameSamples(-1)).toBe(false);
 });
