@@ -622,6 +622,13 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         item.image.src = "";
       }
     }
+    // A video may have decoded successfully and then failed trim validation
+    // before its segment promise could return a LoadedSegment. The cache owns
+    // those source elements too, so release every successfully resolved source.
+    const cachedVideoResults = await Promise.allSettled(videoCache.values());
+    for (const result of cachedVideoResults) {
+      if (result.status === "fulfilled") videos.add(result.value);
+    }
     for (const video of videos) {
       video.pause();
       video.removeAttribute("src");
