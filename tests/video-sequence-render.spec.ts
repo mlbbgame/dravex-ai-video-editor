@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MAX_CONCURRENT_MEDIA_LOADS, getRenderFrameInterval, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -154,6 +154,14 @@ test("video metadata guard rejects invalid decoded dimensions", () => {
   expect(hasUsableVideoDimensions(1920, Number.NaN)).toBe(false);
   expect(hasUsableVideoDimensions(Number.POSITIVE_INFINITY, 1080)).toBe(false);
   expect(hasUsableVideoDimensions(1920, Number.POSITIVE_INFINITY)).toBe(false);
+});
+
+test("audio duration metadata waits for transient NaN and positive Infinity", () => {
+  expect(isPendingAudioDuration(Number.NaN)).toBe(true);
+  expect(isPendingAudioDuration(Number.POSITIVE_INFINITY)).toBe(true);
+  expect(isPendingAudioDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+  expect(isPendingAudioDuration(0)).toBe(false);
+  expect(isPendingAudioDuration(9)).toBe(false);
 });
 
 test("video duration metadata waits only for a temporary positive Infinity value", () => {
