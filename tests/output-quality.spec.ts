@@ -25,6 +25,8 @@ test("export quality warns when rendered duration materially differs from reques
   expect(isRenderedDurationWithinTolerance(32, 30, -5)).toBe(false);
   expect(getOutputQualitySeverity([], [], true)).toBe("warning");
   expect(getOutputQualitySeverity([], [], false)).toBe("ok");
+  expect(getOutputQualitySeverity([], [], false, true)).toBe("warning");
+  expect(getOutputQualitySeverity([], [], false, false)).toBe("ok");
 });
 
 test("duration tolerance uses the greater of the explicit tolerance and five percent", () => {
