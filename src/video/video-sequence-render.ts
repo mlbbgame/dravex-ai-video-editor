@@ -1185,7 +1185,40 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw error;
   }
 
-  const blob = await result;
-  onProgress?.(100);
-  return blob;
+  // Android MediaRecorder can occasionally remain active without dispatching
+  // the final "stop" event. Bound finalization so the UI never waits forever.
+  let finalizationTimeoutId = 0;
+  let finalizationTimedOut = false;
+  try {
+    const blob = await Promise.race([
+      result,
+      new Promise<Blob>((_, reject) => {
+        finalizationTimeoutId = window.setTimeout(() => {
+          finalizationTimedOut = true;
+          stream.getTracks().forEach((track) => track.stop());
+          videoStream.getTracks().forEach((track) => track.stop());
+          loadedAudio.forEach(({ audio }) => {
+            audio.pause();
+            audio.removeAttribute("src");
+            audio.load();
+          });
+          const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+          uniqueVideos.forEach((video) => {
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+          });
+          if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
+          reject(new Error("Chrome не завершил запись ролика за 15 секунд. Монтаж не был сохранён. Обнови страницу и попробуй экспорт ещё раз; если ошибка повторится, попробуй более короткий ролик."));
+        }, 15_000);
+      })
+    ]);
+    onProgress?.(100);
+    return blob;
+  } finally {
+    window.clearTimeout(finalizationTimeoutId);
+    // If the watchdog fired, a later browser "stop" event must not be mistaken
+    // for a successful export. Promise.race already returned the timeout error.
+    void finalizationTimedOut;
+  }
 }
