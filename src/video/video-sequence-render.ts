@@ -180,11 +180,31 @@ export function getRenderFrameInterval(frameRate = 24): number {
   return 1000 / Math.min(60, Math.max(1, frameRate));
 }
 
+const RENDER_FRAME_WATCHDOG_MS = 10_000;
+
+/**
+ * Wait for a paced animation frame, but never leave an export pending forever
+ * if the browser stops delivering animation frames (for example, a throttled
+ * mobile tab). The render lifecycle catches this error and releases recorder,
+ * stream, audio, and decoded-media resources.
+ */
 function waitForRenderFrame(lastFrameAt: number, intervalMs: number): Promise<number> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("Отрисовка кадров остановилась более чем на 10 секунд. Верни DRAVEX на экран и повтори экспорт; если ошибка повторится, попробуй более короткий ролик."));
+    }, RENDER_FRAME_WATCHDOG_MS);
     const check = (timestamp: number) => {
-      if (timestamp - lastFrameAt >= intervalMs) resolve(timestamp);
-      else requestAnimationFrame(check);
+      if (settled) return;
+      if (timestamp - lastFrameAt >= intervalMs) {
+        settled = true;
+        window.clearTimeout(timeoutId);
+        resolve(timestamp);
+      } else {
+        requestAnimationFrame(check);
+      }
     };
     requestAnimationFrame(check);
   });
