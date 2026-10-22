@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, isRenderedDurationWithinTolerance } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, isRenderedDurationWithinTolerance, shouldWaitForDecodedFrame } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -53,4 +53,13 @@ test("empty export blobs fail immediately with an actionable error", () => {
   expect(() => assertNonEmptyRenderedBlob({ size: Number.POSITIVE_INFINITY })).toThrow(/пустой файл/i);
   expect(() => assertNonEmptyRenderedBlob({ size: Number.NEGATIVE_INFINITY })).toThrow(/пустой файл/i);
   expect(() => assertNonEmptyRenderedBlob({ size: 1 })).not.toThrow();
+});
+
+
+test("quality inspection waits when the requested timestamp matches an undecoded frame", () => {
+  expect(shouldWaitForDecodedFrame(0, 0.01, 0)).toBe(true);
+  expect(shouldWaitForDecodedFrame(1, 1.01, 1)).toBe(true);
+  expect(shouldWaitForDecodedFrame(1, 1.01, 2)).toBe(false);
+  expect(shouldWaitForDecodedFrame(1, 2, 0)).toBe(false);
+  expect(shouldWaitForDecodedFrame(Number.NaN, 1, 2)).toBe(true);
 });
