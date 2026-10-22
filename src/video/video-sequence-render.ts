@@ -674,7 +674,24 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw error;
   }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
+  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+    // Corrupt/extreme media metadata can overflow the summed timeline. Release
+    // every decoded source before rejecting so mobile decoders/bitmaps are not
+    // retained after an invalid-duration export attempt.
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    for (const video of uniqueVideos) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      item.image.onload = null;
+      item.image.onerror = null;
+      item.image.src = "";
+    }
+    throw new Error("Длительность монтажного плана некорректна. Проверь исходные файлы и попробуй более короткий ролик.");
+  }
   // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
   if (targetDurationSeconds && Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0) {
     if (sourceDuration > targetDurationSeconds) {
