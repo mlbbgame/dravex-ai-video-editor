@@ -76,8 +76,8 @@ export function isRenderedDurationWithinTolerance(actualDuration: number, expect
   return Math.abs(actualDuration - expectedDuration) <= tolerance;
 }
 
-export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false): "ok" | "warning" {
-  return blackFrameTimes.length || frozenFramePairs.length || durationMismatch ? "warning" : "ok";
+export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false, dimensionMismatch = false): "ok" | "warning" {
+  return blackFrameTimes.length || frozenFramePairs.length || durationMismatch || dimensionMismatch ? "warning" : "ok";
 }
 
 export function assertNonEmptyRenderedBlob(blob: Pick<Blob, "size">): void {
@@ -86,7 +86,11 @@ export function assertNonEmptyRenderedBlob(blob: Pick<Blob, "size">): void {
   }
 }
 
-export async function inspectRenderedVideo(blob: Blob, expectedDuration?: number): Promise<OutputQualityReport> {
+export async function inspectRenderedVideo(
+  blob: Blob,
+  expectedDuration?: number,
+  expectedDimensions?: { width: number; height: number },
+): Promise<OutputQualityReport> {
   // Fail immediately for an empty recorder result instead of waiting for a media metadata timeout.
   assertNonEmptyRenderedBlob(blob);
   const url = URL.createObjectURL(blob);
@@ -142,11 +146,17 @@ export async function inspectRenderedVideo(blob: Blob, expectedDuration?: number
     const findings: string[] = [];
     const durationMismatch = Number.isFinite(expectedDuration) && (expectedDuration as number) > 0
       && !isRenderedDurationWithinTolerance(video.duration, expectedDuration as number);
+    const hasExpectedDimensions = expectedDimensions
+      && Number.isFinite(expectedDimensions.width) && expectedDimensions.width > 0
+      && Number.isFinite(expectedDimensions.height) && expectedDimensions.height > 0;
+    const dimensionMismatch = Boolean(hasExpectedDimensions
+      && (video.videoWidth !== expectedDimensions?.width || video.videoHeight !== expectedDimensions?.height));
     if (durationMismatch) findings.push(`Длительность экспорта (${video.duration.toFixed(1)} с) заметно отличается от запрошенной (${(expectedDuration as number).toFixed(1)} с). Проверь конечный ролик перед сохранением.`);
+    if (dimensionMismatch && expectedDimensions) findings.push(`Размер экспорта (${video.videoWidth}×${video.videoHeight}) не совпадает с выбранным (${expectedDimensions.width}×${expectedDimensions.height}). Проверь профиль качества и конечный ролик.`);
     if (blackFrameTimes.length) findings.push("Обнаружены почти чёрные кадры около: " + blackFrameTimes.map((time) => time.toFixed(1) + " с").join(", ") + ". Проверь, не задуманы ли они как переход.");
     if (frozenFramePairs.length) findings.push("Некоторые контрольные точки почти не меняются (около " + frozenFramePairs.map((time) => time.toFixed(1) + " с").join(", ") + "). Это может быть статичный кадр или зависание — проверь воспроизведение.");
     if (!findings.length) findings.push("На контрольных точках явных чёрных кадров или почти одинаковых соседних кадров не обнаружено.");
-    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs, durationMismatch) };
+    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs, durationMismatch, dimensionMismatch) };
   } finally {
     video.removeAttribute("src");
     video.load();
