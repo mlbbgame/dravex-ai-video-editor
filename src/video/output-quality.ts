@@ -167,6 +167,9 @@ export async function inspectRenderedVideo(
     if (!findings.length) findings.push("На контрольных точках явных чёрных кадров или почти одинаковых соседних кадров не обнаружено.");
     return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs, durationMismatch, dimensionMismatch) };
   } finally {
+    // Stop playback/decoding before detaching the temporary Blob URL. Android
+    // browsers may otherwise retain a decoder while the quality report is shown.
+    video.pause();
     video.removeAttribute("src");
     video.load();
     URL.revokeObjectURL(url);
