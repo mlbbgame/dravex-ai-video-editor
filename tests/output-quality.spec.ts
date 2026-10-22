@@ -89,3 +89,26 @@ test("media readiness checks handle metadata and decoded-frame states without mi
 });
 
 test("inspection samples include clip boundaries", () => { const times = getOutputInspectionTimes(30, 5); expect(times[0]).toBeCloseTo(0.04); expect(times[times.length - 1]).toBeCloseTo(29.92); });
+
+test("inspection sample points stay finite, ordered, inside the clip, and bounded on short and long exports", () => {
+  for (const duration of [0.1, 0.25, 1, 9, 60, 300]) {
+    const times = getOutputInspectionTimes(duration, 9);
+    expect(times.length).toBe(9);
+    expect(times.every((time) => Number.isFinite(time) && time >= 0 && time < duration)).toBe(true);
+    expect(times.every((time, index) => index === 0 || time >= times[index - 1])).toBe(true);
+  }
+
+  // The inspector must cap work even if a caller requests an unreasonable sample count.
+  expect(getOutputInspectionTimes(120, 1000)).toHaveLength(9);
+  expect(getOutputInspectionTimes(120, 0)).toEqual([]);
+  expect(getOutputInspectionTimes(Number.NaN, 5)).toEqual([]);
+  expect(getOutputInspectionTimes(Number.POSITIVE_INFINITY, 5)).toEqual([]);
+});
+
+test("one-point inspection remains safe for the shortest accepted export", () => {
+  const times = getOutputInspectionTimes(0.1, 1);
+  expect(times).toHaveLength(1);
+  expect(Number.isFinite(times[0])).toBe(true);
+  expect(times[0]).toBeGreaterThanOrEqual(0);
+  expect(times[0]).toBeLessThan(0.1);
+});
