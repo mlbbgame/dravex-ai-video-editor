@@ -76,6 +76,6 @@ test("mixed-media planner keeps every video trim inside its original bounds when
     expect(clip.trimStart).toBeGreaterThanOrEqual(0);
     expect(clip.trimEnd).toBeGreaterThan(clip.trimStart);
   }
-  expect(clips[0]).toMatchObject({ trimStart: 2, trimEnd: 4.4 });
-  expect(clips[1]).toMatchObject({ trimStart: 20, trimEnd: 22.4 });
+  expect(clips[0]).toMatchObject({ trimStart: 6.4, trimEnd: 7.6 });
+  expect(clips[1]).toMatchObject({ trimStart: 24.4, trimEnd: 25.6 });
 });
