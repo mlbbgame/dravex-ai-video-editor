@@ -1066,7 +1066,8 @@ export default function App() {
       setStage("error");
       const failureMessage = caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.";
       recordDiagnostic("montage-failed", {
-        reasonCode: operationPhase === "render" ? "render-error" : operationPhase === "music-analysis" ? "music-analysis-error" : "analysis-error",
+        // Keep reasonCode within the diagnostic schema; phase carries the finer distinction.
+        reasonCode: operationPhase === "render" ? "render-error" : "analysis-unavailable",
         phase: operationPhase,
         errorMessage: failureMessage.slice(0, 240),
         mediaKind: isImageMode ? "images" : "video",
