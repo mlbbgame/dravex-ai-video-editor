@@ -64,11 +64,17 @@ const seekTo = async (video: HTMLVideoElement, time: number) => {
   });
 };
 
-export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[]): "ok" | "warning" {
-  return blackFrameTimes.length || frozenFramePairs.length ? "warning" : "ok";
+export function isRenderedDurationWithinTolerance(actualDuration: number, expectedDuration: number, toleranceSeconds = 0.75): boolean {
+  if (!Number.isFinite(actualDuration) || actualDuration <= 0 || !Number.isFinite(expectedDuration) || expectedDuration <= 0) return false;
+  const tolerance = Math.max(toleranceSeconds, expectedDuration * 0.05);
+  return Math.abs(actualDuration - expectedDuration) <= tolerance;
 }
 
-export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityReport> {
+export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false): "ok" | "warning" {
+  return blackFrameTimes.length || frozenFramePairs.length || durationMismatch ? "warning" : "ok";
+}
+
+export async function inspectRenderedVideo(blob: Blob, expectedDuration?: number): Promise<OutputQualityReport> {
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
   video.muted = true;
@@ -120,10 +126,13 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
       previousPixels = new Uint8ClampedArray(pixels);
     }
     const findings: string[] = [];
+    const durationMismatch = Number.isFinite(expectedDuration) && (expectedDuration as number) > 0
+      && !isRenderedDurationWithinTolerance(video.duration, expectedDuration as number);
+    if (durationMismatch) findings.push(`Длительность экспорта (${video.duration.toFixed(1)} с) заметно отличается от запрошенной (${(expectedDuration as number).toFixed(1)} с). Проверь конечный ролик перед сохранением.`);
     if (blackFrameTimes.length) findings.push("Обнаружены почти чёрные кадры около: " + blackFrameTimes.map((time) => time.toFixed(1) + " с").join(", ") + ". Проверь, не задуманы ли они как переход.");
     if (frozenFramePairs.length) findings.push("Некоторые контрольные точки почти не меняются (около " + frozenFramePairs.map((time) => time.toFixed(1) + " с").join(", ") + "). Это может быть статичный кадр или зависание — проверь воспроизведение.");
     if (!findings.length) findings.push("На контрольных точках явных чёрных кадров или почти одинаковых соседних кадров не обнаружено.");
-    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs) };
+    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs, durationMismatch) };
   } finally {
     video.removeAttribute("src");
     video.load();
