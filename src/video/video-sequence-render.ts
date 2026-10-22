@@ -576,6 +576,29 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
+/** Pick a repeatable but varied transition family for each cut. */
+export function getTransitionSequenceType(
+  style: SequenceRenderStyle,
+  transitionMode: "auto" | "cinematic" | "action",
+  cutIndex: number,
+): number {
+  if (!Number.isFinite(cutIndex) || cutIndex < 1) return 0;
+  const index = Math.floor(cutIndex - 1);
+  const actionTransitions = [0, 3, 4, 5, 7];
+  // Cinematic edits retain soft dissolves as their signature, with occasional
+  // restrained punch and directional reveals to avoid a repetitive two-cut loop.
+  const cinematicTransitions = [8, 0, 8, 1, 8, 2];
+  const calmTransitions = [8, 0, 1, 8, 2, 0];
+  const animeTransitions = [0, 3, 4, 7, 5];
+  const glitchTransitions = [0, 3, 5, 7, 4];
+  if (transitionMode === "cinematic") return cinematicTransitions[index % cinematicTransitions.length];
+  if (transitionMode === "action") return actionTransitions[index % actionTransitions.length];
+  if (style === "cinematic" || style === "story") return calmTransitions[index % calmTransitions.length];
+  if (style === "glitch") return glitchTransitions[index % glitchTransitions.length];
+  if (style === "anime") return animeTransitions[index % animeTransitions.length];
+  return actionTransitions[index % actionTransitions.length];
+}
+
 export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, sourceAudioMode = "auto", sourceAudioVolume = 0.8, targetDurationSeconds, onProgress, onStage, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
@@ -960,24 +983,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
-    const actionTransitions = [0, 3, 4, 5, 7];
-    // Auto mode follows the edit's visual language instead of cycling through every
-    // transition at random: calm edits stay clean, action edits use short impact reveals.
-    const calmTransitions = [8, 0, 8, 0];
-    const animeTransitions = [0, 3, 4, 7];
-    const glitchTransitions = [0, 3, 5, 7];
-    const transitionIndex = Math.max(0, cutIndex - 1);
-    const transitionType = transitionMode === "cinematic"
-      ? (cutIndex % 2 === 0 ? 8 : 0)
-      : transitionMode === "action"
-        ? actionTransitions[transitionIndex % actionTransitions.length]
-        : style === "cinematic" || style === "story"
-          ? calmTransitions[transitionIndex % calmTransitions.length]
-          : style === "glitch"
-            ? glitchTransitions[transitionIndex % glitchTransitions.length]
-            : style === "anime"
-              ? animeTransitions[transitionIndex % animeTransitions.length]
-              : actionTransitions[transitionIndex % actionTransitions.length];
+    const transitionType = getTransitionSequenceType(style, transitionMode, cutIndex);
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
     // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
