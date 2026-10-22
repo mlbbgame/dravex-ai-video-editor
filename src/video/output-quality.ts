@@ -134,7 +134,11 @@ export async function inspectRenderedVideo(
       }
       const averageLuma = totalLuma / Math.max(1, comparedPixels);
       if (averageLuma < 8 && veryDarkPixels / comparedPixels > 0.94) blackFrameTimes.push(time);
-      if (previousPixels) {
+      // Very short clips can legitimately decode adjacent inspection points to
+      // the same frame (especially on mobile). Only infer a freeze when samples
+      // are at least half a second apart; black-frame and metadata checks still
+      // run for every duration.
+      if (previousPixels && video.duration / sampleCount >= 0.5) {
         let difference = 0;
         for (let offset = 0; offset < pixels.length; offset += 4) {
           difference += (Math.abs(pixels[offset] - previousPixels[offset]) + Math.abs(pixels[offset + 1] - previousPixels[offset + 1]) + Math.abs(pixels[offset + 2] - previousPixels[offset + 2])) / 3;
