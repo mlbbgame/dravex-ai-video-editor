@@ -4,6 +4,7 @@ import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from 
 import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
 import type { SemanticProfile } from "./video/semantic-classifier";
 import { analyzeWithAIDirector, buildDirectorMontagePlan, getDirectorKnowledge, getDirectorShotLength } from "./video/ai-director";
+import { directorPlanToVideoSegments } from "./video/director-render-bridge";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type SourceAudioMode, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
@@ -987,7 +988,8 @@ export default function App() {
             candidateCount: directorResult.candidates.length,
             style: actualStyle,
           });
-          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
+          segments = directorPlanToVideoSegments(contractResult.plan, "source-video", videoFile!.name, videoUrl);
+          if (!segments.length) throw new Error("Validated AI Director plan produced no renderable clips.");
           setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
