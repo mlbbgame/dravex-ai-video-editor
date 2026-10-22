@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Film, Upload, WandSparkles, Download, Music2, CheckCircle2, LoaderCircle, RefreshCw, Play, Settings2, Sparkles, Clapperboard, Save, FolderOpen, ArrowUp, ArrowDown, Trash2, X, Search, Headphones, ArrowLeft } from "lucide-react";
 import { loadMusicTrack, musicCategories, musicPresets, type MusicPreset } from "./video/music-library";
-import { analyzeVideoForHighlights, getVideoDuration, type HighlightMoment, type HighlightProgress } from "./video/highlight-finder";
+import { analyzeVideoForHighlights, getVideoDuration, type HighlightProgress } from "./video/highlight-finder";
 import type { SemanticProfile } from "./video/semantic-classifier";
 import { analyzeWithAIDirector, buildDirectorMontagePlan, getDirectorKnowledge, getDirectorShotLength } from "./video/ai-director";
+import { directorPlanToVideoSegments } from "./video/director-render-bridge";
 import { prepareAudioContextForUserGesture, renderVideoSequence, type SequenceRenderStyle, type SourceAudioMode, type VideoSegment, type ImageSegment, type AudioSegment } from "./video/video-sequence-render";
 import { detectMusicBeats, snapCutBoundariesToBeats } from "./video/beat-sync";
 import { clearSessionProject, loadLocalProject, loadSessionProject, saveLocalProject, saveSessionProject } from "./video/project-storage";
 import { getMediaKind } from "./video/media-kind";
 import { assessMediaSelection } from "./video/media-intake";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
-import { selectDiverseHighlightMoments } from "./video/montage-selection";
 import { analyzePhotoSet } from "./video/photo-analysis";
 import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
@@ -112,35 +112,6 @@ function toLearningVariant(style: EditStyle): MontageVariantId {
   return "signature";
 }
 
-function makeSegments(candidates: HighlightMoment[], sourceDuration: number, targetDuration: number, style: Exclude<EditStyle, "auto">, file: File, url: string, profile: SemanticProfile = "unknown"): VideoSegment[] {
-  // Use the same explicit genre knowledge for actual trims, not just the UI label.
-  const shotLength = getDirectorShotLength(profile, style);
-  const usableDuration = Math.min(sourceDuration, targetDuration);
-  const count = Math.max(1, Math.ceil(usableDuration / shotLength));
-  const selected = selectDiverseHighlightMoments(candidates, count, sourceDuration, style, shotLength);
-
-  if (!selected.length) return [{ name: file.name, url, trimStart: 0, trimEnd: Math.min(usableDuration, sourceDuration) }];
-  const segments: VideoSegment[] = [];
-  let remaining = usableDuration;
-  for (const moment of selected) {
-    if (remaining <= 0.15) break;
-    const duration = Math.min(shotLength, remaining, sourceDuration);
-    const start = Math.max(0, Math.min(sourceDuration - duration, moment.time - duration / 2));
-    segments.push({ name: file.name, url, trimStart: start, trimEnd: start + duration });
-    remaining -= duration;
-  }
-  if (remaining > 0.15) {
-    const step = Math.max(shotLength, sourceDuration / Math.max(1, Math.ceil(sourceDuration / shotLength)));
-    for (let start = 0; remaining > 0.15; start += step) {
-      const duration = Math.min(shotLength, remaining, sourceDuration);
-      const safeStart = Math.max(0, Math.min(sourceDuration - duration, start % Math.max(0.1, sourceDuration - duration + 0.1)));
-      segments.push({ name: file.name, url, trimStart: safeStart, trimEnd: safeStart + duration });
-      remaining -= duration;
-      if (segments.length > 200) break;
-    }
-  }
-  return segments;
-}
 
 async function alignPreviewSegmentsToMusic(
   segments: Array<VideoSegment | ImageSegment>,
@@ -987,7 +958,8 @@ export default function App() {
             candidateCount: directorResult.candidates.length,
             style: actualStyle,
           });
-          segments = makeSegments(directorResult.candidates, analysis.duration, renderDuration, actualStyle, videoFile!, videoUrl, contentProfile);
+          segments = directorPlanToVideoSegments(contractResult.plan, "source-video", videoFile!.name, videoUrl);
+          if (!segments.length) throw new Error("Validated AI Director plan produced no renderable clips.");
           setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
