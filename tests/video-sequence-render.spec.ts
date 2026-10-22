@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -121,6 +121,17 @@ test("media metadata guards reject zero, negative, NaN, and infinite dimensions"
   expect(hasUsableImageDimensions(-1, 1080)).toBe(false);
   expect(hasUsableImageDimensions(Number.NaN, 1080)).toBe(false);
   expect(hasUsableImageDimensions(1920, Number.POSITIVE_INFINITY)).toBe(false);
+});
+
+test("render duration guard rejects zero, non-finite, and overflowed timelines", () => {
+  expect(isUsableRenderDuration(0.1)).toBe(true);
+  expect(isUsableRenderDuration(300)).toBe(true);
+  expect(isUsableRenderDuration(0)).toBe(false);
+  expect(isUsableRenderDuration(-1)).toBe(false);
+  expect(isUsableRenderDuration(Number.NaN)).toBe(false);
+  expect(isUsableRenderDuration(Number.POSITIVE_INFINITY)).toBe(false);
+  expect(isUsableRenderDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+  expect(isUsableRenderDuration(Number.MAX_VALUE + Number.MAX_VALUE)).toBe(false);
 });
 
 test("audio metadata guard rejects unusable durations but accepts finite positive durations", () => {
