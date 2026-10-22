@@ -50,5 +50,7 @@ test("empty export blobs fail immediately with an actionable error", () => {
   expect(() => assertNonEmptyRenderedBlob({ size: 0 })).toThrow(/пустой файл/i);
   expect(() => assertNonEmptyRenderedBlob({ size: -1 })).toThrow(/пустой файл/i);
   expect(() => assertNonEmptyRenderedBlob({ size: Number.NaN })).toThrow(/пустой файл/i);
+  expect(() => assertNonEmptyRenderedBlob({ size: Number.POSITIVE_INFINITY })).toThrow(/пустой файл/i);
+  expect(() => assertNonEmptyRenderedBlob({ size: Number.NEGATIVE_INFINITY })).toThrow(/пустой файл/i);
   expect(() => assertNonEmptyRenderedBlob({ size: 1 })).not.toThrow();
 });
