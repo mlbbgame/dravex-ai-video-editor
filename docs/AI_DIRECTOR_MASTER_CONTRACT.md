@@ -1,0 +1,3 @@
+# DRAVEX AI Director Master Contract
+
+The master metaprompt is a specification, not a runtime capability by itself. The implementation must validate source references, clip bounds, output settings, and all six quality dimensions before accepting a montage plan. Local-first processing, explicit consent for external processing, free-only tools, benchmark comparison on identical clips, and rollback are required.
