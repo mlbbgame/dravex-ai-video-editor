@@ -76,3 +76,22 @@ test("rejects invalid planned transition durations", () => {
   };
   expect(directorPlanToVideoSegments(invalid, "source-video", "source.mp4", "blob:video")).toEqual([]);
 });
+
+test("preserves an explicit zero transition instead of treating it as unspecified", () => {
+  const noTransition = {
+    ...plan,
+    clips: [{ ...plan.clips[0], transitionOutSeconds: 0 }],
+  };
+  expect(directorPlanToVideoSegments(noTransition, "source-video", "source.mp4", "blob:video")).toEqual([
+    {
+      name: "source.mp4",
+      url: "blob:video",
+      trimStart: 1.25,
+      trimEnd: 2.75,
+      speedFactor: 1.5,
+      transitionOutSeconds: 0,
+      effects: ["flash"],
+    },
+  ]);
+});
+
