@@ -1096,7 +1096,7 @@ export default function App() {
       setStage("done");
       // Inspection is advisory; ignore stale results if a newer montage has started.
       const inspectionGeneration = qualityCheckGeneration.current;
-      void inspectRenderedVideo(blob).then((report) => {
+      void inspectRenderedVideo(blob, renderDuration).then((report) => {
         if (inspectionGeneration !== qualityCheckGeneration.current) return;
         setQualityReport(report);
         recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
