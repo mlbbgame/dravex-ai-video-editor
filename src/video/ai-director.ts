@@ -787,7 +787,7 @@ export async function analyzeWithAIDirector(
       ? detectionsByCandidate.get(index) ?? []
       : findNearestDetectedObjects(candidate.time, sampleTimes, sampledDetections, nearbyDetectionRadius);
     const position = sampledPosition.get(index) ?? -1;
-    const previousIndex = isModelSample && position > 0 ? selectedIndices[position - 1] : -1;
+    const previousIndex = isModelSample && position > 0 ? analyzedIndices[position - 1] : -1;
     const previousObjects = previousIndex >= 0 ? detectionsByCandidate.get(previousIndex) ?? [] : [];
     const previousLabels = previousObjects.map((item) => item.label);
     const labels = [...new Set(objects.map((item) => item.label))];
