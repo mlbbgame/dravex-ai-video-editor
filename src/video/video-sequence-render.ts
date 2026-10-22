@@ -681,6 +681,29 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw error;
   }
 
+  // Release decoded media on every pre-recorder validation failure. On mobile,
+  // detached media elements can retain decoder and memory resources until unload.
+  const releaseLoadedMedia = (contextToClose?: AudioContext | null) => {
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    for (const video of uniqueVideos) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      item.image.onload = null;
+      item.image.onerror = null;
+      item.image.src = "";
+    }
+    for (const { audio } of loadedAudio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    if (contextToClose && contextToClose !== preparedAudioContext) void contextToClose.close().catch(() => {});
+  };
+
   // Validate the actual, metadata-resolved render sequence before allocating the
   // canvas/recorder. This checks the plan the browser will really render, not
   // only the earlier user/model request.
@@ -751,6 +774,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   };
   const timelineValidation = validateEditTimeline(timeline, timelineSources);
   if (!timelineValidation.valid) {
+    releaseLoadedMedia();
     throw new Error(`Некорректный монтажный план: ${timelineValidation.errors.join(" ")}`);
   }
 
@@ -759,7 +783,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not initialize the video renderer.");
+  if (!context) {
+    releaseLoadedMedia();
+    throw new Error("Could not initialize the video renderer.");
+  }
 
   const videoStream = canvas.captureStream(frameRate);
   // Do not create an AudioContext for a no-music export. On some Android
@@ -769,6 +796,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const hasSourceVideo = !suppressAudio && sourceAudioMode !== "mute" && loaded.some((item) => item.kind === "video");
   const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
   if (hasSourceVideo && !audioContext) {
+    releaseLoadedMedia();
     throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
   }
   const audioDestination = audioContext?.createMediaStreamDestination();
@@ -799,6 +827,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   }
   if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
+    releaseLoadedMedia(audioContext);
     throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
   }
   const stream = new MediaStream([
@@ -806,9 +835,15 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     ...(audioDestination?.stream.getAudioTracks() ?? [])
   ]);
   if (!stream.getVideoTracks().some((track) => track.readyState === "live")) {
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    releaseLoadedMedia(audioContext);
     throw new Error("Не удалось запустить видеопоток с холста. Перезагрузи страницу и попробуй ещё раз.");
   }
   if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    releaseLoadedMedia(audioContext);
     throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
