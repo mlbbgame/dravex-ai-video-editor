@@ -1194,10 +1194,15 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   };
 
-  if (audioContext?.state === "suspended") await audioContext.resume();
-  recorder.start(1000);
+  let recordingStarted = false;
   let completed = 0;
   try {
+    // Resume/start can throw on mobile even when MediaRecorder construction worked.
+    // Keep both operations inside the guarded lifecycle so startup failures release
+    // canvas tracks, decoded media, and any AudioContext owned by this render.
+    if (audioContext?.state === "suspended") await audioContext.resume();
+    recorder.start(1000);
+    recordingStarted = true;
     if (audioContext && loadedAudio.length) {
       const audioStart = audioContext.currentTime;
       await Promise.all(loadedAudio.map(async ({ audio, segment }) => {
@@ -1311,7 +1316,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     recorder.stop();
   } catch (error) {
-    if (recorder.state !== "inactive") recorder.stop();
+    if (recorder.state !== "inactive") {
+      try { recorder.stop(); } catch { /* cleanup below is still required */ }
+    }
+    cleanupRecorderResources();
+    if (!recordingStarted) {
+      const detail = error instanceof Error ? error.message : "неизвестная ошибка запуска";
+      throw new Error(`Не удалось начать запись экспорта (${detail}). Освободи память телефона, обнови страницу и повтори попытку.`);
+    }
     throw error;
   }
 
