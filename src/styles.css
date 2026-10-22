@@ -92,6 +92,9 @@ button:disabled { cursor: wait; opacity: .58; }
 .dravex-progress-top span { color: var(--accent); font-variant-numeric: tabular-nums; }
 .dravex-progress-track { overflow: hidden; height: 6px; margin-top: 10px; border-radius: 20px; background: #2b2e32; }
 .dravex-progress-track span { display: block; height: 100%; border-radius: 20px; background: var(--accent); transition: width .2s ease; }
+.dravex-progress-track span.is-indeterminate { animation: dravex-progress-indeterminate 1.35s ease-in-out infinite alternate; }
+@keyframes dravex-progress-indeterminate { from { transform: translateX(-28%); opacity: .62; } to { transform: translateX(165%); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dravex-progress-track span.is-indeterminate { animation: none; } }
 .dravex-progress p { margin: 10px 0 4px; color: #c4c8ce; font-size: 11px; line-height: 1.5; }
 .dravex-progress small { color: #888e96; font-size: 10px; }
 .dravex-error { margin-top: 15px; padding: 12px; border: 1px solid #ff777750; border-radius: 10px; color: #ffc6c6; background: #ff55550d; font-size: 11px; line-height: 1.6; }
