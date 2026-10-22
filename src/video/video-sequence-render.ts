@@ -377,6 +377,11 @@ export function hasUsableAudioDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
 }
 
+/** Reject zero, non-finite, or overflowed summed durations before allocating the renderer. */
+export function isUsableRenderDuration(duration: number): boolean {
+  return Number.isFinite(duration) && duration > 0;
+}
+
 export type VideoTrimRange = { start: number; end: number; duration: number };
 
 /** Hold the last in-range frame when a speed ramp reaches a clip's trim end early. */
@@ -674,7 +679,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     throw error;
   }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+  if (!isUsableRenderDuration(sourceDuration)) {
     // Corrupt/extreme media metadata can overflow the summed timeline. Release
     // every decoded source before rejecting so mobile decoders/bitmaps are not
     // retained after an invalid-duration export attempt.
