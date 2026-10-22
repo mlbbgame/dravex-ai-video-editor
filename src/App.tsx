@@ -765,6 +765,16 @@ export default function App() {
             if (generation === previewGeneration.current) {
               setPreviewProgress(Math.round(((index + progress / 100) / pendingVariants.length) * 100));
             }
+          },
+          onStage: (stage) => {
+            if (generation !== previewGeneration.current) return;
+            const stageLabels = {
+              "preparing-media": "Подготавливаем исходные кадры",
+              "preparing-audio": "Подготавливаем звук",
+              rendering: "Рендерим кадры",
+              finalizing: "Сохраняем вариант",
+            };
+            setPreviewStatus(`Вариант ${index + 1} из ${pendingVariants.length} · ${stageLabels[stage]}: ${variant.title}…`);
           }
         });
         if (generation !== previewGeneration.current) return;
