@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getOutputQualitySeverity, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getOutputInspectionTimes, getOutputQualitySeverity, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -87,3 +87,5 @@ test("media readiness checks handle metadata and decoded-frame states without mi
   expect(hasReachedMediaReadyState("loadeddata", Number.NaN)).toBe(false);
   expect(hasReachedMediaReadyState("loadeddata", Number.POSITIVE_INFINITY)).toBe(false);
 });
+
+test("inspection samples include clip boundaries", () => { const times = getOutputInspectionTimes(30, 5); expect(times[0]).toBeCloseTo(0.04); expect(times[times.length - 1]).toBeCloseTo(29.92); });
