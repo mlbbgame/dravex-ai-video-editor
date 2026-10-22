@@ -163,6 +163,8 @@ export default function App() {
   const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
   const [qualityReport, setQualityReport] = useState<OutputQualityReport | null>(null);
   const [qualityCheckBusy, setQualityCheckBusy] = useState(false);
+  // Ignore stale asynchronous quality reports when a newer montage has started.
+  const qualityCheckGeneration = useRef(0);
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
@@ -798,6 +800,7 @@ export default function App() {
 
   const createMontage = async () => {
     if (!mediaFiles.length || busy) return;
+    qualityCheckGeneration.current += 1;
     // Unlock Web Audio immediately during the tap, before long source-video analysis
     // can outlive the browser's transient user activation.
     let preparedAudioContext: AudioContext | undefined;
@@ -1090,15 +1093,20 @@ export default function App() {
       setQualityReport(null);
       setQualityCheckBusy(true);
       setStage("done");
-      // Inspect the encoded WebM without blocking playback or download. The check is advisory.
+      // Inspection is advisory; ignore stale results if a newer montage has started.
+      const inspectionGeneration = qualityCheckGeneration.current;
       void inspectRenderedVideo(blob).then((report) => {
+        if (inspectionGeneration !== qualityCheckGeneration.current) return;
         setQualityReport(report);
         recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
       }).catch((qualityError) => {
+        if (inspectionGeneration !== qualityCheckGeneration.current) return;
         recordDiagnostic("quality-check-completed", { severity: "warning", reasonCode: "quality-check-unavailable", quality });
         console.warn("DRAVEX output quality check failed:", qualityError);
         setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь воспроизведение вручную."], severity: "warning" });
-      }).finally(() => setQualityCheckBusy(false));
+      }).finally(() => {
+        if (inspectionGeneration === qualityCheckGeneration.current) setQualityCheckBusy(false);
+      });
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
