@@ -208,6 +208,15 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
 
 /** Read duration without sampling frames, used as a safe fallback for auto-montage. */
 export async function getVideoDuration(url: string): Promise<number> {
+  // Reuse metadata already decoded by the visible preview when possible. On
+  // memory-constrained mobile browsers, opening a second decoder for the same
+  // local Blob URL can fail even though the preview is already playable.
+  const loadedPreview = Array.from(document.querySelectorAll("video")).find((candidate) => {
+    if (candidate.readyState < 1 || !Number.isFinite(candidate.duration) || candidate.duration <= 0) return false;
+    return candidate.currentSrc === url || candidate.src === url;
+  });
+  if (loadedPreview) return loadedPreview.duration;
+
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
