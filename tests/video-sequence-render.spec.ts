@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, getRenderFrameInterval, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -197,4 +197,12 @@ test("music volume is clamped and invalid values fall back safely", () => {
   expect(getSafeAudioTrackVolume(0)).toBe(0);
   expect(getSafeAudioTrackVolume(0.4)).toBe(0.4);
   expect(getSafeAudioTrackVolume(2)).toBe(1);
+});
+
+
+test("mobile media decoding has a conservative concurrency cap", () => {
+  expect(MAX_CONCURRENT_MEDIA_LOADS).toBe(3);
+  expect(Number.isInteger(MAX_CONCURRENT_MEDIA_LOADS)).toBe(true);
+  expect(MAX_CONCURRENT_MEDIA_LOADS).toBeGreaterThan(0);
+  expect(MAX_CONCURRENT_MEDIA_LOADS).toBeLessThanOrEqual(4);
 });
