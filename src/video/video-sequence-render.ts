@@ -497,7 +497,10 @@ function releaseAudioElement(audio: HTMLAudioElement): void {
 function releaseImageElement(image: HTMLImageElement): void {
   image.onload = null;
   image.onerror = null;
-  try { image.src = ""; } catch { /* Ignore cleanup failures while unwinding a failed export. */ }
+  // Assigning an empty src can trigger a navigation/document request in some
+  // browsers. Removing the attribute releases the decoded bitmap without
+  // accidentally starting another fetch while Android is already memory-bound.
+  try { image.removeAttribute("src"); } catch { /* Ignore cleanup failures while unwinding a failed export. */ }
 }
 
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
