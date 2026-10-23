@@ -359,6 +359,9 @@ export async function finalizeWebmDuration(blob: Blob, durationSeconds: number):
   }
 
   const durationValue = durationSeconds * 1_000_000_000 / timecodeScale;
+  // A finite input duration can still overflow during nanosecond conversion. Never
+  // write Infinity/NaN into WebM metadata: preserve the recorder's original blob.
+  if (!Number.isFinite(durationValue) || durationValue <= 0) return blob;
   if (durationElement) {
     // `bytes` is already an isolated ArrayBuffer copy from blob.arrayBuffer().
     // Mutate it directly instead of cloning the entire encoded video again: on
