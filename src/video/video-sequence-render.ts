@@ -538,8 +538,16 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     video.addEventListener("loadedmetadata", loaded);
     video.addEventListener("durationchange", loaded);
     video.addEventListener("error", failed, { once: true });
-    video.src = segment.url;
-    video.load();
+    try {
+      video.src = segment.url;
+      video.load();
+    } catch {
+      cleanup();
+      video.pause();
+      video.removeAttribute("src");
+      try { video.load(); } catch { /* The source is already detached; preserve the actionable error. */ }
+      reject(new Error(`Не удалось открыть видео «${segment.name}». Попробуй MP4 (H.264) или другой файл.`));
+    }
   });
 }
 
@@ -580,7 +588,15 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
       image.src = "";
       reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
     };
-    image.src = segment.url;
+    try {
+      image.src = segment.url;
+    } catch {
+      if (!finish()) return;
+      image.onload = null;
+      image.onerror = null;
+      try { image.src = ""; } catch { /* Ignore cleanup errors and report the source failure. */ }
+      reject(new Error(`Не удалось открыть фото «${segment.name}».`));
+    }
   });
 }
 
@@ -635,8 +651,17 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
     audio.addEventListener("loadedmetadata", loaded);
     audio.addEventListener("durationchange", loaded);
     audio.addEventListener("error", failed, { once: true });
-    audio.src = segment.url;
-    audio.load();
+    try {
+      audio.src = segment.url;
+      audio.load();
+    } catch {
+      if (finish()) {
+        audio.pause();
+        audio.removeAttribute("src");
+        try { audio.load(); } catch { /* Ignore cleanup errors and report the source failure. */ }
+        reject(new Error(`Не удалось открыть аудио «${segment.name}».`));
+      }
+    }
   });
 }
 
