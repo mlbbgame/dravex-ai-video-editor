@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource , getCameraMotionProfile } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -295,4 +295,31 @@ test("media load limiter keeps handing off queued decodes after repeated failure
   await expect(second).rejects.toThrow("second decode failed");
   await expect(third).resolves.toBe("recovered");
   expect(started).toEqual(["first", "second", "third"]);
+});
+
+
+test("camera motion profiles stay style-specific and scale predictably with effect strength", () => {
+  const cinematicSoft = getCameraMotionProfile("cinematic", "soft");
+  const cinematicBalanced = getCameraMotionProfile("cinematic", "balanced");
+  const cinematicStrong = getCameraMotionProfile("cinematic", "strong");
+  const action = getCameraMotionProfile("velocity", "balanced");
+  const story = getCameraMotionProfile("story", "balanced");
+
+  expect(cinematicSoft.zoom).toBeCloseTo(cinematicBalanced.zoom * 0.72, 8);
+  expect(cinematicSoft.pan).toBeCloseTo(cinematicBalanced.pan * 0.72, 8);
+  expect(cinematicStrong.zoom).toBeCloseTo(cinematicBalanced.zoom * 1.28, 8);
+  expect(cinematicStrong.pan).toBeCloseTo(cinematicBalanced.pan * 1.28, 8);
+  expect(action.zoom).toBeGreaterThan(cinematicBalanced.zoom);
+  expect(action.pan).toBeGreaterThan(cinematicBalanced.pan);
+  expect(story.zoom).toBeLessThan(cinematicBalanced.zoom);
+  expect(story.pan).toBeLessThan(cinematicBalanced.pan);
+
+  for (const profile of [cinematicSoft, cinematicBalanced, cinematicStrong, action, story]) {
+    expect(Number.isFinite(profile.zoom)).toBe(true);
+    expect(Number.isFinite(profile.pan)).toBe(true);
+    expect(profile.zoom).toBeGreaterThan(0);
+    expect(profile.pan).toBeGreaterThan(0);
+    expect(profile.zoom).toBeLessThan(0.25);
+    expect(profile.pan).toBeLessThan(0.15);
+  }
 });
