@@ -316,7 +316,7 @@ function findEbmlElement(
  * report video.duration === Infinity and prevents reliable seeking. Add or update
  * the Matroska Duration value without re-encoding the recorded frames.
  */
-async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
+export async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
   if (!blob.type.includes("webm") || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return blob;
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const segmentStart = (() => {
