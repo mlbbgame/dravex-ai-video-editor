@@ -69,9 +69,11 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
     });
     return { width: video.videoWidth, height: video.videoHeight };
   } finally {
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
+    // Cleanup is best-effort: some mobile decoders throw while resetting a failed
+    // media element. Never let cleanup replace the original metadata/decoder error.
+    try { video.pause(); } catch { /* Continue releasing the remaining resources. */ }
+    try { video.removeAttribute("src"); } catch { /* Preserve the primary inspection result. */ }
+    try { video.load(); } catch { /* A partially initialized decoder may reject reset. */ }
   }
 }
 
