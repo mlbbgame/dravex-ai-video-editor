@@ -1005,7 +1005,8 @@ export default function App() {
             style === "auto" && !learnedStylePreferenceApplied
           );
           actualStyle = directorResult.selectedStyle;
-          recordDiagnostic("analysis-completed", { mediaKind: isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
+          // Emit analysis-completed only after the montage plan has passed contract validation below.
+          // This keeps diagnostics to one truthful completion event per successful analysis.
           const smartEyeSummary = directorResult.smartEye
             ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
             : "";
