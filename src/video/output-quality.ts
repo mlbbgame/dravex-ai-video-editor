@@ -123,8 +123,10 @@ export function shouldCompareFrameSamples(sampleIntervalSeconds: number): boolea
 
 /** Return the actual spacing between evenly distributed inspection samples. */
 export function getInspectionSampleInterval(duration: number, sampleCount: number): number {
-  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount) || sampleCount <= 1) return 0;
-  return duration / (Math.floor(sampleCount) - 1);
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount)) return 0;
+  const count = Math.floor(sampleCount);
+  if (count <= 1) return 0;
+  return duration / (count - 1);
 }
 
 /** Sample near both ends as well as across the middle so brief black lead-in/out frames are less likely to be missed. */
