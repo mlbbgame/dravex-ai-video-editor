@@ -139,6 +139,20 @@ export function getOutputInspectionTimes(duration: number, sampleCount: number):
   return Array.from({ length: count }, (_, index) => start + (end - start) * index / (count - 1));
 }
 
+/** Compare decoded dimensions only when the requested export dimensions are valid. */
+export function hasExpectedOutputDimensions(
+  actualWidth: number,
+  actualHeight: number,
+  expectedDimensions?: { width: number; height: number },
+): boolean {
+  if (!expectedDimensions
+    || !Number.isFinite(expectedDimensions.width) || expectedDimensions.width <= 0
+    || !Number.isFinite(expectedDimensions.height) || expectedDimensions.height <= 0
+    || !Number.isFinite(actualWidth) || actualWidth <= 0
+    || !Number.isFinite(actualHeight) || actualHeight <= 0) return true;
+  return actualWidth === expectedDimensions.width && actualHeight === expectedDimensions.height;
+}
+
 export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false, dimensionMismatch = false): "ok" | "warning" {
   return blackFrameTimes.length || frozenFramePairs.length || durationMismatch || dimensionMismatch ? "warning" : "ok";
 }
@@ -219,11 +233,7 @@ export async function inspectRenderedVideo(
     const findings: string[] = [];
     const durationMismatch = Number.isFinite(expectedDuration) && (expectedDuration as number) > 0
       && !isRenderedDurationWithinTolerance(video.duration, expectedDuration as number);
-    const hasExpectedDimensions = expectedDimensions
-      && Number.isFinite(expectedDimensions.width) && expectedDimensions.width > 0
-      && Number.isFinite(expectedDimensions.height) && expectedDimensions.height > 0;
-    const dimensionMismatch = Boolean(hasExpectedDimensions
-      && (video.videoWidth !== expectedDimensions?.width || video.videoHeight !== expectedDimensions?.height));
+    const dimensionMismatch = !hasExpectedOutputDimensions(video.videoWidth, video.videoHeight, expectedDimensions);
     if (durationMismatch) findings.push(`Длительность экспорта (${video.duration.toFixed(1)} с) заметно отличается от запрошенной (${(expectedDuration as number).toFixed(1)} с). Проверь конечный ролик перед сохранением.`);
     if (dimensionMismatch && expectedDimensions) findings.push(`Размер экспорта (${video.videoWidth}×${video.videoHeight}) не совпадает с выбранным (${expectedDimensions.width}×${expectedDimensions.height}). Проверь профиль качества и конечный ролик.`);
     if (blackFrameTimes.length) findings.push("Обнаружены почти чёрные кадры около: " + blackFrameTimes.map((time) => time.toFixed(1) + " с").join(", ") + ". Проверь, не задуманы ли они как переход.");
