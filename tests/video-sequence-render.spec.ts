@@ -239,11 +239,9 @@ test("media load limiter hands off slots without exceeding the concurrency cap",
 
   // Release work in pairs to exercise the queued-slot handoff under contention.
   for (let offset = 0; offset < 12; offset += 2) {
-    releases[offset]?.();
-    releases[offset + 1]?.();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await expect.poll(() => releases.length).toBeGreaterThanOrEqual(offset + 2);
+    releases[offset]();
+    releases[offset + 1]();
   }
 
   await expect(Promise.all(tasks)).resolves.toEqual(Array.from({ length: 12 }, (_, index) => index));
