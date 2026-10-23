@@ -545,3 +545,28 @@ test("render progress remains monotonic across preparation and frame rendering",
   expect(getRenderProgressPercent(Number.NaN, 20)).toBe(10);
   expect(getRenderProgressPercent(20, 0)).toBe(10);
 });
+
+test("WebM duration finalization expands the Segment size field when inserted metadata crosses the one-byte limit", async () => {
+  // The original Segment payload is 123 bytes, which fits in a one-byte EBML
+  // size field. Inserting the 11-byte Duration element pushes it past 126 and
+  // requires a two-byte size field; media bytes after Info must remain intact.
+  const clusterPayload = new Uint8Array(112).fill(0x5a);
+  const fixture = new Uint8Array(4 + 1 + 9 + 5 + clusterPayload.length);
+  let cursor = 0;
+  fixture.set([0x18, 0x53, 0x80, 0x67, 0xfb], cursor); cursor += 5; // Segment size 123
+  fixture.set([0x15, 0x49, 0xa9, 0x66, 0x87], cursor); cursor += 5; // Info size 7
+  fixture.set([0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40], cursor); cursor += 7; // TimecodeScale
+  fixture.set([0x1f, 0x43, 0xb6, 0x75, 0x70], cursor); cursor += 5; // Cluster size 112
+  fixture.set(clusterPayload, cursor);
+
+  const source = new Blob([fixture], { type: "video/webm" });
+  const finalized = await finalizeWebmDuration(source, 8);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+
+  expect(result[4] & 0x40).toBe(0x40); // Segment size now uses a two-byte VINT.
+  expect(result[5]).toBe(0x86); // 134-byte Segment payload.
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+  expect(hex).toContain("448988");
+  expect(Array.from(result.slice(-clusterPayload.length))).toEqual(Array.from(clusterPayload));
+});
+
