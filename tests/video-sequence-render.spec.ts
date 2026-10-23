@@ -479,3 +479,42 @@ test("WebM duration finalization preserves 32-bit Duration metadata when a finit
   const source = new Blob([fixture], { type: "video/webm" });
   await expect(finalizeWebmDuration(source, 1e36)).resolves.toBe(source);
 });
+
+
+test("media load limiter releases its slot after a rejected decode and continues queued work", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  const order: string[] = [];
+  const failing = limitMediaLoad(async () => {
+    order.push("failed-start");
+    throw new Error("synthetic decode failure");
+  });
+  const queued = limitMediaLoad(async () => {
+    order.push("queued-start");
+    return "loaded";
+  });
+
+  await expect(failing).rejects.toThrow("synthetic decode failure");
+  await expect(queued).resolves.toBe("loaded");
+  expect(order).toEqual(["failed-start", "queued-start"]);
+});
+
+test("media load limiter preserves the concurrency cap when queued tasks reject", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(2);
+  let active = 0;
+  let maximumActive = 0;
+  const tasks = Array.from({ length: 8 }, (_, index) => limitMediaLoad(async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    try {
+      if (index % 3 === 0) throw new Error(`synthetic failure ${index}`);
+      return index;
+    } finally {
+      active -= 1;
+    }
+  }));
+
+  const results = await Promise.allSettled(tasks);
+  expect(maximumActive).toBeLessThanOrEqual(2);
+  expect(results.filter((result) => result.status === "rejected")).toHaveLength(3);
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
+});
