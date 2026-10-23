@@ -38,11 +38,12 @@ test("duration tolerance uses the greater of the explicit tolerance and five per
   expect(isRenderedDurationWithinTolerance(106, 100)).toBe(false);
 });
 
-test("duration tolerance is inclusive at its exact boundary", () => {
-  expect(isRenderedDurationWithinTolerance(30.75, 30, 0.75)).toBe(true);
-  expect(isRenderedDurationWithinTolerance(29.25, 30, 0.75)).toBe(true);
-  expect(isRenderedDurationWithinTolerance(30.751, 30, 0.75)).toBe(false);
-  expect(isRenderedDurationWithinTolerance(29.249, 30, 0.75)).toBe(false);
+test("duration tolerance is inclusive at its exact proportional boundary", () => {
+  // For a 30-second clip, the 5% floor (1.5s) is larger than the explicit 0.75s tolerance.
+  expect(isRenderedDurationWithinTolerance(31.5, 30, 0.75)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(28.5, 30, 0.75)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(31.501, 30, 0.75)).toBe(false);
+  expect(isRenderedDurationWithinTolerance(28.499, 30, 0.75)).toBe(false);
 });
 
 
