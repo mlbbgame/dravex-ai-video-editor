@@ -1035,13 +1035,6 @@ export default function App() {
           if (!contractResult.plan) {
             throw new Error(`AI Director montage plan rejected: ${contractResult.validation.issues.join("; ")}`);
           }
-          recordDiagnostic("analysis-completed", {
-            mediaKind: "video",
-            mediaCount: 1,
-            durationSeconds: analysis.duration,
-            candidateCount: directorResult.candidates.length,
-            style: actualStyle,
-          });
           segments = directorPlanToVideoSegments(contractResult.plan, "source-video", videoFile!.name, videoUrl);
           if (!segments.length) throw new Error("Validated AI Director plan produced no renderable clips.");
           setMessage(directorNote);
