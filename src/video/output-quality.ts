@@ -121,6 +121,12 @@ export function shouldCompareFrameSamples(sampleIntervalSeconds: number): boolea
   return Number.isFinite(sampleIntervalSeconds) && sampleIntervalSeconds >= 0.5;
 }
 
+/** Return the actual spacing between evenly distributed inspection samples. */
+export function getInspectionSampleInterval(duration: number, sampleCount: number): number {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount) || sampleCount <= 1) return 0;
+  return duration / (Math.floor(sampleCount) - 1);
+}
+
 /** Sample near both ends as well as across the middle so brief black lead-in/out frames are less likely to be missed. */
 export function getOutputInspectionTimes(duration: number, sampleCount: number): number[] {
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount) || sampleCount < 1) return [];
@@ -199,7 +205,7 @@ export async function inspectRenderedVideo(
       // the same frame (especially on mobile). Only infer a freeze when samples
       // are at least half a second apart; black-frame and metadata checks still
       // run for every duration.
-      if (previousPixels && shouldCompareFrameSamples(sampleCount > 1 ? video.duration / (sampleCount - 1) : 0)) {
+      if (previousPixels && shouldCompareFrameSamples(getInspectionSampleInterval(video.duration, sampleCount))) {
         let difference = 0;
         for (let offset = 0; offset < pixels.length; offset += 4) {
           difference += (Math.abs(pixels[offset] - previousPixels[offset]) + Math.abs(pixels[offset + 1] - previousPixels[offset + 1]) + Math.abs(pixels[offset + 2] - previousPixels[offset + 2])) / 3;
