@@ -1523,6 +1523,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       result,
       new Promise<Blob>((_, reject) => {
         finalizationTimeoutId = window.setTimeout(() => {
+          // Stop a recorder that ignored its normal finalization path before
+          // releasing the stream. Ending the tracks alone is not enough on every
+          // Android Chrome build; an active encoder can otherwise retain memory.
+          if (recorder.state !== "inactive") {
+            try { recorder.stop(); } catch { /* The stream cleanup below is still required. */ }
+          }
           // Share the idempotent cleanup with recorder error/stop handlers.
           // A late "stop" event after the watchdog must not clean resources twice.
           cleanupRecorderResources();
