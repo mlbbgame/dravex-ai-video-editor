@@ -112,3 +112,30 @@ test("one-point inspection remains safe for the shortest accepted export", () =>
   expect(times[0]).toBeGreaterThanOrEqual(0);
   expect(times[0]).toBeLessThan(0.1);
 });
+
+test("export quality reports dimension mismatches without blocking otherwise valid clips", () => {
+  expect(getOutputQualitySeverity([], [], false, true)).toBe("warning");
+  expect(getOutputQualitySeverity([], [], false, false)).toBe("ok");
+});
+
+test("inspection sample count remains bounded and increases with long exports", () => {
+  const short = getOutputInspectionTimes(2, 3);
+  const medium = getOutputInspectionTimes(30, 9);
+  const long = getOutputInspectionTimes(300, 9);
+  expect(short).toHaveLength(3);
+  expect(medium).toHaveLength(9);
+  expect(long).toHaveLength(9);
+  expect(short[0]).toBeGreaterThanOrEqual(0);
+  expect(short[short.length - 1]).toBeLessThan(2);
+  expect(medium[medium.length - 1]).toBeLessThan(30);
+  expect(long[long.length - 1]).toBeLessThan(300);
+});
+
+test("duration checks reject invalid expected and actual values instead of silently passing", () => {
+  for (const actual of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    expect(isRenderedDurationWithinTolerance(actual, 10)).toBe(false);
+  }
+  for (const expected of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    expect(isRenderedDurationWithinTolerance(10, expected)).toBe(false);
+  }
+});
