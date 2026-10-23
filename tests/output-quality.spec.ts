@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getInspectionSampleInterval, getOutputInspectionTimes, getOutputQualitySeverity, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getInspectionSampleInterval, getOutputInspectionTimes, getOutputQualitySeverity, hasExpectedOutputDimensions, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -148,4 +148,14 @@ test("duration checks reject invalid expected and actual values instead of silen
   for (const expected of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     expect(isRenderedDurationWithinTolerance(10, expected)).toBe(false);
   }
+});
+
+test("output dimension validation ignores invalid expectations but detects real profile mismatches", () => {
+  expect(hasExpectedOutputDimensions(1080, 1920, { width: 1080, height: 1920 })).toBe(true);
+  expect(hasExpectedOutputDimensions(720, 1280, { width: 1080, height: 1920 })).toBe(false);
+  expect(hasExpectedOutputDimensions(0, 1280, { width: 1080, height: 1920 })).toBe(true);
+  expect(hasExpectedOutputDimensions(1080, Number.POSITIVE_INFINITY, { width: 1080, height: 1920 })).toBe(true);
+  expect(hasExpectedOutputDimensions(1080, 1920, { width: Number.NaN, height: 1920 })).toBe(true);
+  expect(hasExpectedOutputDimensions(1080, 1920, { width: 1080, height: 0 })).toBe(true);
+  expect(hasExpectedOutputDimensions(1080, 1920)).toBe(true);
 });
