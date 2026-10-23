@@ -420,3 +420,27 @@ test("media load limiter releases its slot after a rejected decode and continues
   expect(started).toEqual(["failed-decode", "recovery-decode"]);
 });
 
+test("media load limiter normalizes invalid and fractional concurrency limits safely", async () => {
+  for (const invalidLimit of [0, -3, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const runLimited = createMediaLoadLimiter(invalidLimit);
+    await expect(runLimited(async () => "completed")).resolves.toBe("completed");
+  }
+
+  const runFractionalLimit = createMediaLoadLimiter(2.9);
+  let active = 0;
+  let peakActive = 0;
+  const results = await Promise.all(Array.from({ length: 15 }, (_, index) =>
+    runFractionalLimit(async () => {
+      active += 1;
+      peakActive = Math.max(peakActive, active);
+      await Promise.resolve();
+      await Promise.resolve();
+      active -= 1;
+      return index;
+    })
+  ));
+
+  expect(peakActive).toBeLessThanOrEqual(2);
+  expect(results).toEqual(Array.from({ length: 15 }, (_, index) => index));
+});
+
