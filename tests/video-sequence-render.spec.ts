@@ -352,21 +352,11 @@ test("media load limiter never exceeds its concurrency cap when many decodes que
 
 test("WebM duration finalization inserts duration metadata without changing encoded media payload", async () => {
   // Minimal Segment > Info > TimecodeScale WebM structure, with no Duration element.
-  const bytes = new Uint8Array([
-    0x18, 0x53, 0x80, 0x67, // Segment ID
-    0x88, // Segment size: 8 bytes follow
-    0x15, 0x49, 0xa9, 0x66, // Info ID
-    0x83, // Info size: 3 bytes follow
-    0x2a, 0xd7, 0xb1, // TimecodeScale ID
-    0x80, // size 0 (invalid for scale; finalizer should use default)
-  ]);
-  // Replace the malformed zero-sized scale with a valid 3-byte 1,000,000ns scale
-  // and update Info/Segment sizes to keep the fixture structurally valid.
   const fixture = new Uint8Array([
-    0x18, 0x53, 0x80, 0x67, 0x8a,
-    0x15, 0x49, 0xa9, 0x66, 0x85,
-    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40,
-    0x1f, 0x43, 0xb6, 0x75, 0x80,
+    0x18, 0x53, 0x80, 0x67, 0x91, // Segment: 17 bytes follow
+    0x15, 0x49, 0xa9, 0x66, 0x87, // Info: 7 bytes follow
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Minimal trailing Cluster payload
   ]);
   const originalPayload = fixture.slice(17);
   const finalized = await finalizeWebmDuration(new Blob([fixture], { type: "video/webm" }), 12.5);
