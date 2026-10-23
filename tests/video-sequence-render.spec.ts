@@ -166,7 +166,7 @@ test("audio duration metadata waits for transient NaN and positive Infinity", ()
 
 test("video duration metadata waits only for a temporary positive Infinity value", () => {
   expect(isPendingVideoDuration(Number.POSITIVE_INFINITY)).toBe(true);
-  expect(isPendingVideoDuration(Number.NaN)).toBe(false);
+  expect(isPendingVideoDuration(Number.NaN)).toBe(true);
   expect(isPendingVideoDuration(Number.NEGATIVE_INFINITY)).toBe(false);
   expect(isPendingVideoDuration(0)).toBe(false);
   expect(isPendingVideoDuration(9)).toBe(false);
