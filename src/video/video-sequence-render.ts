@@ -481,6 +481,25 @@ export function resolveVideoTrimRange(sourceDuration: number, trimStart: number,
   return { start, end, duration };
 }
 
+/** Best-effort cleanup must never hide the original decode/render error or block releasing other media. */
+function releaseVideoElement(video: HTMLVideoElement): void {
+  try { video.pause(); } catch { /* Continue releasing the remaining media resources. */ }
+  try { video.removeAttribute("src"); } catch { /* The element may already be detached or partially disposed. */ }
+  try { video.load(); } catch { /* Some mobile browsers throw while resetting a failed decoder. */ }
+}
+
+function releaseAudioElement(audio: HTMLAudioElement): void {
+  try { audio.pause(); } catch { /* Continue releasing the remaining media resources. */ }
+  try { audio.removeAttribute("src"); } catch { /* The element may already be detached or partially disposed. */ }
+  try { audio.load(); } catch { /* Preserve the primary export error if decoder cleanup fails. */ }
+}
+
+function releaseImageElement(image: HTMLImageElement): void {
+  image.onload = null;
+  image.onerror = null;
+  try { image.src = ""; } catch { /* Ignore cleanup failures while unwinding a failed export. */ }
+}
+
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -504,17 +523,13 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
       // Reject them here so the montage planner never receives NaN/Infinity.
       if (!Number.isFinite(video.duration) || video.duration <= 0) {
         cleanup();
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
+        releaseVideoElement(video);
         reject(new Error(`У видео «${segment.name}» не удалось определить длительность. Попробуй MP4 (H.264) или другой файл.`));
         return;
       }
       if (!hasUsableVideoDimensions(video.videoWidth, video.videoHeight)) {
         cleanup();
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
+        releaseVideoElement(video);
         reject(new Error(`У видео «${segment.name}» не удалось определить размер кадра. Попробуй MP4 (H.264) или другой файл.`));
         return;
       }
@@ -523,16 +538,12 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     };
     const failed = () => {
       cleanup();
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
       reject(new Error(`Не удалось прочитать видео «${segment.name}». Попробуй MP4 (H.264) или WebM.`));
     };
     timeoutId = window.setTimeout(() => {
       cleanup();
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
       reject(new Error(`Видео «${segment.name}» не открылось за 20 секунд. Попробуй MP4 (H.264) или более короткий файл.`));
     }, 20_000);
     video.addEventListener("loadedmetadata", loaded);
@@ -623,9 +634,7 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       }
       if (!hasUsableAudioDuration(audio.duration)) {
         if (finish()) {
-          audio.pause();
-          audio.removeAttribute("src");
-          audio.load();
+          releaseAudioElement(audio);
           reject(new Error(`У аудио «${segment.name}» не удалось определить длительность. Попробуй другой аудиофайл.`));
         }
         return;
@@ -636,16 +645,12 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       if (!finish()) return;
       // Release the decoder and backing URL on media errors too. Android Chrome
       // can otherwise retain failed audio elements until the whole page is closed.
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
+      releaseAudioElement(audio);
       reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
     };
     const timeoutId = window.setTimeout(() => {
       if (!finish()) return;
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
+      releaseAudioElement(audio);
       reject(new Error(`Аудио «${segment.name}» не загрузилось за 20 секунд. Попробуй другой аудиофайл.`));
     }, 20_000);
     audio.addEventListener("loadedmetadata", loaded);
@@ -656,9 +661,7 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       audio.load();
     } catch {
       if (finish()) {
-        audio.pause();
-        audio.removeAttribute("src");
-        try { audio.load(); } catch { /* Ignore cleanup errors and report the source failure. */ }
+        releaseAudioElement(audio);
         reject(new Error(`Не удалось открыть аудио «${segment.name}».`));
       }
     }
@@ -766,9 +769,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       const item = result.value;
       if (item.kind === "video") videos.add(item.video);
       else {
-        item.image.onload = null;
-        item.image.onerror = null;
-        item.image.src = "";
+        releaseImageElement(item.image);
       }
     }
     // A video may have decoded successfully and then failed trim validation
@@ -779,9 +780,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       if (result.status === "fulfilled") videos.add(result.value);
     }
     for (const video of videos) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
     }
     throw error;
   }
@@ -792,15 +791,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // retained after an invalid-duration export attempt.
     const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
     for (const video of uniqueVideos) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
     }
     for (const item of loaded) {
       if (item.kind !== "image") continue;
-      item.image.onload = null;
-      item.image.onerror = null;
-      item.image.src = "";
+      releaseImageElement(item.image);
     }
     throw new Error("Длительность монтажного плана некорректна. Проверь исходные файлы и попробуй более короткий ролик.");
   }
@@ -825,15 +820,11 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // media decoders/bitmaps alive on Android after a failed export attempt.
     const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
     for (const video of uniqueVideos) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
     }
     for (const item of loaded) {
       if (item.kind !== "image") continue;
-      item.image.onload = null;
-      item.image.onerror = null;
-      item.image.src = "";
+      releaseImageElement(item.image);
     }
     throw new Error("Длительность итогового монтажа меньше 0,1 секунды или некорректна. Увеличь длительность ролика и попробуй снова.");
   }
@@ -851,23 +842,17 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const audioResults = await Promise.allSettled(audioLoads);
     for (const result of audioResults) {
       if (result.status !== "fulfilled") continue;
-      result.value.audio.pause();
-      result.value.audio.removeAttribute("src");
-      result.value.audio.load();
+      releaseAudioElement(result.value.audio);
     }
     const videos = new Set<HTMLVideoElement>();
     for (const item of loaded) {
       if (item.kind === "video") videos.add(item.video);
       else {
-        item.image.onload = null;
-        item.image.onerror = null;
-        item.image.src = "";
+        releaseImageElement(item.image);
       }
     }
     for (const video of videos) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
     }
     throw error;
   }
@@ -877,20 +862,14 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   const releaseLoadedMedia = (contextToClose?: AudioContext | null) => {
     const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
     for (const video of uniqueVideos) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
     }
     for (const item of loaded) {
       if (item.kind !== "image") continue;
-      item.image.onload = null;
-      item.image.onerror = null;
-      item.image.src = "";
+      releaseImageElement(item.image);
     }
     for (const { audio } of loadedAudio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
+      releaseAudioElement(audio);
     }
     if (contextToClose && contextToClose !== preparedAudioContext) void contextToClose.close().catch(() => {});
   };
@@ -1065,9 +1044,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     videoStream.getTracks().forEach((track) => track.stop());
     const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
     uniqueVideos.forEach((video) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
     });
     // Release decoded image resources on successful exports and recorder errors
     // too. Previously this cleanup covered videos/audio only, leaving detached
@@ -1075,14 +1052,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     // collected; on Android this can retain sizable decoded bitmaps after export.
     for (const item of loaded) {
       if (item.kind !== "image") continue;
-      item.image.onload = null;
-      item.image.onerror = null;
-      item.image.src = "";
+      releaseImageElement(item.image);
     }
     loadedAudio.forEach(({ audio }) => {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
+      releaseAudioElement(audio);
     });
     if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
   };
