@@ -571,9 +571,7 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
     let settled = false;
     const timeoutId = window.setTimeout(() => {
       finish();
-      image.onload = null;
-      image.onerror = null;
-      image.src = "";
+      releaseImageElement(image);
       reject(new Error(`Фото «${segment.name}» не загрузилось за 20 секунд. Попробуй уменьшить размер файла или выбрать другое фото.`));
     }, 20_000);
     const finish = () => {
@@ -589,7 +587,7 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
       image.onload = null;
       image.onerror = null;
       if (!hasUsableImageDimensions(image.naturalWidth, image.naturalHeight)) {
-        image.src = "";
+        releaseImageElement(image);
         reject(new Error(`У фото «${segment.name}» не удалось определить размер изображения. Попробуй другое фото.`));
         return;
       }
@@ -597,18 +595,14 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
     };
     image.onerror = () => {
       if (!finish()) return;
-      image.onload = null;
-      image.onerror = null;
-      image.src = "";
+      releaseImageElement(image);
       reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
     };
     try {
       image.src = segment.url;
     } catch {
       if (!finish()) return;
-      image.onload = null;
-      image.onerror = null;
-      try { image.src = ""; } catch { /* Ignore cleanup errors and report the source failure. */ }
+      releaseImageElement(image);
       reject(new Error(`Не удалось открыть фото «${segment.name}».`));
     }
   });
