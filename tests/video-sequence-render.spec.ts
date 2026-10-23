@@ -274,3 +274,25 @@ test("media load limiter releases its slot after rejection so queued work can co
   expect(secondTaskStarted).toBe(true);
 });
 
+
+test("media load limiter keeps handing off queued decodes after repeated failures", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  const started: string[] = [];
+  const first = limitMediaLoad(async () => {
+    started.push("first");
+    throw new Error("first decode failed");
+  });
+  const second = limitMediaLoad(async () => {
+    started.push("second");
+    throw new Error("second decode failed");
+  });
+  const third = limitMediaLoad(async () => {
+    started.push("third");
+    return "recovered";
+  });
+
+  await expect(first).rejects.toThrow("first decode failed");
+  await expect(second).rejects.toThrow("second decode failed");
+  await expect(third).resolves.toBe("recovered");
+  expect(started).toEqual(["first", "second", "third"]);
+});
