@@ -433,9 +433,9 @@ export function isPendingAudioDuration(duration: number): boolean {
   return Number.isNaN(duration) || duration === Number.POSITIVE_INFINITY;
 }
 
-/** Some browsers initially expose Infinity for WebM duration until more metadata arrives. */
+/** Browsers may expose NaN before metadata settles and Infinity for WebM without a duration element. */
 export function isPendingVideoDuration(duration: number): boolean {
-  return duration === Number.POSITIVE_INFINITY;
+  return Number.isNaN(duration) || duration === Number.POSITIVE_INFINITY;
 }
 
 /** Reject zero, non-finite, or overflowed summed durations before allocating the renderer. */
