@@ -444,3 +444,22 @@ test("media load limiter normalizes invalid and fractional concurrency limits sa
   expect(results).toEqual(Array.from({ length: 15 }, (_, index) => index));
 });
 
+test("WebM duration finalization supports unknown-length Segments without losing trailing media", async () => {
+  // MediaRecorder commonly emits an unknown-length Segment. The finalizer must
+  // insert Duration metadata while preserving all bytes after the Info element.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0xff, // Segment with unknown size
+    0x15, 0x49, 0xa9, 0x66, 0x87, // Info
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x1f, 0x43, 0xb6, 0x75, 0x84, 0xde, 0xad, 0xbe, 0xef, // trailing Cluster bytes
+  ]);
+  const originalTrailingPayload = Array.from(fixture.slice(17));
+  const finalized = await finalizeWebmDuration(new Blob([fixture], { type: "video/webm" }), 9.25);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+
+  expect(hex).toContain("448988");
+  expect(result.length).toBeGreaterThan(fixture.length);
+  expect(Array.from(result.slice(-originalTrailingPayload.length))).toEqual(originalTrailingPayload);
+});
+
