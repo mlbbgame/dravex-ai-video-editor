@@ -323,3 +323,28 @@ test("camera motion profiles stay style-specific and scale predictably with effe
     expect(profile.pan).toBeLessThan(0.15);
   }
 });
+
+
+test("media load limiter never exceeds its concurrency cap when many decodes queue together", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(2);
+  let active = 0;
+  let peakActive = 0;
+  const started: number[] = [];
+  const results = await Promise.all(Array.from({ length: 24 }, (_, index) =>
+    limitMediaLoad(async () => {
+      active += 1;
+      peakActive = Math.max(peakActive, active);
+      started.push(index);
+      // Yield repeatedly so queued tasks contend for newly released slots.
+      await Promise.resolve();
+      await Promise.resolve();
+      active -= 1;
+      return index;
+    })
+  ));
+
+  expect(peakActive).toBeLessThanOrEqual(2);
+  expect(peakActive).toBeGreaterThan(0);
+  expect(results).toEqual(Array.from({ length: 24 }, (_, index) => index));
+  expect(started).toEqual(Array.from({ length: 24 }, (_, index) => index));
+});
