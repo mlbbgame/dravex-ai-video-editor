@@ -153,6 +153,20 @@ export function hasExpectedOutputDimensions(
   return actualWidth === expectedDimensions.width && actualHeight === expectedDimensions.height;
 }
 
+/** Compare decoded dimensions only when both actual and expected dimensions are valid. */
+export function hasExpectedOutputDimensions(
+  actualWidth: number,
+  actualHeight: number,
+  expectedDimensions?: { width: number; height: number },
+): boolean {
+  if (!expectedDimensions
+    || !Number.isFinite(expectedDimensions.width) || expectedDimensions.width <= 0
+    || !Number.isFinite(expectedDimensions.height) || expectedDimensions.height <= 0
+    || !Number.isFinite(actualWidth) || actualWidth <= 0
+    || !Number.isFinite(actualHeight) || actualHeight <= 0) return true;
+  return actualWidth === expectedDimensions.width && actualHeight === expectedDimensions.height;
+}
+
 export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false, dimensionMismatch = false): "ok" | "warning" {
   return blackFrameTimes.length || frozenFramePairs.length || durationMismatch || dimensionMismatch ? "warning" : "ok";
 }
