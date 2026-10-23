@@ -557,9 +557,10 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
       video.load();
     } catch {
       cleanup();
-      video.pause();
-      video.removeAttribute("src");
-      try { video.load(); } catch { /* The source is already detached; preserve the actionable error. */ }
+      // Use the guarded release helper here too: a browser may throw while
+      // pausing/resetting a failed decoder, and cleanup must not mask the
+      // actionable source-loading error or leave the promise unsettled.
+      releaseVideoElement(video);
       reject(new Error(`Не удалось открыть видео «${segment.name}». Попробуй MP4 (H.264) или другой файл.`));
     }
   });
