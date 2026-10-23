@@ -226,12 +226,12 @@ export async function inspectRenderedVideo(
     // Stop playback/decoding before detaching the temporary Blob URL. Android
     // browsers may otherwise retain a decoder while the quality report is shown.
     // Revoke the URL even if a browser throws during media-element cleanup.
-    try {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    // Treat each cleanup operation independently: if pause() throws on a
+    // partially decoded Android media element, still detach its source and
+    // release the temporary URL rather than skipping the remaining cleanup.
+    try { video.pause(); } catch { /* Continue releasing the inspection resources. */ }
+    try { video.removeAttribute("src"); } catch { /* Keep cleanup best-effort on mobile decoders. */ }
+    try { video.load(); } catch { /* The inspection result/error must remain the primary outcome. */ }
+    try { URL.revokeObjectURL(url); } catch { /* URL revocation is best-effort if the browser already released it. */ }
   }
 }
