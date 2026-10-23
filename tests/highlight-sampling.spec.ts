@@ -261,6 +261,6 @@ test("video read errors distinguish unsupported codecs from decode and network f
   expect(getVideoReadErrorMessage(4)).toContain("кодек не поддерживается");
   expect(getVideoReadErrorMessage(3)).toContain("ошибку декодирования");
   expect(getVideoReadErrorMessage(2)).toContain("Проверь, что файл полностью сохранён");
-  expect(getVideoReadErrorMessage(1)).toContain("загрузка видео была прервана");
+  expect(getVideoReadErrorMessage(1)).toContain("Загрузка видео была прервана");
   expect(getVideoReadErrorMessage()).toContain("Браузер не смог прочитать видео");
 });
