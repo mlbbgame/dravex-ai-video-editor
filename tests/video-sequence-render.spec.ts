@@ -463,3 +463,19 @@ test("WebM duration finalization supports unknown-length Segments without losing
   expect(Array.from(result.slice(-originalTrailingPayload.length))).toEqual(originalTrailingPayload);
 });
 
+
+
+test("WebM duration finalization preserves 32-bit Duration metadata when a finite value would overflow Float32", async () => {
+  // Segment > Info > TimecodeScale + a 32-bit float Duration + Cluster.
+  // 1e36 seconds is finite in JavaScript, but converting it to WebM ticks
+  // exceeds the finite Float32 range used by this existing Duration element.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x98, // Segment: 24 bytes follow
+    0x15, 0x49, 0xa9, 0x66, 0x8e, // Info: 14 bytes follow
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x44, 0x89, 0x84, 0x3f, 0x80, 0x00, 0x00, // Duration = 1.0 (Float32)
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Cluster
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  await expect(finalizeWebmDuration(source, 1e36)).resolves.toBe(source);
+});
