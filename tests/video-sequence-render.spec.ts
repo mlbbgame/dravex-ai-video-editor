@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource , getCameraMotionProfile } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, finalizeWebmDuration, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource , getCameraMotionProfile } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -347,4 +347,35 @@ test("media load limiter never exceeds its concurrency cap when many decodes que
   expect(peakActive).toBeGreaterThan(0);
   expect(results).toEqual(Array.from({ length: 24 }, (_, index) => index));
   expect(started).toEqual(Array.from({ length: 24 }, (_, index) => index));
+});
+
+
+test("WebM duration finalization inserts duration metadata without changing encoded media payload", async () => {
+  // Minimal Segment > Info > TimecodeScale WebM structure, with no Duration element.
+  const bytes = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, // Segment ID
+    0x88, // Segment size: 8 bytes follow
+    0x15, 0x49, 0xa9, 0x66, // Info ID
+    0x83, // Info size: 3 bytes follow
+    0x2a, 0xd7, 0xb1, // TimecodeScale ID
+    0x80, // size 0 (invalid for scale; finalizer should use default)
+  ]);
+  // Replace the malformed zero-sized scale with a valid 3-byte 1,000,000ns scale
+  // and update Info/Segment sizes to keep the fixture structurally valid.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x8a,
+    0x15, 0x49, 0xa9, 0x66, 0x85,
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40,
+    0x1f, 0x43, 0xb6, 0x75, 0x80,
+  ]);
+  const originalPayload = fixture.slice(17);
+  const finalized = await finalizeWebmDuration(new Blob([fixture], { type: "video/webm" }), 12.5);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  expect(finalized.size).toBeGreaterThan(fixture.length);
+  // Duration (0x4489) must be present inside the expanded Info element.
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+  expect(hex).toContain("448988");
+  expect(hex).toContain("0f4240");
+  // The trailing encoded media payload is retained after the Info element is rebuilt.
+  expect(Array.from(result.slice(-originalPayload.length))).toEqual(Array.from(originalPayload));
 });
