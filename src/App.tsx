@@ -833,6 +833,9 @@ export default function App() {
             setPreviewStatus(`Вариант ${index + 1} из ${pendingVariants.length} · ${stageLabels[stage]}: ${variant.title}…`);
           }
         });
+        // Treat previews as real exports too: never publish a broken/empty Blob URL
+        // as a selectable variant, even if a browser recorder unexpectedly returns 0 bytes.
+        assertNonEmptyRenderedBlob(blob);
         if (generation !== previewGeneration.current) return;
         const url = URL.createObjectURL(blob);
         renderedVariantUrls.current.push(url);
