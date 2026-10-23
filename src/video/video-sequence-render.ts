@@ -377,8 +377,8 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
   durationBytes[2] = 0x88;
   new DataView(durationBytes.buffer).setFloat64(3, durationValue, false);
 
-  const infoId = bytes.slice(info.start, info.start + info.idLength);
-  const infoContent = bytes.slice(info.dataStart, info.dataEnd);
+  const infoId = bytes.subarray(info.start, info.start + info.idLength);
+  const infoContent = bytes.subarray(info.dataStart, info.dataEnd);
   const newInfoSize = infoContent.length + durationBytes.length;
   const encodedInfoSize = encodeEbmlSize(newInfoSize, info.sizeLength);
   const newInfo = new Uint8Array(infoId.length + encodedInfoSize.length + newInfoSize);
@@ -388,25 +388,34 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
   newInfo.set(durationBytes, infoId.length + encodedInfoSize.length + infoContent.length);
 
   const infoDelta = newInfo.length - (info.dataEnd - info.start);
-  let patched = new Uint8Array(bytes.length + infoDelta);
-  patched.set(bytes.slice(0, info.start), 0);
-  patched.set(newInfo, info.start);
-  patched.set(bytes.slice(info.dataEnd), info.start + newInfo.length);
-
-  if (!segmentSize.unknown) {
-    const encodedSegmentSize = encodeEbmlSize(segmentSize.value + infoDelta, segmentSize.length);
-    const oldSizeEnd = segmentStart + 4 + segmentSize.length;
-    if (encodedSegmentSize.length === segmentSize.length) {
-      patched.set(encodedSegmentSize, segmentStart + 4);
-    } else {
-      const resized = new Uint8Array(patched.length + encodedSegmentSize.length - segmentSize.length);
-      resized.set(patched.slice(0, segmentStart + 4), 0);
-      resized.set(encodedSegmentSize, segmentStart + 4);
-      resized.set(patched.slice(oldSizeEnd), segmentStart + 4 + encodedSegmentSize.length);
-      patched = resized;
-    }
+  // Do not allocate a second full-size byte array for long exports. On Android,
+  // a 4K WebM may already occupy hundreds of megabytes; assembling Blob parts
+  // around the small Info element avoids another full-video copy during metadata
+  // repair while keeping the original encoded media bytes unchanged.
+  if (segmentSize.unknown) {
+    return new Blob([
+      bytes.subarray(0, info.start),
+      newInfo,
+      bytes.subarray(info.dataEnd),
+    ], { type: blob.type });
   }
-  return new Blob([patched], { type: blob.type });
+
+  const encodedSegmentSize = encodeEbmlSize(segmentSize.value + infoDelta, segmentSize.length);
+  const oldSizeEnd = segmentStart + 4 + segmentSize.length;
+  if (encodedSegmentSize.length === segmentSize.length) {
+    // Patch only the small Segment size field; the remaining media is shared as
+    // Blob parts rather than copied into another full-length Uint8Array.
+    bytes.set(encodedSegmentSize, segmentStart + 4);
+    return new Blob([bytes.subarray(0, info.start), newInfo, bytes.subarray(info.dataEnd)], { type: blob.type });
+  }
+
+  return new Blob([
+    bytes.subarray(0, segmentStart + 4),
+    encodedSegmentSize,
+    bytes.subarray(oldSizeEnd, info.start),
+    newInfo,
+    bytes.subarray(info.dataEnd),
+  ], { type: blob.type });
 }
 
 /** Unlock Web Audio synchronously inside a user gesture before video analysis awaits. */
