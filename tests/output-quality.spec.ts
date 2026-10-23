@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getOutputInspectionTimes, getOutputQualitySeverity, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getInspectionSampleInterval, getOutputInspectionTimes, getOutputQualitySeverity, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
@@ -65,6 +65,15 @@ test("quality inspection waits when the requested timestamp matches an undecoded
   expect(shouldWaitForDecodedFrame(Number.NaN, 1, 2)).toBe(true);
 });
 
+
+test("inspection freeze checks use actual sample spacing, including boundary durations", () => {
+  expect(getInspectionSampleInterval(1.49, 3)).toBeCloseTo(0.745, 6);
+  expect(shouldCompareFrameSamples(getInspectionSampleInterval(1.49, 3))).toBe(true);
+  expect(getInspectionSampleInterval(30, 9)).toBeCloseTo(3.75, 6);
+  expect(getInspectionSampleInterval(30, 1)).toBe(0);
+  expect(getInspectionSampleInterval(Number.NaN, 9)).toBe(0);
+  expect(getInspectionSampleInterval(30, 0)).toBe(0);
+});
 
 test("quality inspection only compares frames far enough apart to avoid short-clip false positives", () => {
   expect(shouldCompareFrameSamples(0)).toBe(false);
