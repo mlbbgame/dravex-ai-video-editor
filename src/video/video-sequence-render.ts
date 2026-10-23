@@ -145,18 +145,25 @@ type LoadedSegment = LoadedVideo | LoadedImage;
  * too many decoded frames/bitmaps at once. Tasks still settle in input order via
  * Promise.all at the call site; the limiter only controls when each task starts.
  */
-function createMediaLoadLimiter(maxConcurrent: number) {
+export function createMediaLoadLimiter(maxConcurrent: number) {
   const limit = Number.isFinite(maxConcurrent) ? Math.max(1, Math.floor(maxConcurrent)) : 1;
   let active = 0;
   const queue: Array<() => void> = [];
   return async function run<T>(task: () => Promise<T>): Promise<T> {
-    if (active >= limit) await new Promise<void>((resolve) => queue.push(resolve));
-    active += 1;
+    if (active >= limit) {
+      // A released slot is handed directly to the next waiter. Do not decrement
+      // and then increment around the wake-up: that microtask gap can admit a new
+      // task while a queued task is also waking, exceeding the mobile decode cap.
+      await new Promise<void>((resolve) => queue.push(resolve));
+    } else {
+      active += 1;
+    }
     try {
       return await task();
     } finally {
-      active -= 1;
-      queue.shift()?.();
+      const nextWaitingTask = queue.shift();
+      if (nextWaitingTask) nextWaitingTask();
+      else active -= 1;
     }
   };
 }
