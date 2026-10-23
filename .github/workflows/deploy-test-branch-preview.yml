@@ -1,4 +1,5 @@
 name: Deploy DRAVEX test branch to preview while keeping main site stable
+# Test-only deployment: main remains the source for the root site; this branch is copied to /preview/.
 
 on:
   push:
