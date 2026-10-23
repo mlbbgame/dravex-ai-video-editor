@@ -368,9 +368,17 @@ export async function finalizeWebmDuration(blob: Blob, durationSeconds: number):
     // long/high-resolution Android exports, this duplicate can cause a memory spike.
     const patched = bytes;
     const view = new DataView(patched.buffer, patched.byteOffset, patched.byteLength);
-    if (durationElement.size === 4) view.setFloat32(durationElement.dataStart, durationValue, false);
-    else if (durationElement.size === 8) view.setFloat64(durationElement.dataStart, durationValue, false);
-    else return blob;
+    if (durationElement.size === 4) {
+      // WebM Duration may use a 32-bit float. A finite JavaScript number can
+      // still overflow Float32 and silently become Infinity, breaking seeking
+      // on the exported file. Preserve the recorder blob if the value cannot
+      // be represented as a finite Float32.
+      const float32Duration = Math.fround(durationValue);
+      if (!Number.isFinite(float32Duration) || float32Duration <= 0) return blob;
+      view.setFloat32(durationElement.dataStart, float32Duration, false);
+    } else if (durationElement.size === 8) {
+      view.setFloat64(durationElement.dataStart, durationValue, false);
+    } else return blob;
     return new Blob([patched], { type: blob.type });
   }
 
