@@ -353,7 +353,10 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
 
   const durationValue = durationSeconds * 1_000_000_000 / timecodeScale;
   if (durationElement) {
-    const patched = bytes.slice();
+    // `bytes` is already an isolated ArrayBuffer copy from blob.arrayBuffer().
+    // Mutate it directly instead of cloning the entire encoded video again: on
+    // long/high-resolution Android exports, this duplicate can cause a memory spike.
+    const patched = bytes;
     const view = new DataView(patched.buffer, patched.byteOffset, patched.byteLength);
     if (durationElement.size === 4) view.setFloat32(durationElement.dataStart, durationValue, false);
     else if (durationElement.size === 8) view.setFloat64(durationElement.dataStart, durationValue, false);
