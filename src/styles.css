@@ -857,3 +857,219 @@ body,
   .dravex-result-actions { flex-wrap: wrap; }
   .dravex-result-actions a, .dravex-result-actions button { min-width: min(100%, 180px); }
 }
+
+
+/* DRAVEX Studio refresh v1 — cleaner graphite workspace, cool blue accent,
+   clearer hierarchy and calmer motion; deliberately CSS-only to preserve editor logic. */
+:root {
+  color-scheme: dark;
+  --bg: #090b10;
+  --panel: #11151d;
+  --line: #252c39;
+  --muted: #9aa6b8;
+  --accent: #72a7ff;
+  --dravex-border: #293345;
+  --dravex-surface: #111722;
+  --dravex-surface-raised: #171f2d;
+  --dravex-text: #f3f6fc;
+  --dravex-muted: #a2aec0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+}
+html, body { background: var(--bg); }
+body { color: var(--dravex-text); }
+button, select, input { accent-color: var(--accent); }
+button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible,
+.dravex-result-actions a:focus-visible, .dravex-result-actions button:focus-visible,
+.dravex-control-column button:focus-visible, .dravex-quick-music-actions button:focus-visible {
+  outline-color: #9bc2ff;
+}
+.dravex-app {
+  background:
+    radial-gradient(ellipse at 50% -18%, #1b2b46 0, #101722 27rem, #090b10 72rem);
+}
+.dravex-header {
+  width: min(100%, 920px);
+  height: 72px;
+  border-bottom-color: #ffffff12;
+}
+.dravex-brand { gap: 11px; letter-spacing: 1.5px; }
+.dravex-brand-mark {
+  width: 38px; height: 38px; border-radius: 12px;
+  color: #07111f;
+  background: linear-gradient(145deg, #a8cbff, #5d96f7);
+  box-shadow: 0 5px 20px #4e8ff72b;
+}
+.dravex-local { color: #9eabc0; font-size: 11px; }
+.dravex-local > span { background: #7dddb4; box-shadow: 0 0 0 4px #7dddb418; }
+.dravex-main { width: min(100%, 680px); }
+.dravex-intro { margin: 30px 0 22px; }
+.dravex-intro h1 {
+  font-size: clamp(31px, 7vw, 43px);
+  letter-spacing: -1.8px;
+  line-height: 1.04;
+}
+.dravex-intro h1 span {
+  color: #9bc2ff;
+  background: linear-gradient(90deg, #b4d2ff, #78aaff 70%, #9aaeff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.dravex-intro p { max-width: 520px; color: #a8b4c7; font-size: 13px; }
+.dravex-upload {
+  min-height: 170px;
+  gap: 10px;
+  border: 1px dashed #4c668a;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #152237a8, #111722c9);
+  box-shadow: inset 0 1px #ffffff08;
+}
+.dravex-upload:hover { border-color: #8bb8ff; background: #17263b; }
+.dravex-upload-icon {
+  width: 48px; height: 48px; border-radius: 15px;
+  color: #a9cbff; background: #6c9ff51c;
+}
+.dravex-upload strong { font-size: 15px; }
+.dravex-upload > span:not(.dravex-upload-icon) { color: #c3cede; }
+.dravex-upload small { color: #8796ad; }
+.dravex-preview-card {
+  border-color: #2a3445;
+  border-radius: 18px;
+  background: #0d1119;
+  box-shadow: 0 14px 38px #00000025;
+}
+.dravex-preview { max-height: 440px; background: #05070b; }
+.dravex-file-row { padding: 13px 15px; }
+.dravex-file-row strong { color: #edf3ff; font-size: 12px; }
+.dravex-file-row span { color: #94a2b7; }
+.dravex-file-row button { color: #9bc2ff; }
+.dravex-section-title { margin: 27px 0 13px; color: #8eb8ff; }
+.dravex-section-title h2 { color: #f1f5fc; font-size: 16px; letter-spacing: -.2px; }
+.dravex-section-title p { color: #9eabc0; }
+.dravex-styles { gap: 10px; }
+.dravex-style {
+  min-height: 76px; gap: 11px; padding: 12px;
+  border-color: #293345; border-radius: 15px;
+  background: linear-gradient(145deg, #151c28, #111620);
+}
+.dravex-style:hover { border-color: #5b7eaf; background: #182235; }
+.dravex-style.is-selected {
+  border-color: #83b2ff;
+  background: linear-gradient(145deg, #1b2b43, #141e2d);
+  box-shadow: inset 0 0 0 1px #83b2ff25, 0 4px 18px #3d75c313;
+}
+.dravex-style-icon {
+  flex-basis: 38px; width: 38px; height: 38px; border-radius: 12px;
+  color: #bdcce2; background: #ffffff0a;
+}
+.dravex-style.is-selected .dravex-style-icon { color: #a9cbff; background: #7eafff1b; }
+.dravex-style-copy strong { font-size: 12px; color: #f1f5fc; }
+.dravex-style-copy small { color: #9eabc0; font-size: 10px; }
+.dravex-style-check { color: #9bc2ff; }
+.dravex-more {
+  margin-top: 14px; border-color: #293345; border-radius: 15px;
+  background: #111722;
+}
+.dravex-more summary { padding: 14px; color: #c0cbe0; font-size: 12px; }
+.dravex-more summary::after { color: #9bc2ff; }
+.dravex-more-content { gap: 14px; padding: 0 14px 15px; }
+.dravex-project-actions { gap: 9px; padding: 0 14px 14px; }
+.dravex-project-actions button {
+  min-height: 40px; border-color: #303c50; border-radius: 11px;
+  color: #b4d0ff; background: #0c111a; font-size: 11px;
+}
+.dravex-project-actions button:hover { border-color: #668bbf; background: #151f2e; }
+.dravex-project-message { color: #9eabc0; }
+.dravex-duration, .dravex-music, .dravex-volume { color: #aebbd0; font-size: 11px; }
+.dravex-duration select, .dravex-music button {
+  height: 43px; border-color: #303c50; border-radius: 11px;
+  color: #edf3ff; background: #0c111a; font-size: 11px;
+}
+.dravex-music button { color: #a9cbff; }
+.dravex-duration-slider strong, .dravex-volume strong { color: #a9cbff; }
+.dravex-duration-slider input[type="range"], .dravex-volume input { accent-color: #83b2ff; }
+.dravex-create {
+  min-height: 56px; margin-top: 18px; border-radius: 15px;
+  color: #08101b;
+  background: linear-gradient(105deg, #a9cbff, #6fa4ff);
+  box-shadow: 0 9px 28px #477edb26, inset 0 1px #ffffff65;
+  font-size: 14px; letter-spacing: .2px;
+}
+.dravex-create:hover:not(:disabled) { background: linear-gradient(105deg, #c3dcff, #8ab6ff); }
+.dravex-privacy { color: #8390a5; }
+.dravex-progress {
+  border-color: #2a3547; border-radius: 15px; background: #111722;
+}
+.dravex-progress-top strong { color: #eef4ff; }
+.dravex-progress-top span { color: #a9cbff; }
+.dravex-progress-track { background: #293345; }
+.dravex-progress-track span { background: linear-gradient(90deg, #6599f2, #a4c9ff); }
+.dravex-progress p { color: #c2cde0; }
+.dravex-progress small { color: #93a1b7; }
+.dravex-error {
+  border-color: #a84e5a70; border-radius: 12px;
+  color: #ffd1d6; background: #3b141d55;
+}
+.dravex-result {
+  border-color: #527cba; border-radius: 17px;
+  background: linear-gradient(145deg, #17253a, #101722);
+}
+.dravex-result-title { color: #a9cbff; }
+.dravex-result-title strong { color: #f1f5fc; }
+.dravex-result-title span { color: #a6b5ca; }
+.dravex-output { border-radius: 12px; }
+.dravex-result-actions { gap: 10px; }
+.dravex-result-actions a, .dravex-result-actions button {
+  min-height: 46px; border-color: #7faeff;
+  border-radius: 12px; color: #08101b;
+  background: linear-gradient(105deg, #a9cbff, #6fa4ff);
+  font-size: 12px;
+}
+.dravex-result-actions button {
+  color: #dce8fb; border-color: #344258; background: #182233;
+}
+.dravex-result-actions button:hover { background: #223149; }
+.dravex-footer { color: #8e9bb0; }
+.dravex-footer svg, .dravex-footer span { color: #9bc2ff; }
+.dravex-image-grid { gap: 9px; }
+.dravex-image-thumb { border-color: #2c3749; border-radius: 11px; background: #0b1018; }
+.dravex-image-tools { border-top-color: #293345; }
+.dravex-image-tools button { border-color: #354258; border-radius: 8px; background: #182233; }
+.dravex-music-actions .dravex-clear-music { color: #ffb7c0; }
+.dravex-variant-rail { gap: 12px; scrollbar-color: #425778 transparent; }
+.dravex-variant {
+  border-color: #2b3547; border-radius: 16px; background: #121925;
+}
+.dravex-variant.is-selected {
+  border-color: #8bb8ff; background: #17253a;
+  box-shadow: 0 0 0 1px #8bb8ff25, 0 8px 24px #00000025;
+}
+.dravex-variant-preview { background: linear-gradient(145deg, #253956, #111722 62%, #302d45); }
+.dravex-variant-tag { border-color: #ffffff38; border-radius: 7px; background: #080d16a8; }
+.dravex-variant-check { color: #07111f; background: #a9cbff; }
+.dravex-variant-placeholder { color: #b8d4ff; }
+.dravex-video-status { border-color: #315b4e; color: #b7f0d5; background: #10211d; }
+.dravex-video-status.is-warning { border-color: #705733; color: #f4d5a1; background: #211a10; }
+.dravex-quality-report { border-color: #344258; background: #121925; }
+.dravex-quality-report.is-warning { border-color: #b88b44; }
+.dravex-quality-report.is-ok { border-color: #426c58; }
+@media (min-width: 761px) {
+  .dravex-app { padding-left: 24px; padding-right: 24px; }
+  .dravex-main { width: min(100%, 760px); }
+  .dravex-intro { margin-top: 38px; }
+  .dravex-upload { min-height: 190px; }
+  .dravex-preview { max-height: 520px; }
+}
+@media (max-width: 420px) {
+  .dravex-header { height: 62px; }
+  .dravex-brand { font-size: 16px; }
+  .dravex-brand-mark { width: 34px; height: 34px; }
+  .dravex-intro { margin: 24px 0 18px; }
+  .dravex-intro h1 { letter-spacing: -1.3px; }
+  .dravex-upload { min-height: 154px; }
+  .dravex-style { min-height: 62px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dravex-style, .dravex-variant, .dravex-create, .dravex-upload { transition: none !important; }
+}
