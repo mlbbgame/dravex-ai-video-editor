@@ -402,3 +402,21 @@ test("WebM duration finalization preserves the original blob for unsupported or 
   const source = new Blob([fixture], { type: "video/webm" });
   await expect(finalizeWebmDuration(source, Number.MAX_VALUE)).resolves.toBe(source);
 });
+
+test("media load limiter releases its slot after a rejected decode and continues queued work", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  const started: string[] = [];
+  const first = limitMediaLoad(async () => {
+    started.push("failed-decode");
+    throw new Error("synthetic decoder failure");
+  });
+  const second = limitMediaLoad(async () => {
+    started.push("recovery-decode");
+    return "recovered";
+  });
+
+  await expect(first).rejects.toThrow("synthetic decoder failure");
+  await expect(second).resolves.toBe("recovered");
+  expect(started).toEqual(["failed-decode", "recovery-decode"]);
+});
+
