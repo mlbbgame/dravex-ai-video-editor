@@ -256,3 +256,21 @@ test("mobile media decoding has a conservative concurrency cap", () => {
   expect(MAX_CONCURRENT_MEDIA_LOADS).toBeGreaterThan(0);
   expect(MAX_CONCURRENT_MEDIA_LOADS).toBeLessThanOrEqual(4);
 });
+
+test("media load limiter releases its slot after rejection so queued work can continue", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  let secondTaskStarted = false;
+
+  const firstTask = limitMediaLoad(async () => {
+    throw new Error("simulated media decode failure");
+  });
+  const secondTask = limitMediaLoad(async () => {
+    secondTaskStarted = true;
+    return "recovered";
+  });
+
+  await expect(firstTask).rejects.toThrow("simulated media decode failure");
+  await expect(secondTask).resolves.toBe("recovered");
+  expect(secondTaskStarted).toBe(true);
+});
+
