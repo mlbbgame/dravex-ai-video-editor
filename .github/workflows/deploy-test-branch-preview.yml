@@ -59,6 +59,26 @@ jobs:
         working-directory: preview-source
         run: npm install --no-audit --no-fund
 
+      - name: Type-check and build test branch before deployment
+        working-directory: preview-source
+        run: npm run build
+
+      - name: Install Chromium for Playwright
+        working-directory: preview-source
+        run: npx playwright install --with-deps chromium
+
+      - name: Ensure ffmpeg for long-video fixtures
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+
+      - name: Run DRAVEX browser regression tests before preview deployment
+        working-directory: preview-source
+        run: npm run test:qa
+
       - name: Build test branch under the preview path
         working-directory: preview-source
         run: npm run build -- --base=/dravex-ai-video-editor/preview/
