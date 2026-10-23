@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, finalizeWebmDuration, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource , getCameraMotionProfile } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, getMediaPreparationProgress, getRenderProgressPercent, finalizeWebmDuration, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource , getCameraMotionProfile } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -517,4 +517,31 @@ test("media load limiter preserves the concurrency cap when queued tasks reject"
   expect(maximumActive).toBeLessThanOrEqual(2);
   expect(results.filter((result) => result.status === "rejected")).toHaveLength(3);
   expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
+});
+
+
+test("media preparation progress advances from zero without exceeding its reserved range", () => {
+  expect(getMediaPreparationProgress(0, 4)).toBe(0);
+  expect(getMediaPreparationProgress(1, 4)).toBe(3);
+  expect(getMediaPreparationProgress(2, 4)).toBe(5);
+  expect(getMediaPreparationProgress(4, 4)).toBe(10);
+  expect(getMediaPreparationProgress(100, 4)).toBe(10);
+  expect(getMediaPreparationProgress(1, 0)).toBe(0);
+  expect(getMediaPreparationProgress(Number.NaN, 4)).toBe(0);
+});
+
+test("render progress remains monotonic across preparation and frame rendering", () => {
+  const values = [
+    getMediaPreparationProgress(1, 5),
+    getMediaPreparationProgress(2, 5),
+    getMediaPreparationProgress(5, 5),
+    getRenderProgressPercent(0, 20),
+    getRenderProgressPercent(5, 20),
+    getRenderProgressPercent(10, 20),
+    getRenderProgressPercent(20, 20),
+  ];
+  expect(values).toEqual([2, 4, 10, 10, 32, 55, 99]);
+  expect(values.every((value, index) => index === 0 || value >= values[index - 1])).toBe(true);
+  expect(getRenderProgressPercent(Number.NaN, 20)).toBe(10);
+  expect(getRenderProgressPercent(20, 0)).toBe(10);
 });
