@@ -369,3 +369,23 @@ test("WebM duration finalization inserts duration metadata without changing enco
   // The trailing encoded media payload is retained after the Info element is rebuilt.
   expect(Array.from(result.slice(-originalPayload.length))).toEqual(Array.from(originalPayload));
 });
+
+
+test("WebM duration finalization preserves the original blob for unsupported or overflowing duration values", async () => {
+  const unsupported = new Blob(["not webm"], { type: "video/mp4" });
+  await expect(finalizeWebmDuration(unsupported, 12)).resolves.toBe(unsupported);
+
+  const malformedDuration = new Blob(["not webm"], { type: "video/webm" });
+  await expect(finalizeWebmDuration(malformedDuration, Number.NaN)).resolves.toBe(malformedDuration);
+
+  // Minimal Segment > Info > TimecodeScale structure. MAX_VALUE is finite, but
+  // converting it to nanoseconds overflows; the function must not write Infinity.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x91,
+    0x15, 0x49, 0xa9, 0x66, 0x87,
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40,
+    0x1f, 0x43, 0xb6, 0x75, 0x80,
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  await expect(finalizeWebmDuration(source, Number.MAX_VALUE)).resolves.toBe(source);
+});
