@@ -170,6 +170,19 @@ export function createMediaLoadLimiter(maxConcurrent: number) {
 
 export const MAX_CONCURRENT_MEDIA_LOADS = 3;
 
+/** Keep progress moving during media preparation and monotonic when frame rendering begins. */
+export function getMediaPreparationProgress(loadedCount: number, totalCount: number): number {
+  if (!Number.isFinite(totalCount) || totalCount <= 0 || !Number.isFinite(loadedCount)) return 0;
+  const fraction = Math.max(0, Math.min(1, loadedCount / totalCount));
+  return Math.min(10, Math.max(0, Math.round(fraction * 10)));
+}
+
+export function getRenderProgressPercent(completedSeconds: number, totalDuration: number): number {
+  if (!Number.isFinite(completedSeconds) || !Number.isFinite(totalDuration) || totalDuration <= 0) return 10;
+  const fraction = Math.max(0, Math.min(1, completedSeconds / totalDuration));
+  return Math.min(99, Math.max(10, Math.round(10 + fraction * 89)));
+}
+
 export type SourceFrameRect = { x: number; y: number; width: number; height: number };
 export type FrameFit = "contain" | "cover";
 
@@ -749,6 +762,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
   const limitMediaLoad = createMediaLoadLimiter(MAX_CONCURRENT_MEDIA_LOADS);
+  let loadedMediaCount = 0;
   const segmentLoads = segments.map((segment) => limitMediaLoad(async (): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
@@ -772,6 +786,10 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
     const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) : undefined;
     return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
+  }).then((item) => {
+    loadedMediaCount += 1;
+    onProgress?.(getMediaPreparationProgress(loadedMediaCount, segments.length));
+    return item;
   }));
   let loaded: LoadedSegment[];
   try {
@@ -1445,7 +1463,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
           const elapsedSeconds = (lastFrameAt - segmentStartedAt) / 1000;
           const segmentProgress = Math.min(1, elapsedSeconds / item.duration);
           draw(item.image, segmentProgress, elapsedSeconds, cutIndex);
-          onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
+          onProgress?.(getRenderProgressPercent(completed + segmentProgress * item.duration, totalDuration));
         }
         savePreviousFrame();
         completed += item.duration;
@@ -1489,7 +1507,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         const rampRate = getSpeedRampRate(style, clipProgress, cutIndex);
         video.playbackRate = trimBoundaryReached ? 1 : Math.max(0.25, Math.min(4, rampRate * speedFactor));
         draw(video, clipProgress, elapsedSeconds, cutIndex);
-        onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
+        onProgress?.(getRenderProgressPercent(completed + clipProgress * duration, totalDuration));
       }
       // The gain automation was scheduled against the clip duration so the fade-out
       // finishes at the cut without extending the rendered timeline.
