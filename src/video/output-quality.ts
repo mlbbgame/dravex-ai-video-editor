@@ -148,16 +148,22 @@ export async function inspectRenderedVideo(
 ): Promise<OutputQualityReport> {
   // Fail immediately for an empty recorder result instead of waiting for a media metadata timeout.
   assertNonEmptyRenderedBlob(blob);
-  const url = URL.createObjectURL(blob);
+  // Create the media element before allocating a Blob URL, and put every
+  // operation after URL creation inside the cleanup-protected try/finally.
+  // Even an unusual browser exception while assigning src must not leak the URL.
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  // Register listeners before assigning src; cached/local blobs can emit metadata
-  // almost immediately, otherwise the inspection may wait 12 seconds and fail.
-  const metadataReady = waitForMediaEvent(video, "loadedmetadata");
-  video.src = url;
+  const url = URL.createObjectURL(blob);
   try {
+    // Register listeners before assigning src; cached/local blobs can emit
+    // metadata almost immediately, otherwise inspection may wait 12 seconds.
+    const metadataReady = waitForMediaEvent(video, "loadedmetadata");
+    // If a browser throws synchronously while setting src, consume the pending
+    // timeout rejection as well as allowing the main path to await it normally.
+    void metadataReady.catch(() => {});
+    video.src = url;
     await metadataReady;
     if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
       throw new Error("В экспортированном видео отсутствуют корректные метаданные.");
