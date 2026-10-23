@@ -199,7 +199,7 @@ export async function inspectRenderedVideo(
       // the same frame (especially on mobile). Only infer a freeze when samples
       // are at least half a second apart; black-frame and metadata checks still
       // run for every duration.
-      if (previousPixels && shouldCompareFrameSamples(video.duration / sampleCount)) {
+      if (previousPixels && shouldCompareFrameSamples(sampleCount > 1 ? video.duration / (sampleCount - 1) : 0)) {
         let difference = 0;
         for (let offset = 0; offset < pixels.length; offset += 4) {
           difference += (Math.abs(pixels[offset] - previousPixels[offset]) + Math.abs(pixels[offset + 1] - previousPixels[offset + 1]) + Math.abs(pixels[offset + 2] - previousPixels[offset + 2])) / 3;
