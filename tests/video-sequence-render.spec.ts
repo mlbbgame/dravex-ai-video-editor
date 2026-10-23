@@ -350,6 +350,19 @@ test("media load limiter never exceeds its concurrency cap when many decodes que
 });
 
 
+test("WebM duration finalization preserves unsupported blobs and invalid requested durations", async () => {
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+  const nonWebm = new Blob([bytes], { type: "video/mp4" });
+  for (const duration of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const result = await finalizeWebmDuration(nonWebm, duration);
+    expect(result).toBe(nonWebm);
+  }
+
+  const webmWithoutSegment = new Blob([bytes], { type: "video/webm" });
+  const unchanged = await finalizeWebmDuration(webmWithoutSegment, 10);
+  expect(unchanged).toBe(webmWithoutSegment);
+});
+
 test("WebM duration finalization inserts duration metadata without changing encoded media payload", async () => {
   // Minimal Segment > Info > TimecodeScale WebM structure, with no Duration element.
   const fixture = new Uint8Array([
