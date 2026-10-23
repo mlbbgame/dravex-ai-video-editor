@@ -831,3 +831,29 @@ body,
 .dravex-quality-report.is-warning { border-color: #b88b44; }
 .dravex-quality-report.is-ok { border-color: #426c58; }
 .dravex-quality-caution { display: block; margin-top: 6px; opacity: 0.8; line-height: 1.45; }
+
+/* Mobile control hierarchy: make the main action obvious and prevent cramped
+   side-by-side result buttons on narrow Android screens. */
+.dravex-result-actions { align-items: stretch; }
+.dravex-result-actions a, .dravex-result-actions button { min-width: 0; overflow-wrap: anywhere; }
+.dravex-control-column .dravex-preview-action { min-height: 50px; }
+.dravex-control-column button,
+.dravex-control-column select,
+.dravex-control-column input { max-width: 100%; }
+.dravex-result-actions a:focus-visible,
+.dravex-result-actions button:focus-visible,
+.dravex-control-column button:focus-visible,
+.dravex-quick-music-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 480px) {
+  .dravex-result-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .dravex-result-actions a, .dravex-result-actions button { width: 100%; min-height: 48px; font-size: 12px; }
+  .dravex-control-column { padding: 13px; }
+  .dravex-control-column .dravex-preview-action { min-height: 52px; }
+}
+@media (min-width: 481px) and (max-width: 760px) {
+  .dravex-result-actions { flex-wrap: wrap; }
+  .dravex-result-actions a, .dravex-result-actions button { min-width: min(100%, 180px); }
+}
