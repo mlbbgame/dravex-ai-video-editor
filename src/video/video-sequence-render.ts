@@ -1396,7 +1396,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       await Promise.all(loadedAudio.map(async ({ audio, segment }) => {
         audio.currentTime = 0;
         const gain = musicGainNodes.get(audio);
-        const targetVolume = Math.max(0, Math.min(1, segment.volume ?? 0.65));
+        const targetVolume = getSafeAudioTrackVolume(segment.volume);
         if (gain) {
           gain.gain.cancelScheduledValues(audioStart);
           const fadeInSeconds = Math.min(0.65, totalDuration * 0.15);
