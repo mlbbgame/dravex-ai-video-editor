@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MAX_CONCURRENT_MEDIA_LOADS, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -215,6 +215,42 @@ test("music volume is clamped and invalid values fall back safely", () => {
   expect(getSafeAudioTrackVolume(2)).toBe(1);
 });
 
+
+test("media load limiter hands off slots without exceeding the concurrency cap", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(2);
+  let active = 0;
+  let maximumActive = 0;
+  const started: number[] = [];
+  const releases: Array<() => void> = [];
+  const tasks = Array.from({ length: 12 }, (_, index) => limitMediaLoad(async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    started.push(index);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    active -= 1;
+    return index;
+  }));
+
+  // Only the two initial slots may start before either task is released.
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(started).toHaveLength(2);
+  expect(maximumActive).toBe(2);
+
+  // Release work in pairs to exercise the queued-slot handoff under contention.
+  for (let offset = 0; offset < 12; offset += 2) {
+    releases[offset]?.();
+    releases[offset + 1]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  await expect(Promise.all(tasks)).resolves.toEqual(Array.from({ length: 12 }, (_, index) => index));
+  expect(maximumActive).toBeLessThanOrEqual(2);
+  expect(active).toBe(0);
+  expect(started).toEqual(Array.from({ length: 12 }, (_, index) => index));
+});
 
 test("mobile media decoding has a conservative concurrency cap", () => {
   expect(MAX_CONCURRENT_MEDIA_LOADS).toBe(3);
