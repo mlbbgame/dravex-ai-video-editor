@@ -575,7 +575,7 @@ test("WebM duration finalization expands the Segment size field when inserted me
 test("WebM duration finalization updates existing 64-bit Duration metadata without changing the media payload", async () => {
   // Segment > Info > TimecodeScale + an existing Float64 Duration + Cluster.
   const fixture = new Uint8Array([
-    0x18, 0x53, 0x80, 0x67, 0x97, // Segment payload: 23 bytes
+    0x18, 0x53, 0x80, 0x67, 0x9c, // Segment payload: 28 bytes
     0x15, 0x49, 0xa9, 0x66, 0x92, // Info payload: 18 bytes
     0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
     0x44, 0x89, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Duration placeholder
