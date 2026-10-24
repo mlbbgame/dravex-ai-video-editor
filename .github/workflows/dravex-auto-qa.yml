@@ -95,11 +95,17 @@ jobs:
               frame_path="test-results/dravex-review-frames/${name}-${point}.png"
             # Decode from the beginning rather than relying on WebM seek indexes; short
             # browser-recorded files can have sparse or late container indexes.
+            # Prefer accurate seek after opening the file. Some short WebM files
+            # fail near the tail with this path, so retry with input-side seeking.
             if ffmpeg -hide_banner -loglevel error -y -i "$video" -ss "$timestamp" -frames:v 1 -vf "scale=320:-2" "$frame_path" 2>&1 && [[ -s "$frame_path" ]]; then
                 frame_count=$((frame_count + 1))
                 file_frames=$((file_frames + 1))
+              elif ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "$frame_path" 2>&1 && [[ -s "$frame_path" ]]; then
+                echo "Review frame extracted using input-side seek fallback: $video at $timestamp"
+                frame_count=$((frame_count + 1))
+                file_frames=$((file_frames + 1))
               else
-                echo "Frame extraction failed: $video at $timestamp" >&2
+                echo "Frame extraction failed with both seek modes: $video at $timestamp" >&2
                 exit 1
               fi
             done
