@@ -234,22 +234,31 @@ const RENDER_FRAME_WATCHDOG_MS = 10_000;
 function waitForRenderFrame(lastFrameAt: number, intervalMs: number): Promise<number> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const timeoutId = window.setTimeout(() => {
+    let animationFrameId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+    const finish = (timestamp?: number) => {
       if (settled) return;
       settled = true;
-      reject(new Error("Отрисовка кадров остановилась более чем на 10 секунд. Верни DRAVEX на экран и повтори экспорт; если ошибка повторится, попробуй более короткий ролик."));
-    }, RENDER_FRAME_WATCHDOG_MS);
+      cleanup();
+      if (timestamp === undefined) {
+        reject(new Error("Отрисовка кадров остановилась более чем на 10 секунд. Верни DRAVEX на экран и повтори экспорт; если ошибка повторится, попробуй более короткий ролик."));
+      } else {
+        resolve(timestamp);
+      }
+    };
+    const timeoutId = window.setTimeout(() => finish(), RENDER_FRAME_WATCHDOG_MS);
     const check = (timestamp: number) => {
       if (settled) return;
       if (timestamp - lastFrameAt >= intervalMs) {
-        settled = true;
-        window.clearTimeout(timeoutId);
-        resolve(timestamp);
+        finish(timestamp);
       } else {
-        requestAnimationFrame(check);
+        animationFrameId = requestAnimationFrame(check);
       }
     };
-    requestAnimationFrame(check);
+    animationFrameId = requestAnimationFrame(check);
   });
 }
 
