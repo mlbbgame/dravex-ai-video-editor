@@ -8,7 +8,6 @@ import {
   buildHighlightVariants,
   type HighlightMoment,
 } from "../src/video/highlight-finder";
-import { selectDiverseHighlightMoments } from "../src/video/montage-selection";
 import { buildDirectorEventTimeline } from "../src/video/director-event-timeline";
 import { buildSmartEyeReport } from "../src/video/smart-eye";
 
