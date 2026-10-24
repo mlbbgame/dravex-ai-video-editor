@@ -42,8 +42,10 @@ export function buildMixedMediaSequence(
     const sourceSpan = Math.max(0, segment.trimEnd - segment.trimStart);
     const nextSpan = sourceSpan * scale;
     const center = (segment.trimStart + segment.trimEnd) / 2;
-    const trimStart = Math.max(0, center - nextSpan / 2);
-    return { ...segment, trimStart, trimEnd: trimStart + nextSpan };
+    const trimStart = Math.max(segment.trimStart, center - nextSpan / 2);
+    const trimEnd = Math.min(segment.trimEnd, trimStart + nextSpan);
+    // Stabilize serialized timeline values and avoid floating-point-only regressions.
+    return { ...segment, trimStart: Number(trimStart.toFixed(6)), trimEnd: Number(trimEnd.toFixed(6)) };
   });
   const imageSegments: ImageSegment[] = images.map((image) => ({
     kind: "image",
