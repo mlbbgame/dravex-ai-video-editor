@@ -4,6 +4,7 @@ import {
   getHighlightSamplingInterval,
   getHighlightSampleTime,
   rankHighlightMomentsForStyle,
+  scoreFrameQuality,
   buildHighlightVariants,
   type HighlightMoment,
 } from "../src/video/highlight-finder";
@@ -225,4 +226,27 @@ test("style ranking favours motion for velocity and calmer moments for story", (
   expect(story[0].time).toBe(7);
   // Ranking must not mutate the original candidate order.
   expect(candidates.map((item) => item.time)).toEqual([2, 7]);
+});
+
+
+test("frame quality scoring stays bounded and ignores malformed feature values", () => {
+  const best = scoreFrameQuality({
+    motion: 1, contrast: 1, saturation: 1, brightness: 0.48, detail: 1,
+  });
+  const worst = scoreFrameQuality({
+    motion: 0, contrast: 0, saturation: 0, brightness: 0, detail: 0,
+  });
+  const malformed = scoreFrameQuality({
+    motion: Number.NaN, contrast: Number.POSITIVE_INFINITY,
+    saturation: -10, brightness: Number.NaN, detail: 10,
+  });
+
+  expect(best).toBeGreaterThan(worst);
+  expect(best).toBeLessThanOrEqual(1);
+  expect(best).toBeGreaterThanOrEqual(0);
+  expect(worst).toBeGreaterThanOrEqual(0);
+  expect(worst).toBeLessThanOrEqual(1);
+  expect(Number.isFinite(malformed)).toBe(true);
+  expect(malformed).toBeGreaterThanOrEqual(0);
+  expect(malformed).toBeLessThanOrEqual(1);
 });
