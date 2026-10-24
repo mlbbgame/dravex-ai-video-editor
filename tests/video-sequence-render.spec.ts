@@ -632,3 +632,16 @@ test("WebM duration finalization preserves unknown-size Segment headers and enco
   expect(finalized.size).toBe(fixture.length + 11);
 });
 
+test("WebM duration finalization preserves the original blob when a finite duration overflows Float32 metadata", async () => {
+  // Segment > Info > TimecodeScale + a four-byte Float32 Duration element.
+  // 3.5e35 seconds is finite, but its millisecond-scale WebM value exceeds Float32.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x97, // Segment: 23 bytes follow
+    0x15, 0x49, 0xa9, 0x66, 0x8d, // Info: 13 bytes follow
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x44, 0x89, 0x84, 0x00, 0x00, 0x00, 0x00, // Duration: Float32
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Minimal trailing Cluster payload
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  await expect(finalizeWebmDuration(source, 3.5e35)).resolves.toBe(source);
+});
