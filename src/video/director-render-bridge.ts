@@ -33,6 +33,6 @@ export function directorPlanToVideoSegments(
       trimEnd: clip.sourceEndSeconds,
       speedFactor: clip.speedFactor,
       transitionOutSeconds: clip.transitionOutSeconds,
-      ...(Array.isArray(clip.effects) ? { effects: clip.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) } : {}),
+      ...(Array.isArray(clip.effects) ? { effects: clip.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) } : {}),
     }));
 }

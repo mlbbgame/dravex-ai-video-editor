@@ -83,3 +83,26 @@ test("warns when multiple large videos are selected together", () => {
   expect(result.warnings.join(" ")).toContain("монтировать по одному видео");
   expect(result.warnings).toHaveLength(1);
 });
+
+
+test("warns about combined memory pressure for a large video plus photos", () => {
+  const result = assessMediaSelection([
+    media("phone.mp4", 300 * 1024 * 1024, "video/mp4"),
+    media("one.jpg", 70 * 1024 * 1024, "image/jpeg"),
+    media("two.jpg", 60 * 1024 * 1024, "image/jpeg"),
+  ]);
+
+  expect(result.valid).toBe(true);
+  expect(result.totalBytes).toBe(430 * 1024 * 1024);
+  expect(result.warnings.join(" ")).toContain("Большое видео");
+  expect(result.warnings.join(" ")).toContain("Общий объём выбранных файлов");
+  expect(result.warnings.join(" ")).toContain("обработать видео отдельно");
+});
+
+test("keeps a single large-video warning when no extra media increases memory pressure", () => {
+  const result = assessMediaSelection([media("phone.mp4", 500 * 1024 * 1024, "video/mp4")]);
+
+  expect(result.valid).toBe(true);
+  expect(result.warnings).toHaveLength(1);
+  expect(result.warnings[0]).toContain("Большое видео");
+});

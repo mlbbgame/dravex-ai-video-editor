@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getRenderFrameInterval, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTrimBoundaryFrameTime, resolveVideoTrimRange, shouldContainSource } from "../src/video/video-sequence-render";
+import { MAX_CONCURRENT_MEDIA_LOADS, createMediaLoadLimiter, getMediaPreparationProgress, getRenderProgressPercent, finalizeWebmDuration, getRenderFrameInterval, isPendingAudioDuration, isPendingVideoDuration, getSafeAudioTrackVolume, getSafeImageDuration, getSourceAudioGain, getSourceFrameRect, getTransitionSequenceType, getTrimBoundaryFrameTime, hasUsableAudioDuration, hasUsableImageDimensions, hasUsableVideoDimensions, isUsableFinalRenderDuration, isUsableRenderDuration, resolveVideoTrimRange, shouldContainSource , getCameraMotionProfile } from "../src/video/video-sequence-render";
 
 test("photo durations stay finite and within safe render bounds", () => {
   expect(getSafeImageDuration()).toBe(3);
@@ -96,4 +96,590 @@ test("video trim ranges recover safely from invalid trim values and reject unusa
   expect(resolveVideoTrimRange(5, 3, 2)).toEqual({ start: 3, end: 3.1, duration: 0.1 });
   expect(() => resolveVideoTrimRange(Number.NaN, 0, 1)).toThrow();
   expect(() => resolveVideoTrimRange(0.05, 0, 0.05)).toThrow();
+});
+
+
+test("cinematic and automatic transitions provide varied but repeatable cut sequences", () => {
+  const cinematic = Array.from({ length: 6 }, (_, index) => getTransitionSequenceType("cinematic", "cinematic", index + 1));
+  const calm = Array.from({ length: 6 }, (_, index) => getTransitionSequenceType("story", "auto", index + 1));
+  const action = Array.from({ length: 5 }, (_, index) => getTransitionSequenceType("velocity", "action", index + 1));
+
+  expect(new Set(cinematic).size).toBeGreaterThanOrEqual(3);
+  expect(new Set(calm).size).toBeGreaterThanOrEqual(4);
+  expect(new Set(action).size).toBe(5);
+  expect(getTransitionSequenceType("cinematic", "cinematic", 1)).toBe(8);
+  expect(getTransitionSequenceType("story", "auto", 0)).toBe(0);
+  expect(getTransitionSequenceType("story", "auto", Number.NaN)).toBe(0);
+});
+
+
+test("media metadata guards reject zero, negative, NaN, and infinite dimensions", () => {
+  expect(hasUsableImageDimensions(1920, 1080)).toBe(true);
+  expect(hasUsableImageDimensions(1, 1)).toBe(true);
+  expect(hasUsableImageDimensions(0, 1080)).toBe(false);
+  expect(hasUsableImageDimensions(1920, 0)).toBe(false);
+  expect(hasUsableImageDimensions(-1, 1080)).toBe(false);
+  expect(hasUsableImageDimensions(Number.NaN, 1080)).toBe(false);
+  expect(hasUsableImageDimensions(1920, Number.POSITIVE_INFINITY)).toBe(false);
+});
+
+test("render duration guard rejects zero, non-finite, and overflowed timelines", () => {
+  expect(isUsableRenderDuration(0.1)).toBe(true);
+  expect(isUsableRenderDuration(300)).toBe(true);
+  expect(isUsableRenderDuration(0)).toBe(false);
+  expect(isUsableRenderDuration(-1)).toBe(false);
+  expect(isUsableRenderDuration(Number.NaN)).toBe(false);
+  expect(isUsableRenderDuration(Number.POSITIVE_INFINITY)).toBe(false);
+  expect(isUsableRenderDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+  expect(isUsableRenderDuration(Number.MAX_VALUE + Number.MAX_VALUE)).toBe(false);
+});
+
+test("final render duration rejects positive but effectively empty timelines", () => {
+  expect(isUsableFinalRenderDuration(0.1)).toBe(true);
+  expect(isUsableFinalRenderDuration(0.100001)).toBe(true);
+  expect(isUsableFinalRenderDuration(300)).toBe(true);
+  expect(isUsableFinalRenderDuration(0.099999)).toBe(false);
+  expect(isUsableFinalRenderDuration(0)).toBe(false);
+  expect(isUsableFinalRenderDuration(-1)).toBe(false);
+  expect(isUsableFinalRenderDuration(Number.NaN)).toBe(false);
+  expect(isUsableFinalRenderDuration(Number.POSITIVE_INFINITY)).toBe(false);
+  expect(isUsableFinalRenderDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+});
+
+test("video metadata guard rejects invalid decoded dimensions", () => {
+  expect(hasUsableVideoDimensions(1920, 1080)).toBe(true);
+  expect(hasUsableVideoDimensions(0, 1080)).toBe(false);
+  expect(hasUsableVideoDimensions(1920, 0)).toBe(false);
+  expect(hasUsableVideoDimensions(Number.NaN, 1080)).toBe(false);
+  expect(hasUsableVideoDimensions(1920, Number.NaN)).toBe(false);
+  expect(hasUsableVideoDimensions(Number.POSITIVE_INFINITY, 1080)).toBe(false);
+  expect(hasUsableVideoDimensions(1920, Number.POSITIVE_INFINITY)).toBe(false);
+});
+
+test("audio duration metadata waits for transient NaN and positive Infinity", () => {
+  expect(isPendingAudioDuration(Number.NaN)).toBe(true);
+  expect(isPendingAudioDuration(Number.POSITIVE_INFINITY)).toBe(true);
+  expect(isPendingAudioDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+  expect(isPendingAudioDuration(0)).toBe(false);
+  expect(isPendingAudioDuration(9)).toBe(false);
+});
+
+test("video duration metadata waits only for a temporary positive Infinity value", () => {
+  expect(isPendingVideoDuration(Number.POSITIVE_INFINITY)).toBe(true);
+  expect(isPendingVideoDuration(Number.NaN)).toBe(true);
+  expect(isPendingVideoDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+  expect(isPendingVideoDuration(0)).toBe(false);
+  expect(isPendingVideoDuration(9)).toBe(false);
+});
+
+test("audio metadata guard rejects unusable durations but accepts finite positive durations", () => {
+  expect(hasUsableAudioDuration(0.01)).toBe(true);
+  expect(hasUsableAudioDuration(120)).toBe(true);
+  expect(hasUsableAudioDuration(0)).toBe(false);
+  expect(hasUsableAudioDuration(-1)).toBe(false);
+  expect(hasUsableAudioDuration(Number.NaN)).toBe(false);
+  expect(hasUsableAudioDuration(Number.POSITIVE_INFINITY)).toBe(false);
+  expect(hasUsableAudioDuration(Number.NEGATIVE_INFINITY)).toBe(false);
+});
+
+test("video trim normalization never emits non-finite values or extends beyond the source", () => {
+  const cases = [
+    [0.1, 0, 0.1],
+    [1, Number.NaN, Number.POSITIVE_INFINITY],
+    [2, -100, 100],
+    [8, 7.99, 8],
+    [15, Number.POSITIVE_INFINITY, Number.NaN],
+  ] as const;
+
+  for (const [sourceDuration, requestedStart, requestedEnd] of cases) {
+    const range = resolveVideoTrimRange(sourceDuration, requestedStart, requestedEnd);
+    expect(Number.isFinite(range.start)).toBe(true);
+    expect(Number.isFinite(range.end)).toBe(true);
+    expect(Number.isFinite(range.duration)).toBe(true);
+    expect(range.start).toBeGreaterThanOrEqual(0);
+    expect(range.end).toBeLessThanOrEqual(sourceDuration);
+    expect(range.duration).toBeGreaterThanOrEqual(0.1);
+    expect(range.duration).toBeCloseTo(range.end - range.start, 6);
+  }
+});
+
+
+test("music volume is clamped and invalid values fall back safely", () => {
+  expect(getSafeAudioTrackVolume()).toBe(0.65);
+  expect(getSafeAudioTrackVolume(Number.NaN)).toBe(0.65);
+  expect(getSafeAudioTrackVolume(Number.POSITIVE_INFINITY)).toBe(0.65);
+  expect(getSafeAudioTrackVolume(Number.NEGATIVE_INFINITY)).toBe(0.65);
+  expect(getSafeAudioTrackVolume(-1)).toBe(0);
+  expect(getSafeAudioTrackVolume(0)).toBe(0);
+  expect(getSafeAudioTrackVolume(0.4)).toBe(0.4);
+  expect(getSafeAudioTrackVolume(2)).toBe(1);
+});
+
+
+test("media load limiter hands off slots without exceeding the concurrency cap", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(2);
+  let active = 0;
+  let maximumActive = 0;
+  const started: number[] = [];
+  const releases: Array<() => void> = [];
+  const tasks = Array.from({ length: 12 }, (_, index) => limitMediaLoad(async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    started.push(index);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    active -= 1;
+    return index;
+  }));
+
+  // Only the two initial slots may start before either task is released.
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(started).toHaveLength(2);
+  expect(maximumActive).toBe(2);
+
+  // Release work in pairs to exercise the queued-slot handoff under contention.
+  for (let offset = 0; offset < 12; offset += 2) {
+    await expect.poll(() => releases.length).toBeGreaterThanOrEqual(offset + 2);
+    releases[offset]();
+    releases[offset + 1]();
+  }
+
+  await expect(Promise.all(tasks)).resolves.toEqual(Array.from({ length: 12 }, (_, index) => index));
+  expect(maximumActive).toBeLessThanOrEqual(2);
+  expect(active).toBe(0);
+  expect(started).toEqual(Array.from({ length: 12 }, (_, index) => index));
+});
+
+test("mobile media decoding has a conservative concurrency cap", () => {
+  expect(MAX_CONCURRENT_MEDIA_LOADS).toBe(3);
+  expect(Number.isInteger(MAX_CONCURRENT_MEDIA_LOADS)).toBe(true);
+  expect(MAX_CONCURRENT_MEDIA_LOADS).toBeGreaterThan(0);
+  expect(MAX_CONCURRENT_MEDIA_LOADS).toBeLessThanOrEqual(4);
+});
+
+test("media load limiter recovers from a synchronous task throw without blocking queued decodes", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  let recoveredTaskStarted = false;
+
+  const failedTask = limitMediaLoad(() => {
+    throw new Error("synchronous decoder setup failure");
+  });
+  const recoveredTask = limitMediaLoad(async () => {
+    recoveredTaskStarted = true;
+    return "decoded";
+  });
+
+  await expect(failedTask).rejects.toThrow("synchronous decoder setup failure");
+  await expect(recoveredTask).resolves.toBe("decoded");
+  expect(recoveredTaskStarted).toBe(true);
+});
+
+test("media load limiter releases its slot after rejection so queued work can continue", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  let secondTaskStarted = false;
+
+  const firstTask = limitMediaLoad(async () => {
+    throw new Error("simulated media decode failure");
+  });
+  const secondTask = limitMediaLoad(async () => {
+    secondTaskStarted = true;
+    return "recovered";
+  });
+
+  await expect(firstTask).rejects.toThrow("simulated media decode failure");
+  await expect(secondTask).resolves.toBe("recovered");
+  expect(secondTaskStarted).toBe(true);
+});
+
+
+test("media load limiter keeps handing off queued decodes after repeated failures", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  const started: string[] = [];
+  const first = limitMediaLoad(async () => {
+    started.push("first");
+    throw new Error("first decode failed");
+  });
+  const second = limitMediaLoad(async () => {
+    started.push("second");
+    throw new Error("second decode failed");
+  });
+  const third = limitMediaLoad(async () => {
+    started.push("third");
+    return "recovered";
+  });
+
+  await expect(first).rejects.toThrow("first decode failed");
+  await expect(second).rejects.toThrow("second decode failed");
+  await expect(third).resolves.toBe("recovered");
+  expect(started).toEqual(["first", "second", "third"]);
+});
+
+
+test("camera motion profiles stay style-specific and scale predictably with effect strength", () => {
+  const cinematicSoft = getCameraMotionProfile("cinematic", "soft");
+  const cinematicBalanced = getCameraMotionProfile("cinematic", "balanced");
+  const cinematicStrong = getCameraMotionProfile("cinematic", "strong");
+  const action = getCameraMotionProfile("velocity", "balanced");
+  const story = getCameraMotionProfile("story", "balanced");
+
+  expect(cinematicSoft.zoom).toBeCloseTo(cinematicBalanced.zoom * 0.72, 8);
+  expect(cinematicSoft.pan).toBeCloseTo(cinematicBalanced.pan * 0.72, 8);
+  expect(cinematicStrong.zoom).toBeCloseTo(cinematicBalanced.zoom * 1.28, 8);
+  expect(cinematicStrong.pan).toBeCloseTo(cinematicBalanced.pan * 1.28, 8);
+  expect(action.zoom).toBeGreaterThan(cinematicBalanced.zoom);
+  expect(action.pan).toBeGreaterThan(cinematicBalanced.pan);
+  expect(story.zoom).toBeLessThan(cinematicBalanced.zoom);
+  expect(story.pan).toBeLessThan(cinematicBalanced.pan);
+
+  for (const profile of [cinematicSoft, cinematicBalanced, cinematicStrong, action, story]) {
+    expect(Number.isFinite(profile.zoom)).toBe(true);
+    expect(Number.isFinite(profile.pan)).toBe(true);
+    expect(profile.zoom).toBeGreaterThan(0);
+    expect(profile.pan).toBeGreaterThan(0);
+    expect(profile.zoom).toBeLessThan(0.25);
+    expect(profile.pan).toBeLessThan(0.15);
+  }
+});
+
+
+test("media load limiter never exceeds its concurrency cap when many decodes queue together", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(2);
+  let active = 0;
+  let peakActive = 0;
+  const started: number[] = [];
+  const results = await Promise.all(Array.from({ length: 24 }, (_, index) =>
+    limitMediaLoad(async () => {
+      active += 1;
+      peakActive = Math.max(peakActive, active);
+      started.push(index);
+      // Yield repeatedly so queued tasks contend for newly released slots.
+      await Promise.resolve();
+      await Promise.resolve();
+      active -= 1;
+      return index;
+    })
+  ));
+
+  expect(peakActive).toBeLessThanOrEqual(2);
+  expect(peakActive).toBeGreaterThan(0);
+  expect(results).toEqual(Array.from({ length: 24 }, (_, index) => index));
+  expect(started).toEqual(Array.from({ length: 24 }, (_, index) => index));
+});
+
+
+test("WebM duration finalization preserves unsupported blobs and invalid requested durations", async () => {
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+  const nonWebm = new Blob([bytes], { type: "video/mp4" });
+  for (const duration of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const result = await finalizeWebmDuration(nonWebm, duration);
+    expect(result).toBe(nonWebm);
+  }
+
+  const webmWithoutSegment = new Blob([bytes], { type: "video/webm" });
+  const unchanged = await finalizeWebmDuration(webmWithoutSegment, 10);
+  expect(unchanged).toBe(webmWithoutSegment);
+});
+
+test("WebM duration finalization inserts duration metadata without changing encoded media payload", async () => {
+  // Minimal Segment > Info > TimecodeScale WebM structure, with no Duration element.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x91, // Segment: 17 bytes follow
+    0x15, 0x49, 0xa9, 0x66, 0x87, // Info: 7 bytes follow
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Minimal trailing Cluster payload
+  ]);
+  const originalPayload = fixture.slice(17);
+  const finalized = await finalizeWebmDuration(new Blob([fixture], { type: "video/webm" }), 12.5);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  expect(finalized.size).toBeGreaterThan(fixture.length);
+  // Duration (0x4489) must be present inside the expanded Info element.
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+  expect(hex).toContain("448988");
+  expect(hex).toContain("0f4240");
+  // The trailing encoded media payload is retained after the Info element is rebuilt.
+  expect(Array.from(result.slice(-originalPayload.length))).toEqual(Array.from(originalPayload));
+});
+
+
+test("WebM duration finalization preserves the original blob for unsupported or overflowing duration values", async () => {
+  const unsupported = new Blob(["not webm"], { type: "video/mp4" });
+  await expect(finalizeWebmDuration(unsupported, 12)).resolves.toBe(unsupported);
+
+  const malformedDuration = new Blob(["not webm"], { type: "video/webm" });
+  await expect(finalizeWebmDuration(malformedDuration, Number.NaN)).resolves.toBe(malformedDuration);
+
+  // Minimal Segment > Info > TimecodeScale structure. MAX_VALUE is finite, but
+  // converting it to nanoseconds overflows; the function must not write Infinity.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x91,
+    0x15, 0x49, 0xa9, 0x66, 0x87,
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40,
+    0x1f, 0x43, 0xb6, 0x75, 0x80,
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  await expect(finalizeWebmDuration(source, Number.MAX_VALUE)).resolves.toBe(source);
+});
+
+test("media load limiter releases its slot after a rejected decode and continues queued work", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  const started: string[] = [];
+  const first = limitMediaLoad(async () => {
+    started.push("failed-decode");
+    throw new Error("synthetic decoder failure");
+  });
+  const second = limitMediaLoad(async () => {
+    started.push("recovery-decode");
+    return "recovered";
+  });
+
+  await expect(first).rejects.toThrow("synthetic decoder failure");
+  await expect(second).resolves.toBe("recovered");
+  expect(started).toEqual(["failed-decode", "recovery-decode"]);
+});
+
+test("media load limiter normalizes invalid and fractional concurrency limits safely", async () => {
+  for (const invalidLimit of [0, -3, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const runLimited = createMediaLoadLimiter(invalidLimit);
+    await expect(runLimited(async () => "completed")).resolves.toBe("completed");
+  }
+
+  const runFractionalLimit = createMediaLoadLimiter(2.9);
+  let active = 0;
+  let peakActive = 0;
+  const results = await Promise.all(Array.from({ length: 15 }, (_, index) =>
+    runFractionalLimit(async () => {
+      active += 1;
+      peakActive = Math.max(peakActive, active);
+      await Promise.resolve();
+      await Promise.resolve();
+      active -= 1;
+      return index;
+    })
+  ));
+
+  expect(peakActive).toBeLessThanOrEqual(2);
+  expect(results).toEqual(Array.from({ length: 15 }, (_, index) => index));
+});
+
+test("WebM duration finalization supports unknown-length Segments without losing trailing media", async () => {
+  // MediaRecorder commonly emits an unknown-length Segment. The finalizer must
+  // insert Duration metadata while preserving all bytes after the Info element.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0xff, // Segment with unknown size
+    0x15, 0x49, 0xa9, 0x66, 0x87, // Info
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x1f, 0x43, 0xb6, 0x75, 0x84, 0xde, 0xad, 0xbe, 0xef, // trailing Cluster bytes
+  ]);
+  const originalTrailingPayload = Array.from(fixture.slice(17));
+  const finalized = await finalizeWebmDuration(new Blob([fixture], { type: "video/webm" }), 9.25);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+
+  expect(hex).toContain("448988");
+  expect(result.length).toBeGreaterThan(fixture.length);
+  expect(Array.from(result.slice(-originalTrailingPayload.length))).toEqual(originalTrailingPayload);
+});
+
+
+
+test("WebM duration finalization preserves 32-bit Duration metadata when a finite value would overflow Float32", async () => {
+  // Segment > Info > TimecodeScale + a 32-bit float Duration + Cluster.
+  // 1e36 seconds is finite in JavaScript, but converting it to WebM ticks
+  // exceeds the finite Float32 range used by this existing Duration element.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x98, // Segment: 24 bytes follow
+    0x15, 0x49, 0xa9, 0x66, 0x8e, // Info: 14 bytes follow
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x44, 0x89, 0x84, 0x3f, 0x80, 0x00, 0x00, // Duration = 1.0 (Float32)
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Cluster
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  await expect(finalizeWebmDuration(source, 1e36)).resolves.toBe(source);
+});
+
+
+test("media load limiter recovery after queued decode rejection (case 2)", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  const order: string[] = [];
+  const failing = limitMediaLoad(async () => {
+    order.push("failed-start");
+    throw new Error("synthetic decode failure");
+  });
+  const queued = limitMediaLoad(async () => {
+    order.push("queued-start");
+    return "loaded";
+  });
+
+  await expect(failing).rejects.toThrow("synthetic decode failure");
+  await expect(queued).resolves.toBe("loaded");
+  expect(order).toEqual(["failed-start", "queued-start"]);
+});
+
+test("media load limiter preserves the concurrency cap when queued tasks reject", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(2);
+  let active = 0;
+  let maximumActive = 0;
+  const tasks = Array.from({ length: 8 }, (_, index) => limitMediaLoad(async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    try {
+      if (index % 3 === 0) throw new Error(`synthetic failure ${index}`);
+      return index;
+    } finally {
+      active -= 1;
+    }
+  }));
+
+  const results = await Promise.allSettled(tasks);
+  expect(maximumActive).toBeLessThanOrEqual(2);
+  expect(results.filter((result) => result.status === "rejected")).toHaveLength(3);
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
+});
+
+
+test("media preparation progress advances from zero without exceeding its reserved range", () => {
+  expect(getMediaPreparationProgress(0, 4)).toBe(0);
+  expect(getMediaPreparationProgress(1, 4)).toBe(3);
+  expect(getMediaPreparationProgress(2, 4)).toBe(5);
+  expect(getMediaPreparationProgress(4, 4)).toBe(10);
+  expect(getMediaPreparationProgress(100, 4)).toBe(10);
+  expect(getMediaPreparationProgress(1, 0)).toBe(0);
+  expect(getMediaPreparationProgress(Number.NaN, 4)).toBe(0);
+});
+
+test("render progress remains monotonic across preparation and frame rendering", () => {
+  const values = [
+    getMediaPreparationProgress(1, 5),
+    getMediaPreparationProgress(2, 5),
+    getMediaPreparationProgress(5, 5),
+    getRenderProgressPercent(0, 20),
+    getRenderProgressPercent(5, 20),
+    getRenderProgressPercent(10, 20),
+    getRenderProgressPercent(20, 20),
+  ];
+  expect(values).toEqual([2, 4, 10, 10, 32, 55, 99]);
+  expect(values.every((value, index) => index === 0 || value >= values[index - 1])).toBe(true);
+  expect(getRenderProgressPercent(Number.NaN, 20)).toBe(10);
+  expect(getRenderProgressPercent(20, 0)).toBe(10);
+});
+
+test("WebM duration finalization expands the Segment size field when inserted metadata crosses the one-byte limit", async () => {
+  // The original Segment payload is 123 bytes, which fits in a one-byte EBML
+  // size field. Inserting the 11-byte Duration element pushes it past 126 and
+  // requires a two-byte size field; media bytes after Info must remain intact.
+  const clusterPayload = new Uint8Array(106).fill(0x5a);
+  const fixture = new Uint8Array(4 + 1 + 12 + 5 + clusterPayload.length);
+  let cursor = 0;
+  fixture.set([0x18, 0x53, 0x80, 0x67, 0xfb], cursor); cursor += 5; // Segment size 123
+  fixture.set([0x15, 0x49, 0xa9, 0x66, 0x87], cursor); cursor += 5; // Info size 7
+  fixture.set([0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40], cursor); cursor += 7; // TimecodeScale
+  fixture.set([0x1f, 0x43, 0xb6, 0x75, 0x6a], cursor); cursor += 5; // Cluster size 106
+  fixture.set(clusterPayload, cursor);
+
+  const source = new Blob([fixture], { type: "video/webm" });
+  const finalized = await finalizeWebmDuration(source, 8);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+
+  expect(result[4] & 0x40).toBe(0x40); // Segment size now uses a two-byte VINT.
+  expect(result[5]).toBe(0x86); // 134-byte Segment payload.
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+  expect(hex).toContain("448988");
+  expect(Array.from(result.slice(-clusterPayload.length))).toEqual(Array.from(clusterPayload));
+});
+
+
+
+test("WebM duration finalization updates existing 64-bit Duration metadata without changing the media payload", async () => {
+  // Segment > Info > TimecodeScale + an existing Float64 Duration + Cluster.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x9c, // Segment payload: 28 bytes
+    0x15, 0x49, 0xa9, 0x66, 0x92, // Info payload: 18 bytes
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x44, 0x89, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Duration placeholder
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Cluster
+  ]);
+  const originalCluster = Array.from(fixture.slice(-5));
+  const source = new Blob([fixture], { type: "video/webm" });
+  const finalized = await finalizeWebmDuration(source, 12.5);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  const durationOffset = result.findIndex((value, index) =>
+    value === 0x44 && result[index + 1] === 0x89 && result[index + 2] === 0x88
+  );
+
+  expect(finalized.size).toBe(fixture.length);
+  expect(durationOffset).toBeGreaterThanOrEqual(0);
+  expect(new DataView(result.buffer, result.byteOffset, result.byteLength).getFloat64(durationOffset + 3, false)).toBeCloseTo(12500, 6);
+  expect(Array.from(result.slice(-5))).toEqual(originalCluster);
+});
+
+
+test("WebM duration finalization preserves the original blob when Float32 duration would overflow", async () => {
+  // Existing Duration is a 32-bit float. 1e36 seconds is finite in JavaScript,
+  // but its converted WebM time value cannot be represented as a finite Float32.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x91,
+    0x15, 0x49, 0xa9, 0x66, 0x87,
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40,
+    0x44, 0x89, 0x84, 0x00, 0x00, 0x00, 0x00,
+    0x1f, 0x43, 0xb6, 0x75, 0x80,
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+
+  await expect(finalizeWebmDuration(source, 1e36)).resolves.toBe(source);
+});
+
+test("WebM duration finalization preserves unknown-size Segment headers and encoded media bytes", async () => {
+  // Matroska streams may use an unknown Segment size (all data bits set).
+  // Duration insertion must not rewrite that sentinel as a finite byte count.
+  const cluster = new Uint8Array([0x1f, 0x43, 0xb6, 0x75, 0x84, 0xde, 0xad, 0xbe, 0xef]);
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0xff, // Segment with unknown size
+    0x15, 0x49, 0xa9, 0x66, 0x87, // Info, 7 bytes
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    ...cluster,
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  const finalized = await finalizeWebmDuration(source, 6.25);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+
+  expect(result[4]).toBe(0xff);
+  expect(hex).toContain("448988");
+  expect(Array.from(result.slice(-cluster.length))).toEqual(Array.from(cluster));
+  expect(finalized.size).toBe(fixture.length + 11);
+});
+
+test("WebM duration finalization preserves the original blob when a finite duration overflows Float32 metadata", async () => {
+  // Segment > Info > TimecodeScale + a four-byte Float32 Duration element.
+  // 3.5e35 seconds is finite, but its millisecond-scale WebM value exceeds Float32.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x97, // Segment: 23 bytes follow
+    0x15, 0x49, 0xa9, 0x66, 0x8d, // Info: 13 bytes follow
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x44, 0x89, 0x84, 0x00, 0x00, 0x00, 0x00, // Duration: Float32
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Minimal trailing Cluster payload
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  await expect(finalizeWebmDuration(source, 3.5e35)).resolves.toBe(source);
+});
+
+
+test("media load limiter releases its slot after a task fails so queued exports cannot deadlock", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  let announceStarted!: () => void;
+  const started = new Promise<void>((resolve) => { announceStarted = resolve; });
+  let rejectFirst!: (error: Error) => void;
+  const firstGate = new Promise<number>((_resolve, reject) => { rejectFirst = reject; });
+
+  const first = limitMediaLoad(async () => {
+    announceStarted();
+    return firstGate;
+  });
+  const second = limitMediaLoad(async () => 42);
+
+  await started;
+  rejectFirst(new Error("simulated decoder failure"));
+
+  await expect(first).rejects.toThrow("simulated decoder failure");
+  await expect(second).resolves.toBe(42);
 });
