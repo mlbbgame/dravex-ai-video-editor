@@ -90,9 +90,9 @@ jobs:
             fi
             echo "Validated $video: duration=${duration}s, codec=$video_codec, ${video_width}x${video_height}"
             file_frames=0
-            for point in 0 0.5 0.9; do
+            for point in 0 0.5 0.8; do
               timestamp="$(awk -v d="$duration" -v p="$point" 'BEGIN { t=d*p; if (t<0) t=0; if (t>d-0.1) t=(d>0.1 ? d-0.1 : 0); printf "%.3f", t }')"
-              if ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/dravex-review-frames/${name}-${point}.png"; then
+              if ffmpeg -hide_banner -loglevel error -y -ss "$timestamp" -i "$video" -frames:v 1 -vf "scale=320:-2" "test-results/dravex-review-frames/${name}-${point}.png" && [[ -s "test-results/dravex-review-frames/${name}-${point}.png" ]]; then
                 frame_count=$((frame_count + 1))
                 file_frames=$((file_frames + 1))
               else
