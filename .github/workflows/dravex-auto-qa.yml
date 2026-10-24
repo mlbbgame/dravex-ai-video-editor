@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: dravex-auto-qa-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep quality-gate runs alive; newer pushes queue instead of cancelling active validation.
+  cancel-in-progress: false
 
 jobs:
   build-and-browser-qa:
