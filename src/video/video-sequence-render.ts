@@ -175,11 +175,26 @@ export function getRenderFrameInterval(frameRate = 24): number {
 
 function waitForRenderFrame(lastFrameAt: number, intervalMs: number): Promise<number> {
   return new Promise((resolve) => {
-    const check = (timestamp: number) => {
-      if (timestamp - lastFrameAt >= intervalMs) resolve(timestamp);
-      else requestAnimationFrame(check);
+    let settled = false;
+    let timeoutId = 0;
+    let frameId = 0;
+    const finish = (timestamp: number) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      if (frameId) cancelAnimationFrame(frameId);
+      resolve(timestamp);
     };
-    requestAnimationFrame(check);
+    const check = (timestamp: number) => {
+      if (settled) return;
+      if (timestamp - lastFrameAt >= intervalMs) finish(timestamp);
+      else frameId = requestAnimationFrame(check);
+    };
+    // Some mobile browsers throttle or pause requestAnimationFrame when the tab is
+    // backgrounded or under memory pressure. A watchdog prevents the render loop from
+    // waiting forever for a frame callback; the next iteration can continue on a timer.
+    timeoutId = window.setTimeout(() => finish(Math.max(performance.now(), lastFrameAt + intervalMs)), Math.max(250, intervalMs * 3));
+    frameId = requestAnimationFrame(check);
   });
 }
 
