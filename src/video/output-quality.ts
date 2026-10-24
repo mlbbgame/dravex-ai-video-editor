@@ -60,10 +60,13 @@ const seekTo = async (video: HTMLVideoElement, time: number) => {
   // Register the bounded wait before seeking. If currentTime throws synchronously,
   // the wait still has a timeout and cleans up its listeners.
   const seeked = waitForMediaEvent(video, "seeked");
+  // Keep a rejection handler attached in case setting currentTime fails before
+  // the browser can emit "seeked"; the bounded wait still cleans up its listeners.
+  void seeked.catch(() => undefined);
   try {
     video.currentTime = time;
-  } catch (error) {
-    await seeked.catch(() => undefined);
+  } catch {
+    // Do not wait for the 12-second media timeout after a synchronous seek failure.
     throw new Error("Не удалось перейти к кадру экспортированного видео.");
   }
   await seeked;
