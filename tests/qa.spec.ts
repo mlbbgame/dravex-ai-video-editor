@@ -886,3 +886,71 @@ test("invalid duration never returns malformed highlight candidates", () => {
   expect(ensureCandidateCoverage([], [candidate], Number.NaN)).toEqual([]);
   expect(ensureCandidateCoverage([], [candidate], 0.1)).toEqual([]);
 });
+
+
+test("one-button mixed video-and-photo montage reaches a playable result", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("details.dravex-more > summary").click();
+
+  const durationSlider = page.getByRole("slider", { name: "Длительность ролика в секундах" });
+  await expect(durationSlider).toBeVisible();
+  await durationSlider.focus();
+  await durationSlider.press("Home");
+  await expect(durationSlider).toHaveValue("5");
+
+  const sourceFixturePath = `/tmp/dravex-mixed-source-${process.pid}.webm`;
+  execFileSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=12",
+    "-t", "2", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8",
+    "-b:v", "180k", "-g", "12", "-pix_fmt", "yuv420p", "-an",
+    "-f", "webm", sourceFixturePath, "-y"
+  ], { stdio: "pipe" });
+  const sourceVideo = await readFile(sourceFixturePath);
+  await unlink(sourceFixturePath);
+  const photo = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="800"><rect width="480" height="800" fill="#14213d"/><circle cx="240" cy="300" r="120" fill="#fca311"/><path d="M0 650 L180 450 L300 590 L400 500 L480 620 V800 H0Z" fill="#090b12"/></svg>',
+    "utf8",
+  );
+
+  await page.locator('input[accept="video/*,image/*"]').setInputFiles([
+    { name: "dravex-mixed-source.webm", mimeType: "video/webm", buffer: sourceVideo },
+    { name: "dravex-mixed-photo.svg", mimeType: "image/svg+xml", buffer: photo },
+  ]);
+
+  await expect(page.locator(".dravex-source-video-wrap video.dravex-preview")).toBeVisible();
+  await expect(page.locator(".dravex-variant video")).toHaveCount(4, { timeout: 60_000 });
+  await page.getByRole("button", { name: "Автомонтаж" }).click();
+
+  const result = page.locator(".dravex-result");
+  await expect(result.getByText("Видео готово!")).toBeVisible({ timeout: 60_000 });
+  const outputVideo = result.locator("video.dravex-output");
+  await expect(outputVideo).toBeVisible();
+  await outputVideo.evaluate((video: HTMLVideoElement) => {
+    if (video.readyState >= 1) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Mixed-media output metadata did not load")), 10_000);
+      video.addEventListener("loadedmetadata", () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      video.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Mixed-media montage could not be played back"));
+      }, { once: true });
+    });
+  });
+
+  const playback = await outputVideo.evaluate((video: HTMLVideoElement) => ({
+    duration: video.duration,
+    width: video.videoWidth,
+    height: video.videoHeight,
+    source: video.currentSrc,
+  }));
+  expect(playback.source).toMatch(/^blob:/);
+  expect(playback.duration).toBeGreaterThan(1);
+  expect(playback.width).toBeGreaterThan(0);
+  expect(playback.height).toBeGreaterThan(0);
+});
