@@ -8,6 +8,7 @@ import {
   buildHighlightVariants,
   type HighlightMoment,
 } from "../src/video/highlight-finder";
+import { selectDiverseHighlightMoments } from "../src/video/montage-selection";
 import { buildDirectorEventTimeline } from "../src/video/director-event-timeline";
 import { buildSmartEyeReport } from "../src/video/smart-eye";
 
@@ -249,4 +250,28 @@ test("frame quality scoring stays bounded and ignores malformed feature values",
   expect(Number.isFinite(malformed)).toBe(true);
   expect(malformed).toBeGreaterThanOrEqual(0);
   expect(malformed).toBeLessThanOrEqual(1);
+});
+
+
+test("diverse selection preserves broad timeline coverage when early moments score highest", () => {
+  const candidates: HighlightMoment[] = Array.from({ length: 20 }, (_, index) => {
+    const time = 0.5 + index;
+    return {
+      time,
+      start: time - 0.2,
+      end: time + 0.2,
+      score: index < 6 ? 1 : 0.55,
+      motion: index < 6 ? 1 : 0.4,
+      contrast: 0.5,
+    };
+  });
+
+  const selected = selectDiverseHighlightMoments(candidates, 6, 21, "velocity");
+  expect(selected.length).toBe(6);
+  expect(selected.map((item) => item.time)).toEqual(
+    [...selected].map((item) => item.time).sort((a, b) => a - b),
+  );
+  expect(selected[0].time).toBeLessThan(4);
+  expect(selected[selected.length - 1].time).toBeGreaterThan(15);
+  expect(new Set(selected.map((item) => Math.floor(item.time / 5))).size).toBeGreaterThanOrEqual(4);
 });
