@@ -481,7 +481,7 @@ test("WebM duration finalization preserves 32-bit Duration metadata when a finit
 });
 
 
-test("media load limiter releases its slot after a rejected decode and continues queued work", async () => {
+test("media load limiter recovery after queued decode rejection (case 2)", async () => {
   const limitMediaLoad = createMediaLoadLimiter(1);
   const order: string[] = [];
   const failing = limitMediaLoad(async () => {
