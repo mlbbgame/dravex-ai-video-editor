@@ -210,3 +210,19 @@ test("diverse selector returns no cuts for invalid duration or an unusable candi
     { ...candidate, time: 8, start: 0.5, end: 1.5 },
   ], 4, 10, "cinematic")).toEqual([]);
 });
+
+
+test("style ranking favours motion for velocity and calmer moments for story", () => {
+  const candidates: HighlightMoment[] = [
+    { time: 2, start: 1.5, end: 2.5, score: 0.5, motion: 0.95, contrast: 0.5 },
+    { time: 7, start: 6.5, end: 7.5, score: 0.5, motion: 0.1, contrast: 0.5 },
+  ];
+
+  const velocity = rankHighlightMomentsForStyle(candidates, "velocity");
+  const story = rankHighlightMomentsForStyle(candidates, "story");
+
+  expect(velocity[0].time).toBe(2);
+  expect(story[0].time).toBe(7);
+  // Ranking must not mutate the original candidate order.
+  expect(candidates.map((item) => item.time)).toEqual([2, 7]);
+});
