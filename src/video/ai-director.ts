@@ -880,6 +880,68 @@ export async function analyzeWithAIDirector(
 
 
 /**
+ * Select clip treatment from observed cues instead of applying identical effects
+ * to every shot. Cues are heuristic evidence; they never prove a named action.
+ */
+export function getDirectorClipTreatment(
+  moment: Pick<DirectedMoment, "score" | "motion" | "actionCues">,
+  style: DirectorStyle
+): { transitionOutSeconds: number; effects: string[] } {
+  const cues = new Set(Array.isArray(moment.actionCues)
+    ? moment.actionCues.filter((cue): cue is string => typeof cue === "string")
+    : []);
+  const motionPeak = cues.has("Пик движения") || cues.has("Резкое движение") || cues.has("Движение выше среднего");
+  const sceneChange = cues.has("Вероятная смена сцены");
+  const movingSubject = cues.has("Объект перемещается по кадру") || cues.has("Объект приближается");
+  const safeScore = Number.isFinite(moment.score) ? Math.max(0, Math.min(1, moment.score)) : 0;
+  const safeMotion = Number.isFinite(moment.motion) ? Math.max(0, moment.motion) : 0;
+  const expressiveMoment = safeScore >= 0.72 || motionPeak || sceneChange;
+
+  let transitionOutSeconds: number;
+  switch (style) {
+    case "cinematic":
+    case "story":
+      transitionOutSeconds = sceneChange ? 0.38 : motionPeak ? 0.32 : 0.48;
+      break;
+    case "velocity":
+      transitionOutSeconds = motionPeak ? 0.18 : sceneChange ? 0.22 : 0.3;
+      break;
+    case "glitch":
+      transitionOutSeconds = motionPeak || sceneChange ? 0.16 : 0.24;
+      break;
+    case "anime":
+      transitionOutSeconds = motionPeak || sceneChange ? 0.2 : 0.3;
+      break;
+  }
+
+  let effects: string[];
+  switch (style) {
+    case "velocity":
+      effects = ["vignette"];
+      if (movingSubject || safeMotion >= 0.12) effects.unshift("speed-lines");
+      if (expressiveMoment) effects.unshift("flash");
+      break;
+    case "glitch":
+      effects = ["chromatic-shift", "vignette"];
+      if (expressiveMoment) effects.unshift("glitch-slices", "flash");
+      break;
+    case "cinematic":
+      effects = ["letterbox", "vignette"];
+      if (safeScore >= 0.78 && !motionPeak) effects.unshift("light-leak");
+      break;
+    case "anime":
+      effects = ["vignette"];
+      if (expressiveMoment) effects.unshift("flash");
+      break;
+    case "story":
+      effects = ["vignette"];
+      if (sceneChange) effects.unshift("light-leak");
+      break;
+  }
+  return { transitionOutSeconds, effects };
+}
+
+/**
  * Convert analyzed AI Director moments into the versioned render-plan contract.
  * This adapter validates the plan; it does not render media or claim unmeasured quality.
  */
@@ -891,19 +953,18 @@ export function buildDirectorMontagePlan(input: {
   output: DirectorOutputSettings;
 }): { plan: ContractMontagePlan | null; validation: ContractValidation } {
   const { id, source, candidates, output } = input;
-  const clips = candidates.map((moment, index) => ({
-    id: `${id}-clip-${index + 1}`,
-    sourceId: source.id,
-    sourceStartSeconds: moment.start,
-    sourceEndSeconds: moment.end,
-    speedFactor: 1,
-    transitionOutSeconds: input.style === "cinematic" || input.style === "story" ? 0.45 : input.style === "velocity" || input.style === "glitch" ? 0.28 : 0.36,
-    effects: input.style === "velocity" ? ["flash", "speed-lines", "vignette"]
-      : input.style === "glitch" ? ["flash", "glitch-slices", "chromatic-shift", "vignette"]
-        : input.style === "cinematic" ? ["light-leak", "letterbox", "vignette"]
-          : input.style === "anime" ? ["flash", "vignette"]
-            : ["vignette"],
-  }));
+  const clips = candidates.map((moment, index) => {
+    const treatment = getDirectorClipTreatment(moment, input.style);
+    return {
+      id: `${id}-clip-${index + 1}`,
+      sourceId: source.id,
+      sourceStartSeconds: moment.start,
+      sourceEndSeconds: moment.end,
+      speedFactor: 1,
+      transitionOutSeconds: treatment.transitionOutSeconds,
+      effects: treatment.effects,
+    };
+  });
   const evidence = candidates.flatMap((moment) => {
     const rows = [
       ...(moment.sceneLabels ?? []).map((label) => ({
