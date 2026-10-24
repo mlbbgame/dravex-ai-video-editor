@@ -28,6 +28,20 @@ test("preserves selected media order and caps a mixed sequence to its duration b
   expect(totalDuration).toBeLessThanOrEqual(10);
 });
 
+test("keeps repeated identical image selections as separate timeline entries", () => {
+  const repeated = { kind: "image" as const, name: "same.jpg", url: "blob:same" };
+  const result = buildMixedMediaSequence([
+    repeated,
+    { kind: "video", name: "source.mp4", url: "blob:video" },
+    repeated,
+  ], cuts, 10);
+
+  expect(result.map((segment) => segment.kind ?? "video")).toEqual(["image", "video", "video", "image"]);
+  expect(result.filter((segment) => segment.kind === "image")).toHaveLength(2);
+  expect(result[0]).toMatchObject({ name: "same.jpg", url: "blob:same" });
+  expect(result[3]).toMatchObject({ name: "same.jpg", url: "blob:same" });
+});
+
 test("rejects invalid duration, missing cuts, or multiple source videos", () => {
   expect(buildMixedMediaSequence([], cuts, 10)).toEqual([]);
   expect(buildMixedMediaSequence([{ kind: "image", name: "a.jpg", url: "blob:a" }, { kind: "video", name: "v.mp4", url: "blob:v" }, { kind: "video", name: "w.mp4", url: "blob:w" }], cuts, 10)).toEqual([]);

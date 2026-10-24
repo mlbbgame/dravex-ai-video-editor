@@ -56,9 +56,13 @@ export function buildMixedMediaSequence(
 
   const result: SequenceSegment[] = [];
   let insertedImages = false;
+  let imageIndex = 0;
   for (const item of order) {
     if (item.kind === "image") {
-      result.push(imageSegments[images.findIndex((image) => image.url === item.url && image.name === item.name)]);
+      // Use the position in the selected list, not a URL/name lookup: users may
+      // intentionally add the same photo more than once to control pacing.
+      const imageSegment = imageSegments[imageIndex++];
+      if (imageSegment) result.push(imageSegment);
     } else if (!insertedImages) {
       // The video is a single source but may produce many analysed cuts.
       result.push(...scaledVideos);
