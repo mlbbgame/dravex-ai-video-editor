@@ -13,8 +13,10 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  # Keep test-preview runs separate from the primary site's Pages deployment.
+  # The artifact still includes the current main build at the root.
+  group: dravex-test-preview-pages
+  cancel-in-progress: false
 
 jobs:
   build:
