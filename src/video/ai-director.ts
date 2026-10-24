@@ -208,20 +208,37 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   const target = Math.max(0, Math.min(time, video.duration - 0.06));
   if (video.readyState >= 2 && Math.abs(video.currentTime - target) < 0.02) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("Истёк тайм-аут чтения кадра."));
-    }, 8000);
+    let settled = false;
+    let timeout = 0;
     const cleanup = () => {
       window.clearTimeout(timeout);
       video.removeEventListener("seeked", ready);
       video.removeEventListener("error", failed);
     };
-    const ready = () => { cleanup(); resolve(); };
-    const failed = () => { cleanup(); reject(new Error("Браузер не смог прочитать кадр.")); };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const ready = () => finish();
+    const failed = () => finish(new Error("Браузер не смог прочитать кадр."));
+    // Start the watchdog after listener setup, and route synchronous seek errors
+    // through the same cleanup path. Some mobile decoders throw when a source is
+    // still settling; otherwise the rejected promise would leave listeners and
+    // an 8-second timer attached to the media element.
     video.addEventListener("seeked", ready, { once: true });
     video.addEventListener("error", failed, { once: true });
-    video.currentTime = target;
+    timeout = window.setTimeout(
+      () => finish(new Error("Истёк тайм-аут чтения кадра.")),
+      8000,
+    );
+    try {
+      video.currentTime = target;
+    } catch {
+      finish(new Error("Не удалось перейти к кадру видео. Попробуй другой файл."));
+    }
   });
 }
 
