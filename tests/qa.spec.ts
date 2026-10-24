@@ -953,4 +953,29 @@ test("one-button mixed video-and-photo montage reaches a playable result", async
   expect(playback.duration).toBeGreaterThan(1);
   expect(playback.width).toBeGreaterThan(0);
   expect(playback.height).toBeGreaterThan(0);
+
+  // Keep the mixed-media render itself for visual inspection alongside the
+  // photo-only and video-only exports; playback assertions alone cannot reveal
+  // ordering, blank frames, or framing problems in the rendered result.
+  const downloadPromise = page.waitForEvent("download");
+  await result.getByRole("link", { name: "Сохранить видео" }).click();
+  const download = await downloadPromise;
+  expect(await download.failure()).toBeNull();
+  const downloadedFile = await download.path();
+  expect(downloadedFile).toBeTruthy();
+  expect((await stat(downloadedFile!)).size).toBeGreaterThan(1_000);
+  const probe = JSON.parse(execFileSync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration,format_name:stream=codec_type,width,height",
+    "-of", "json",
+    downloadedFile!
+  ], { encoding: "utf8" })) as {
+    format?: { duration?: string; format_name?: string };
+    streams?: Array<{ codec_type?: string; width?: number; height?: number }>;
+  };
+  expect(probe.format?.format_name).toContain("webm");
+  expect(Number(probe.format?.duration)).toBeGreaterThan(1);
+  expect(probe.streams?.some((stream) => stream.codec_type === "video" && (stream.width ?? 0) > 0 && (stream.height ?? 0) > 0)).toBe(true);
+  await mkdir("test-results", { recursive: true });
+  await copyFile(downloadedFile!, "test-results/dravex-mixed-media-montage.webm");
 });
