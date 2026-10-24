@@ -77,3 +77,19 @@ test("diagnostics tolerate malformed detail and export inputs", () => {
   expect(event.details).toEqual({});
   expect(buildDirectorDiagnosticExport(null as never).events).toEqual([]);
 });
+
+test("diagnostics preserve mixed video and photo media kind", () => {
+  const event = createDirectorDiagnostic("montage-failed", {
+    mediaKind: "mixed",
+    mediaCount: 3,
+    reasonCode: "analysis-unavailable",
+    phase: "analysis",
+  }, "2026-10-24T11:00:00.000Z");
+
+  expect(event.details).toEqual({
+    mediaKind: "mixed",
+    mediaCount: 3,
+    reasonCode: "analysis-unavailable",
+    phase: "analysis",
+  });
+});
