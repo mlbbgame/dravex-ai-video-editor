@@ -18,6 +18,51 @@ export function hasReachedMediaReadyState(successEvent: string, readyState: numb
   return false;
 }
 
+/** Metadata is usable only once duration and dimensions have settled to positive finite values. */
+export function hasUsableVideoMetadata(duration: number, width: number, height: number): boolean {
+  return Number.isFinite(duration) && duration > 0
+    && Number.isFinite(width) && width > 0
+    && Number.isFinite(height) && height > 0;
+}
+
+/**
+ * Some WebM decoders first report Infinity for duration and later emit
+ * durationchange. Keep waiting for that update instead of rejecting a valid
+ * export immediately after loadedmetadata.
+ */
+const waitForUsableVideoMetadata = (video: HTMLVideoElement): Promise<void> =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", check);
+      video.removeEventListener("durationchange", check);
+      video.removeEventListener("error", onError);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const check = () => {
+      if (hasUsableVideoMetadata(video.duration, video.videoWidth, video.videoHeight)) finish();
+    };
+    const onError = () => finish(new Error("Браузер не смог декодировать экспортированное видео."));
+    video.addEventListener("loadedmetadata", check);
+    video.addEventListener("durationchange", check);
+    video.addEventListener("error", onError);
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Не удалось получить корректную длительность и размер экспортированного видео за 12 секунд.")),
+      12000,
+    );
+    // Re-check after attaching listeners to cover cached Blob URLs and events
+    // that fire between source assignment and listener registration.
+    check();
+  });
+
 const waitForMediaEvent = (video: HTMLVideoElement, successEvent: string): Promise<void> =>
   new Promise((resolve, reject) => {
     let settled = false;
@@ -179,15 +224,15 @@ export async function inspectRenderedVideo(
   video.preload = "auto";
   const url = URL.createObjectURL(blob);
   try {
-    // Register listeners before assigning src; cached/local blobs can emit
-    // metadata almost immediately, otherwise inspection may wait 12 seconds.
-    const metadataReady = waitForMediaEvent(video, "loadedmetadata");
+    // Some WebM decoders expose Infinity until durationchange. Wait for finite,
+    // positive metadata instead of failing valid exports on the first event.
+    const metadataReady = waitForUsableVideoMetadata(video);
     // If a browser throws synchronously while setting src, consume the pending
     // timeout rejection as well as allowing the main path to await it normally.
     void metadataReady.catch(() => {});
     video.src = url;
     await metadataReady;
-    if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
+    if (!hasUsableVideoMetadata(video.duration, video.videoWidth, video.videoHeight)) {
       throw new Error("В экспортированном видео отсутствуют корректные метаданные.");
     }
     const canvas = document.createElement("canvas");
