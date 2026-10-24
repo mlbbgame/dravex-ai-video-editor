@@ -985,13 +985,24 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   }
 
   const { width, height, frameRate, videoBitsPerSecond } = getExportProfile(aspectRatio, quality);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
+  // On memory-constrained Android devices, allocating a large 4K canvas can
+  // throw instead of returning a null 2D context. Treat both outcomes as a
+  // recoverable export setup failure and release already-decoded media.
+  let canvas: HTMLCanvasElement;
+  let context: CanvasRenderingContext2D | null;
+  try {
+    canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    context = canvas.getContext("2d");
+  } catch (error) {
+    releaseLoadedMedia();
+    const detail = error instanceof Error ? error.message : "ошибка выделения памяти";
+    throw new Error(`Не удалось подготовить холст ${width}×${height} для экспорта (${detail}). Попробуй 720p или закрой другие приложения и повтори экспорт.`);
+  }
   if (!context) {
     releaseLoadedMedia();
-    throw new Error("Could not initialize the video renderer.");
+    throw new Error(`Не удалось создать холст ${width}×${height} для экспорта. Попробуй 720p или закрой другие приложения и повтори экспорт.`);
   }
 
   let videoStream: MediaStream;
