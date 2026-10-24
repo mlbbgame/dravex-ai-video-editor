@@ -9,6 +9,7 @@ import {
 } from "../src/video/highlight-finder";
 import { buildDirectorEventTimeline } from "../src/video/director-event-timeline";
 import { buildSmartEyeReport } from "../src/video/smart-eye";
+import { getDirectorClipTreatment, inferTrackedObjectCues, type DetectedObject, type DirectedMoment } from "../src/video/ai-director";
 
 function makeCandidates(duration: number): HighlightMoment[] {
   const result: HighlightMoment[] = [];
@@ -158,4 +159,74 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
       expect(moment.end).toBeGreaterThan(moment.start);
     }
   }
+});
+
+test("tracked object cues require nearby, ordered observations from the actual analyzed samples", () => {
+  const previous: DetectedObject[] = [{
+    label: "car",
+    score: 0.9,
+    box: { xmin: 80, ymin: 50, xmax: 140, ymax: 100 },
+  }];
+  const current: DetectedObject[] = [{
+    label: "car",
+    score: 0.92,
+    box: { xmin: 110, ymin: 50, xmax: 180, ymax: 110 },
+  }];
+
+  // Nearby analyzed frames can support motion/approach cues.
+  expect(inferTrackedObjectCues(previous, current, 4, 5)).not.toHaveLength(0);
+  // A timestamp accidentally taken from a different, much earlier candidate
+  // must not make detections appear temporally adjacent.
+  expect(inferTrackedObjectCues(previous, current, 1, 5)).toEqual([]);
+  expect(inferTrackedObjectCues(previous, current, 5, 4)).toEqual([]);
+  expect(inferTrackedObjectCues(previous, current, Number.NaN, 5)).toEqual([]);
+});
+
+
+test("AI Director adapts transition timing and effects to evidence instead of repeating one preset", () => {
+  const base: DirectedMoment = {
+    time: 2,
+    start: 1.5,
+    end: 2.5,
+    score: 0.5,
+    motion: 0.03,
+    contrast: 0.2,
+    sceneLabels: ["car"],
+    actionCues: ["Стабильный кадр"],
+    directorScore: 0.5,
+  };
+  const action: DirectedMoment = {
+    ...base,
+    time: 5,
+    start: 4.5,
+    end: 5.5,
+    score: 0.9,
+    motion: 0.2,
+    actionCues: ["Пик движения", "Объект перемещается по кадру"],
+    directorScore: 0.9,
+  };
+  const stableTreatment = getDirectorClipTreatment(base, "velocity");
+  const actionTreatment = getDirectorClipTreatment(action, "velocity");
+  expect(actionTreatment.transitionOutSeconds).toBeLessThan(stableTreatment.transitionOutSeconds);
+  expect(actionTreatment.effects).toContain("flash");
+  expect(actionTreatment.effects).toContain("speed-lines");
+  expect(stableTreatment.effects).not.toContain("flash");
+
+  const cinemaStable = getDirectorClipTreatment(base, "cinematic");
+  const cinemaAction = getDirectorClipTreatment(action, "cinematic");
+  expect(cinemaStable.transitionOutSeconds).toBeGreaterThan(cinemaAction.transitionOutSeconds);
+  expect(cinemaStable.effects).toContain("letterbox");
+  expect(cinemaStable.effects).not.toContain("flash");
+});
+
+test("AI Director treatment safely handles missing or malformed cue data", () => {
+  const malformed = {
+    score: Number.NaN,
+    motion: Number.POSITIVE_INFINITY,
+    actionCues: null,
+  } as unknown as Pick<DirectedMoment, "score" | "motion" | "actionCues">;
+  const treatment = getDirectorClipTreatment(malformed, "glitch");
+  expect(Number.isFinite(treatment.transitionOutSeconds)).toBe(true);
+  expect(treatment.transitionOutSeconds).toBeGreaterThan(0);
+  expect(treatment.effects).toEqual(["chromatic-shift", "vignette"]);
 });

@@ -60,8 +60,11 @@ export function assessMediaSelection(files: readonly MediaIntakeFile[]): MediaIn
     warnings.push("Общий размер фотографий большой. Если редактор зависает, попробуй уменьшить количество или размер исходников.");
   }
 
-  if (totalBytes >= VERY_LARGE_SELECTION_WARNING_BYTES && largeVideos.length === 0) {
-    warnings.push(`Выбрано много данных (${formatBytes(totalBytes)}). Убедись, что на телефоне достаточно свободной памяти.`);
+  // A large-video warning alone does not account for the combined memory pressure
+  // of that video plus photos. Keep the single-file message concise, but warn when
+  // the whole mixed selection is large enough to strain an Android browser.
+  if (totalBytes >= VERY_LARGE_SELECTION_WARNING_BYTES && (largeVideos.length === 0 || images.length > 0)) {
+    warnings.push(`Общий объём выбранных файлов — ${formatBytes(totalBytes)}. На Android это может привести к нехватке памяти при анализе или экспорте; при сбоях попробуй обработать видео отдельно или уменьшить число фотографий.`);
   }
 
   return { valid: errors.length === 0, totalBytes, errors, warnings };

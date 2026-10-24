@@ -77,3 +77,21 @@ test("diagnostics tolerate malformed detail and export inputs", () => {
   expect(event.details).toEqual({});
   expect(buildDirectorDiagnosticExport(null as never).events).toEqual([]);
 });
+test("diagnostics preserve the source-unreadable reason without exposing media details", () => {
+  const event = createDirectorDiagnostic("montage-failed", {
+    reasonCode: "source-unreadable",
+    phase: "analysis",
+    mediaKind: "video",
+    mediaCount: 1,
+    quality: "1080p",
+  }, "2026-10-22T23:33:57.299Z");
+
+  expect(event.details).toEqual({
+    reasonCode: "source-unreadable",
+    phase: "analysis",
+    mediaKind: "video",
+    mediaCount: 1,
+    quality: "1080p",
+  });
+  expect(JSON.stringify(event)).not.toContain("filename");
+});

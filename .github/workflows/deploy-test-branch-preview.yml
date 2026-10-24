@@ -1,0 +1,105 @@
+name: Deploy DRAVEX test branch to preview while keeping main site stable
+# Test-only deployment: main remains the source for the root site; this branch is copied to /preview/.
+
+on:
+  push:
+    branches:
+      - feat/reliability-milestone-video-export-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out stable main source for the primary site
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-source
+
+      - name: Check out the test branch for the preview
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          path: preview-source
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install stable site dependencies
+        working-directory: main-source
+        run: npm install --no-audit --no-fund
+
+      - name: Build stable primary site from main
+        working-directory: main-source
+        run: npm run build
+
+      - name: Copy stable primary site
+        run: |
+          mkdir -p dist
+          cp -R main-source/dist/. dist/
+
+      - name: Install test branch dependencies
+        working-directory: preview-source
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check and build test branch before deployment
+        working-directory: preview-source
+        run: npm run build
+
+      - name: Install Chromium for Playwright
+        working-directory: preview-source
+        run: npx playwright install --with-deps chromium
+
+      - name: Ensure ffmpeg for long-video fixtures
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+
+      - name: Run DRAVEX browser regression tests before preview deployment
+        working-directory: preview-source
+        run: npm run test:qa
+
+      - name: Build test branch under the preview path
+        working-directory: preview-source
+        run: npm run build -- --base=/dravex-ai-video-editor/preview/
+
+      - name: Copy test branch into preview path
+        run: |
+          mkdir -p dist/preview
+          cp -R preview-source/dist/. dist/preview/
+
+      - name: Upload combined stable-site and test-preview artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy stable main site plus test preview
+        id: deployment
+        uses: actions/deploy-pages@v4

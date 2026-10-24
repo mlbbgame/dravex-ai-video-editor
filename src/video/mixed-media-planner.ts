@@ -43,7 +43,7 @@ export function buildMixedMediaSequence(
     const nextSpan = sourceSpan * scale;
     const center = (segment.trimStart + segment.trimEnd) / 2;
     const trimStart = Math.max(0, center - nextSpan / 2);
-    return { ...segment, trimStart, trimEnd: trimStart + nextSpan };
+    return { ...segment, kind: "video" as const, trimStart, trimEnd: trimStart + nextSpan };
   });
   const imageSegments: ImageSegment[] = images.map((image) => ({
     kind: "image",

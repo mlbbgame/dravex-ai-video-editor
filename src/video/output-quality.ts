@@ -10,44 +10,229 @@ export type OutputQualityReport = {
   severity: "ok" | "warning";
 };
 
+/** Ready-state guard prevents waiting for an event that fired just before listeners attached. */
+export function hasReachedMediaReadyState(successEvent: string, readyState: number): boolean {
+  if (!Number.isFinite(readyState)) return false;
+  if (successEvent === "loadedmetadata") return readyState >= 1;
+  if (successEvent === "loadeddata") return readyState >= 2;
+  return false;
+}
+
+/** Metadata is usable only once duration and dimensions have settled to positive finite values. */
+export function hasUsableVideoMetadata(duration: number, width: number, height: number): boolean {
+  return Number.isFinite(duration) && duration > 0
+    && Number.isFinite(width) && width > 0
+    && Number.isFinite(height) && height > 0;
+}
+
+/**
+ * Some WebM decoders first report Infinity for duration and later emit
+ * durationchange. Keep waiting for that update instead of rejecting a valid
+ * export immediately after loadedmetadata.
+ */
+const waitForUsableVideoMetadata = (video: HTMLVideoElement): Promise<void> =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", check);
+      video.removeEventListener("durationchange", check);
+      video.removeEventListener("error", onError);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const check = () => {
+      if (hasUsableVideoMetadata(video.duration, video.videoWidth, video.videoHeight)) finish();
+    };
+    const onError = () => finish(new Error("Браузер не смог декодировать экспортированное видео."));
+    video.addEventListener("loadedmetadata", check);
+    video.addEventListener("durationchange", check);
+    video.addEventListener("error", onError);
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Не удалось получить корректную длительность и размер экспортированного видео за 12 секунд.")),
+      12000,
+    );
+    // Re-check after attaching listeners to cover cached Blob URLs and events
+    // that fire between source assignment and listener registration.
+    check();
+  });
+
 const waitForMediaEvent = (video: HTMLVideoElement, successEvent: string): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => { cleanup(); reject(new Error("Истекло время ожидания декодирования видео.")); }, 12000);
-    const onSuccess = () => { cleanup(); resolve(); };
-    const onError = () => { cleanup(); reject(new Error("Браузер не смог декодировать экспортированное видео.")); };
+    let settled = false;
+    let timeoutId = 0;
     const cleanup = () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(timeoutId);
       video.removeEventListener(successEvent, onSuccess);
       video.removeEventListener("error", onError);
     };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onSuccess = () => finish();
+    const onError = () => finish(new Error("Браузер не смог декодировать экспортированное видео."));
     video.addEventListener(successEvent, onSuccess, { once: true });
     video.addEventListener("error", onError, { once: true });
+    // Register first, then re-check state: media may become ready between the
+    // caller's check and listener registration, especially for local Blob URLs.
+    if (hasReachedMediaReadyState(successEvent, video.readyState)) {
+      finish();
+      return;
+    }
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Истекло время ожидания декодирования видео.")),
+      12000,
+    );
   });
 
 const seekTo = async (video: HTMLVideoElement, time: number) => {
-  if (Math.abs(video.currentTime - time) < 0.025) return;
-  const seeked = waitForMediaEvent(video, "seeked");
-  video.currentTime = time;
-  await seeked;
+  if (!Number.isFinite(time) || time < 0 || time >= video.duration) {
+    throw new Error("Выбрана недопустимая точка для проверки видео.");
+  }
+  if (Math.abs(video.currentTime - time) < 0.025) {
+    // A matching timestamp does not prove the frame has decoded. On the first
+    // inspection sample Android Chrome can still be below HAVE_CURRENT_DATA;
+    // drawing immediately may throw or sample an unready frame. Wait for data
+    // rather than assigning the same currentTime (which may never emit seeked).
+    if (!shouldWaitForDecodedFrame(video.currentTime, time, video.readyState)) return;
+    await waitForMediaEvent(video, "loadeddata");
+    return;
+  }
+
+  // Attach listeners before seeking, and always remove them on success, timeout,
+  // decoder error, or a synchronous currentTime exception. A rejected seek must
+  // not leave a dangling 12-second promise/listener on mobile.
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onSeeked = () => finish();
+    const onError = () => finish(new Error("Браузер не смог перейти к кадру для проверки экспорта."));
+    video.addEventListener("seeked", onSeeked, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Истекло время ожидания перехода к кадру экспортированного видео.")),
+      12000,
+    );
+    try {
+      video.currentTime = time;
+    } catch {
+      finish(new Error("Не удалось перейти к кадру экспортированного видео."));
+    }
+  });
 };
 
-export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[]): "ok" | "warning" {
-  return blackFrameTimes.length || frozenFramePairs.length ? "warning" : "ok";
+export function isRenderedDurationWithinTolerance(actualDuration: number, expectedDuration: number, toleranceSeconds = 0.75): boolean {
+  if (!Number.isFinite(actualDuration) || actualDuration <= 0 || !Number.isFinite(expectedDuration) || expectedDuration <= 0) return false;
+  // Keep the guard deterministic if callers accidentally pass NaN, Infinity,
+  // or a negative tolerance. Invalid tolerances use the same conservative
+  // default as an omitted tolerance rather than disabling the duration check.
+  const safeTolerance = Number.isFinite(toleranceSeconds) && toleranceSeconds >= 0
+    ? toleranceSeconds
+    : 0.75;
+  const tolerance = Math.max(safeTolerance, expectedDuration * 0.05);
+  return Math.abs(actualDuration - expectedDuration) <= tolerance;
 }
 
-export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityReport> {
-  const url = URL.createObjectURL(blob);
+/** Whether the current frame must finish decoding before it can be sampled. */
+export function shouldWaitForDecodedFrame(currentTime: number, targetTime: number, readyState: number): boolean {
+  if (!Number.isFinite(currentTime) || !Number.isFinite(targetTime) || !Number.isFinite(readyState)) return true;
+  return Math.abs(currentTime - targetTime) < 0.025 && readyState < 2;
+}
+
+/** Avoid treating adjacent samples from very short clips as evidence of a freeze. */
+export function shouldCompareFrameSamples(sampleIntervalSeconds: number): boolean {
+  return Number.isFinite(sampleIntervalSeconds) && sampleIntervalSeconds >= 0.5;
+}
+
+/** Return the actual spacing between evenly distributed inspection samples. */
+export function getInspectionSampleInterval(duration: number, sampleCount: number): number {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount)) return 0;
+  const count = Math.floor(sampleCount);
+  if (count <= 1) return 0;
+  return duration / (count - 1);
+}
+
+/** Sample near both ends as well as across the middle so brief black lead-in/out frames are less likely to be missed. */
+export function getOutputInspectionTimes(duration: number, sampleCount: number): number[] {
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(sampleCount) || sampleCount < 1) return [];
+  const count = Math.max(1, Math.min(9, Math.floor(sampleCount)));
+  const start = Math.min(0.04, duration / 2);
+  const end = Math.max(start, duration - Math.min(0.08, duration / 2));
+  if (count === 1) return [start];
+  return Array.from({ length: count }, (_, index) => start + (end - start) * index / (count - 1));
+}
+
+/** Compare decoded dimensions only when the requested export dimensions are valid. */
+export function hasExpectedOutputDimensions(
+  actualWidth: number,
+  actualHeight: number,
+  expectedDimensions?: { width: number; height: number },
+): boolean {
+  if (!expectedDimensions
+    || !Number.isFinite(expectedDimensions.width) || expectedDimensions.width <= 0
+    || !Number.isFinite(expectedDimensions.height) || expectedDimensions.height <= 0
+    || !Number.isFinite(actualWidth) || actualWidth <= 0
+    || !Number.isFinite(actualHeight) || actualHeight <= 0) return true;
+  return actualWidth === expectedDimensions.width && actualHeight === expectedDimensions.height;
+}
+
+export function getOutputQualitySeverity(blackFrameTimes: readonly number[], frozenFramePairs: readonly number[], durationMismatch = false, dimensionMismatch = false): "ok" | "warning" {
+  return blackFrameTimes.length || frozenFramePairs.length || durationMismatch || dimensionMismatch ? "warning" : "ok";
+}
+
+export function assertNonEmptyRenderedBlob(blob: Pick<Blob, "size">): void {
+  if (!Number.isFinite(blob.size) || blob.size <= 0) {
+    throw new Error("Экспорт вернул пустой файл. Повтори монтаж; если ошибка повторится, попробуй более короткий ролик.");
+  }
+}
+
+export async function inspectRenderedVideo(
+  blob: Blob,
+  expectedDuration?: number,
+  expectedDimensions?: { width: number; height: number },
+): Promise<OutputQualityReport> {
+  // Fail immediately for an empty recorder result instead of waiting for a media metadata timeout.
+  assertNonEmptyRenderedBlob(blob);
+  // Create the media element before allocating a Blob URL, and put every
+  // operation after URL creation inside the cleanup-protected try/finally.
+  // Even an unusual browser exception while assigning src must not leak the URL.
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  // Register listeners before assigning src; cached/local blobs can emit metadata
-  // almost immediately, otherwise the inspection may wait 12 seconds and fail.
-  const metadataReady = waitForMediaEvent(video, "loadedmetadata");
-  video.src = url;
+  const url = URL.createObjectURL(blob);
   try {
+    // Some WebM decoders expose Infinity until durationchange. Wait for finite,
+    // positive metadata instead of failing valid exports on the first event.
+    const metadataReady = waitForUsableVideoMetadata(video);
+    // If a browser throws synchronously while setting src, consume the pending
+    // timeout rejection as well as allowing the main path to await it normally.
+    void metadataReady.catch(() => {});
+    video.src = url;
     await metadataReady;
-    if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
+    if (!hasUsableVideoMetadata(video.duration, video.videoWidth, video.videoHeight)) {
       throw new Error("В экспортированном видео отсутствуют корректные метаданные.");
     }
     const canvas = document.createElement("canvas");
@@ -56,7 +241,7 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("Canvas недоступен для проверки кадров.");
     const sampleCount = Math.min(9, Math.max(3, Math.ceil(video.duration / 3)));
-    const times = Array.from({ length: sampleCount }, (_, index) => Math.min(Math.max(0, video.duration - 0.08), (video.duration * (index + 0.5)) / sampleCount));
+    const times = getOutputInspectionTimes(video.duration, sampleCount);
     const blackFrameTimes: number[] = [];
     const frozenFramePairs: number[] = [];
     let previousPixels: Uint8ClampedArray | null = null;
@@ -77,7 +262,11 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
       }
       const averageLuma = totalLuma / Math.max(1, comparedPixels);
       if (averageLuma < 8 && veryDarkPixels / comparedPixels > 0.94) blackFrameTimes.push(time);
-      if (previousPixels) {
+      // Very short clips can legitimately decode adjacent inspection points to
+      // the same frame (especially on mobile). Only infer a freeze when samples
+      // are at least half a second apart; black-frame and metadata checks still
+      // run for every duration.
+      if (previousPixels && shouldCompareFrameSamples(getInspectionSampleInterval(video.duration, sampleCount))) {
         let difference = 0;
         for (let offset = 0; offset < pixels.length; offset += 4) {
           difference += (Math.abs(pixels[offset] - previousPixels[offset]) + Math.abs(pixels[offset + 1] - previousPixels[offset + 1]) + Math.abs(pixels[offset + 2] - previousPixels[offset + 2])) / 3;
@@ -87,13 +276,25 @@ export async function inspectRenderedVideo(blob: Blob): Promise<OutputQualityRep
       previousPixels = new Uint8ClampedArray(pixels);
     }
     const findings: string[] = [];
+    const durationMismatch = Number.isFinite(expectedDuration) && (expectedDuration as number) > 0
+      && !isRenderedDurationWithinTolerance(video.duration, expectedDuration as number);
+    const dimensionMismatch = !hasExpectedOutputDimensions(video.videoWidth, video.videoHeight, expectedDimensions);
+    if (durationMismatch) findings.push(`Длительность экспорта (${video.duration.toFixed(1)} с) заметно отличается от запрошенной (${(expectedDuration as number).toFixed(1)} с). Проверь конечный ролик перед сохранением.`);
+    if (dimensionMismatch && expectedDimensions) findings.push(`Размер экспорта (${video.videoWidth}×${video.videoHeight}) не совпадает с выбранным (${expectedDimensions.width}×${expectedDimensions.height}). Проверь профиль качества и конечный ролик.`);
     if (blackFrameTimes.length) findings.push("Обнаружены почти чёрные кадры около: " + blackFrameTimes.map((time) => time.toFixed(1) + " с").join(", ") + ". Проверь, не задуманы ли они как переход.");
     if (frozenFramePairs.length) findings.push("Некоторые контрольные точки почти не меняются (около " + frozenFramePairs.map((time) => time.toFixed(1) + " с").join(", ") + "). Это может быть статичный кадр или зависание — проверь воспроизведение.");
     if (!findings.length) findings.push("На контрольных точках явных чёрных кадров или почти одинаковых соседних кадров не обнаружено.");
-    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs) };
+    return { frames, duration: video.duration, width: video.videoWidth, height: video.videoHeight, sampledFrames: sampleCount, blackFrameTimes, frozenFramePairs, findings, severity: getOutputQualitySeverity(blackFrameTimes, frozenFramePairs, durationMismatch, dimensionMismatch) };
   } finally {
-    video.removeAttribute("src");
-    video.load();
-    URL.revokeObjectURL(url);
+    // Stop playback/decoding before detaching the temporary Blob URL. Android
+    // browsers may otherwise retain a decoder while the quality report is shown.
+    // Revoke the URL even if a browser throws during media-element cleanup.
+    // Treat each cleanup operation independently: if pause() throws on a
+    // partially decoded Android media element, still detach its source and
+    // release the temporary URL rather than skipping the remaining cleanup.
+    try { video.pause(); } catch { /* Continue releasing the inspection resources. */ }
+    try { video.removeAttribute("src"); } catch { /* Keep cleanup best-effort on mobile decoders. */ }
+    try { video.load(); } catch { /* The inspection result/error must remain the primary outcome. */ }
+    try { URL.revokeObjectURL(url); } catch { /* URL revocation is best-effort if the browser already released it. */ }
   }
 }

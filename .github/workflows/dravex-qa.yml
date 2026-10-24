@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - "feature/**"
+      - "feat/reliability-milestone-video-export-v2"
   pull_request:
     branches:
       - "feature/**"
+      - "feat/reliability-milestone-video-export-v2"
   workflow_dispatch:
 
 permissions:

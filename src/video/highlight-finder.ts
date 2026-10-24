@@ -153,6 +153,22 @@ export function buildQuickVideoCandidates(duration: number): HighlightMoment[] {
   });
 }
 
+/** Translate browser MediaError codes into actionable guidance for users. */
+export function getVideoReadErrorMessage(errorCode?: number): string {
+  switch (errorCode) {
+    case 1:
+      return "Загрузка видео была прервана. Выбери файл ещё раз и дождись окончания загрузки.";
+    case 2:
+      return "Браузер не смог прочитать данные видео. Проверь, что файл полностью сохранён на телефоне, и попробуй выбрать его снова.";
+    case 3:
+      return "Браузер обнаружил ошибку декодирования видео. Файл может быть повреждён или использовать неподдерживаемые параметры кодирования. Попробуй перекодировать его в MP4 (H.264 + AAC), постоянную частоту кадров.";
+    case 4:
+      return "Этот формат или видеокодек не поддерживается браузером. Перекодируй видео в MP4 (H.264 + AAC) с постоянной частотой кадров или WebM (VP8/VP9) с указанной длительностью.";
+    default:
+      return "Браузер не смог прочитать видео. Проверь файл и попробуй MP4 (H.264 + AAC) или WebM с известной длительностью.";
+  }
+}
+
 function waitForMetadata(video: HTMLVideoElement): Promise<void> {
   if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
     return Promise.resolve();
@@ -174,7 +190,7 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
     };
     const failed = () => {
       cleanup();
-      reject(new Error("Браузер не смог прочитать видео. Попробуй MP4 (H.264) или WebM с известной длительностью."));
+      reject(new Error(getVideoReadErrorMessage(video.error?.code)));
     };
 
     video.addEventListener("loadedmetadata", checkReady);
@@ -192,6 +208,15 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
 
 /** Read duration without sampling frames, used as a safe fallback for auto-montage. */
 export async function getVideoDuration(url: string): Promise<number> {
+  // Reuse metadata already decoded by the visible preview when possible. On
+  // memory-constrained mobile browsers, opening a second decoder for the same
+  // local Blob URL can fail even though the preview is already playable.
+  const loadedPreview = Array.from(document.querySelectorAll("video")).find((candidate) => {
+    if (candidate.readyState < 1 || !Number.isFinite(candidate.duration) || candidate.duration <= 0) return false;
+    return candidate.currentSrc === url || candidate.src === url;
+  });
+  if (loadedPreview) return loadedPreview.duration;
+
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;

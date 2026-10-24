@@ -13,7 +13,8 @@ import { assessMediaSelection } from "./video/media-intake";
 import { buildMixedMediaSequence } from "./video/mixed-media-planner";
 import { buildFallbackVideoCuts } from "./video/segment-planner";
 import { analyzePhotoSet } from "./video/photo-analysis";
-import { inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
+import { assertNonEmptyRenderedBlob, inspectRenderedVideo, type OutputQualityReport } from "./video/output-quality";
+import { getExportProfile } from "./video/export-profile";
 import { planVariantPreviewCuts, selectVariantPreviewIndices } from "./video/variant-preview";
 import { JsonLocalExperienceStore, proposeImprovements, recommendPreferredVariant, shouldApplyLearnedPreference, type LearningProfileId, type MontageExperience, type MontageQuality, type MontageVariantId } from "./video/director-learning";
 import { buildDirectorDiagnosticExport, createDirectorDiagnostic, type DirectorDiagnosticEvent } from "./video/director-diagnostics";
@@ -22,20 +23,57 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
-  video.src = url;
+  video.playsInline = true;
+
   try {
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Unable to read video metadata for AI Director validation."));
+      let timeoutId = 0;
+      let settled = false;
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        video.removeEventListener("loadedmetadata", loaded);
+        video.removeEventListener("durationchange", loaded);
+        video.removeEventListener("error", failed);
+      };
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      };
+      const loaded = () => {
+        // Some valid WebM files initially expose NaN/Infinity until durationchange.
+        // Wait for the metadata to settle instead of incorrectly rejecting the source.
+        if (Number.isNaN(video.duration) || video.duration === Number.POSITIVE_INFINITY) return;
+        if (!Number.isFinite(video.duration) || video.duration <= 0) {
+          finish(new Error("Не удалось определить длительность видео для AI Director. Попробуй MP4 (H.264) или другой файл."));
+          return;
+        }
+        if (!Number.isFinite(video.videoWidth) || video.videoWidth <= 0
+          || !Number.isFinite(video.videoHeight) || video.videoHeight <= 0) {
+          finish(new Error("Не удалось определить размер кадра для AI Director. Попробуй MP4 (H.264) или другой файл."));
+          return;
+        }
+        finish();
+      };
+      const failed = () => finish(new Error("Не удалось прочитать метаданные видео для AI Director. Попробуй MP4 (H.264) или другой файл."));
+      video.addEventListener("loadedmetadata", loaded);
+      video.addEventListener("durationchange", loaded);
+      video.addEventListener("error", failed);
+      timeoutId = window.setTimeout(() => {
+        finish(new Error("Видео не открылось за 20 секунд при проверке AI Director. Попробуй MP4 (H.264) или более короткий файл."));
+      }, 20_000);
+      video.src = url;
+      video.load();
     });
-    if (!Number.isFinite(video.videoWidth) || video.videoWidth <= 0
-      || !Number.isFinite(video.videoHeight) || video.videoHeight <= 0) {
-      throw new Error("Video dimensions are invalid.");
-    }
     return { width: video.videoWidth, height: video.videoHeight };
   } finally {
-    video.removeAttribute("src");
-    video.load();
+    // Cleanup is best-effort: some mobile decoders throw while resetting a failed
+    // media element. Never let cleanup replace the original metadata/decoder error.
+    try { video.pause(); } catch { /* Continue releasing the remaining resources. */ }
+    try { video.removeAttribute("src"); } catch { /* Preserve the primary inspection result. */ }
+    try { video.load(); } catch { /* A partially initialized decoder may reject reset. */ }
   }
 }
 
@@ -163,6 +201,8 @@ export default function App() {
   const [quality, setQuality] = useState<"720p" | "1080p" | "4K">("720p");
   const [qualityReport, setQualityReport] = useState<OutputQualityReport | null>(null);
   const [qualityCheckBusy, setQualityCheckBusy] = useState(false);
+  // Ignore stale asynchronous quality reports when a newer montage has started.
+  const qualityCheckGeneration = useRef(0);
   const [beatSync, setBeatSync] = useState(true);
   const [effectStrength, setEffectStrength] = useState<"soft" | "balanced" | "strong">("balanced");
   const [musicVolume, setMusicVolume] = useState(0.72);
@@ -343,6 +383,8 @@ export default function App() {
 
   const clearEditor = () => {
     if (busy || previewBusy || projectBusy) return;
+    // Invalidate any in-flight output inspection before clearing its result state.
+    qualityCheckGeneration.current += 1;
     if (!window.confirm("Очистить текущий проект? Исходные файлы и настройки редактора будут убраны из рабочего пространства.")) return;
     mediaUrls.forEach((url) => URL.revokeObjectURL(url));
     if (musicUrl) URL.revokeObjectURL(musicUrl);
@@ -483,6 +525,10 @@ export default function App() {
       return;
     }
 
+    // Invalidate any asynchronous inspection of an older export before the media changes.
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     clearRenderedVariants();
     if (appendPhotos) {
       setMediaFiles(nextFiles);
@@ -509,6 +555,9 @@ export default function App() {
     if (!isImageMode) return;
     const target = index + direction;
     if (target < 0 || target >= mediaFiles.length) return;
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     const nextFiles = [...mediaFiles];
     const [moved] = nextFiles.splice(index, 1);
     nextFiles.splice(target, 0, moved);
@@ -527,6 +576,9 @@ export default function App() {
   const removePhoto = (index: number) => {
     if (!isImageMode) return;
     const nextFiles = mediaFiles.filter((_, fileIndex) => fileIndex !== index);
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     clearRenderedVariants();
     setMediaFiles(nextFiles);
     setMediaUrls(nextFiles.map((file) => URL.createObjectURL(file)));
@@ -549,6 +601,9 @@ export default function App() {
   };
 
   const invalidateOutput = () => {
+    // A previous export inspection may finish after the user changes settings.
+    // Invalidate its generation so stale diagnostics cannot be attached to a new edit.
+    qualityCheckGeneration.current += 1;
     setQualityReport(null);
     setQualityCheckBusy(false);
     setOutputUrl("");
@@ -561,8 +616,11 @@ export default function App() {
   };
 
   const chooseMontageVariant = (variant: MontageVariant) => {
-    // Prevent a slow render of the previously selected style from replacing this selection.
+    // Prevent stale previews and export-quality reports from replacing this selection.
     previewGeneration.current += 1;
+    qualityCheckGeneration.current += 1;
+    setQualityReport(null);
+    setQualityCheckBusy(false);
     const hasRealPreview = renderedVariants.some((item) => item.id === variant.id);
     setStyle(variant.style);
     learningVariantRef.current = toLearningVariant(variant.style);
@@ -765,8 +823,21 @@ export default function App() {
             if (generation === previewGeneration.current) {
               setPreviewProgress(Math.round(((index + progress / 100) / pendingVariants.length) * 100));
             }
+          },
+          onStage: (stage) => {
+            if (generation !== previewGeneration.current) return;
+            const stageLabels = {
+              "preparing-media": "Подготавливаем исходные кадры",
+              "preparing-audio": "Подготавливаем звук",
+              rendering: "Рендерим кадры",
+              finalizing: "Сохраняем вариант",
+            };
+            setPreviewStatus(`Вариант ${index + 1} из ${pendingVariants.length} · ${stageLabels[stage]}: ${variant.title}…`);
           }
         });
+        // Treat previews as real exports too: never publish a broken/empty Blob URL
+        // as a selectable variant, even if a browser recorder unexpectedly returns 0 bytes.
+        assertNonEmptyRenderedBlob(blob);
         if (generation !== previewGeneration.current) return;
         const url = URL.createObjectURL(blob);
         renderedVariantUrls.current.push(url);
@@ -788,6 +859,8 @@ export default function App() {
 
   const createMontage = async () => {
     if (!mediaFiles.length || busy) return;
+    qualityCheckGeneration.current += 1;
+    setQualityCheckBusy(false);
     // Unlock Web Audio immediately during the tap, before long source-video analysis
     // can outlive the browser's transient user activation.
     let preparedAudioContext: AudioContext | undefined;
@@ -807,6 +880,7 @@ export default function App() {
     // Keep failure diagnostics tied to the operation that actually failed. This is
     // especially useful on Android, where analysis, audio setup and encoding can fail differently.
     let operationPhase: "analysis" | "music-analysis" | "render" = "analysis";
+    let sourceMetadataUnavailable = false;
     try {
       setStage("analyzing");
       setMessage(isImageMode ? "Анализируем темп и движение фотографий…" : "Смотрим на смену кадров и подбираем темп…");
@@ -931,7 +1005,8 @@ export default function App() {
             style === "auto" && !learnedStylePreferenceApplied
           );
           actualStyle = directorResult.selectedStyle;
-          recordDiagnostic("analysis-completed", { mediaKind: isMixedMode ? "mixed" : "video", mediaCount: mediaFiles.length, durationSeconds: analysis.duration, sampledFrames: analysis.samples.length, candidateCount: directorResult.candidates.length, style: actualStyle });
+          // Emit analysis-completed only after the montage plan has passed contract validation below.
+          // This keeps diagnostics to one truthful completion event per successful analysis.
           const smartEyeSummary = directorResult.smartEye
             ? ` Smart Eye: подтверждённо проверено ${directorResult.smartEye.coverage.sampledFrameCount} кадров из ${directorResult.smartEye.coverage.candidateCount} кандидатов; наибольший промежуток между контрольными кадрами — ${directorResult.smartEye.coverage.largestSampleGapSeconds.toFixed(1)} с.`
             : "";
@@ -961,19 +1036,20 @@ export default function App() {
           if (!contractResult.plan) {
             throw new Error(`AI Director montage plan rejected: ${contractResult.validation.issues.join("; ")}`);
           }
-          recordDiagnostic("analysis-completed", {
-            mediaKind: "video",
-            mediaCount: 1,
-            durationSeconds: analysis.duration,
-            candidateCount: directorResult.candidates.length,
-            style: actualStyle,
-          });
           segments = directorPlanToVideoSegments(contractResult.plan, "source-video", videoFile!.name, videoUrl);
           if (!segments.length) throw new Error("Validated AI Director plan produced no renderable clips.");
           setMessage(directorNote);
         } catch (analysisError) {
           // A failed frame scan should not block a usable video export when metadata is readable.
-          sourceVideoDuration = await getVideoDuration(videoUrl);
+          try {
+            sourceVideoDuration = await getVideoDuration(videoUrl);
+          } catch (sourceReadError) {
+            // If both frame analysis and metadata-only fallback fail, classify this as
+            // an unreadable source rather than a generic AI-analysis failure. This helps
+            // distinguish unsupported codecs/invalid media URLs from montage logic bugs.
+            sourceMetadataUnavailable = true;
+            throw sourceReadError;
+          }
           renderDuration = Math.min(duration, sourceVideoDuration);
           if (style === "auto") actualStyle = "cinematic";
           const shotLength = getDirectorShotLength(contentProfile, actualStyle);
@@ -1062,8 +1138,19 @@ export default function App() {
         transitionMode: effectiveTransitionMode,
         targetDurationSeconds: renderDuration,
         onProgress: setRenderProgress,
+        onStage: (stage) => {
+          const messages = {
+            "preparing-media": "Подготавливаем видео и фотографии… Прогресс может оставаться 0%, пока браузер читает файлы.",
+            "preparing-audio": "Подготавливаем звуковые дорожки…",
+            rendering: "Обрабатываем кадры и собираем монтаж…",
+            finalizing: "Завершаем запись и сохраняем готовый ролик…",
+          };
+          setMessage(messages[stage]);
+        },
         audioContext: preparedAudioContext
       });
+      // Defense in depth: never expose an empty recording as a completed export.
+      assertNonEmptyRenderedBlob(blob);
       const nextUrl = URL.createObjectURL(blob);
       setOutputUrl(nextUrl);
       setOutputName(`dravex-video-${Date.now()}.webm`);
@@ -1071,22 +1158,28 @@ export default function App() {
       setQualityReport(null);
       setQualityCheckBusy(true);
       setStage("done");
-      // Inspect the encoded WebM without blocking playback or download. The check is advisory.
-      void inspectRenderedVideo(blob).then((report) => {
+      // Inspection is advisory; ignore stale results if a newer montage has started.
+      const inspectionGeneration = qualityCheckGeneration.current;
+      const expectedExportProfile = getExportProfile(aspectRatio, quality);
+      void inspectRenderedVideo(blob, renderDuration, { width: expectedExportProfile.width, height: expectedExportProfile.height }).then((report) => {
+        if (inspectionGeneration !== qualityCheckGeneration.current) return;
         setQualityReport(report);
         recordDiagnostic("quality-check-completed", { severity: report.severity, findingCount: report.findings.length, durationSeconds: report.duration, quality });
       }).catch((qualityError) => {
+        if (inspectionGeneration !== qualityCheckGeneration.current) return;
         recordDiagnostic("quality-check-completed", { severity: "warning", reasonCode: "quality-check-unavailable", quality });
         console.warn("DRAVEX output quality check failed:", qualityError);
         setQualityReport({ frames: [], duration: 0, width: 0, height: 0, sampledFrames: 0, blackFrameTimes: [], frozenFramePairs: [], findings: ["Не удалось автоматически проверить кадры. Открой видео в плеере и проверь воспроизведение вручную."], severity: "warning" });
-      }).finally(() => setQualityCheckBusy(false));
+      }).finally(() => {
+        if (inspectionGeneration === qualityCheckGeneration.current) setQualityCheckBusy(false);
+      });
       setMessage(analysisFallback ? "Готово! Анализ кадров был недоступен, поэтому использован равномерный монтаж. Посмотри результат и сохрани видео." : `Готово! ${directorNote ? `${directorNote} ` : ""}Посмотри результат и сохрани видео.`);
     } catch (caught) {
       setStage("error");
       const failureMessage = caught instanceof Error ? caught.message : "Не удалось создать видео. Попробуй более короткий ролик.";
       recordDiagnostic("montage-failed", {
         // Keep reasonCode within the diagnostic schema; phase carries the finer distinction.
-        reasonCode: operationPhase === "render" ? "render-error" : "analysis-unavailable",
+        reasonCode: operationPhase === "render" ? "render-error" : sourceMetadataUnavailable ? "source-unreadable" : "analysis-unavailable",
         phase: operationPhase,
         mediaKind: isImageMode ? "images" : "video",
         mediaCount: mediaFiles.length,
@@ -1221,7 +1314,7 @@ export default function App() {
                   <button type="button" aria-label={`Удалить фото ${index + 1}`} title="Удалить фото" onClick={() => removePhoto(index)}><Trash2 size={14} /></button>
                 </div>
               </div>)}</div>
-            </> : <div className="dravex-source-video-wrap"><video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" onLoadedMetadata={(event) => { const video = event.currentTarget; setVideoPreviewStatus(Number.isFinite(video.duration) && video.duration > 0 ? "ready" : "unsupported"); }} onError={() => setVideoPreviewStatus("error")} /><div className={`dravex-video-status ${videoPreviewStatus === "error" || videoPreviewStatus === "unsupported" ? "is-warning" : ""}`} role="status">{videoPreviewStatus === "ready" ? "Видео загружено · предпросмотр готов" : videoPreviewStatus === "loading" ? "Загружаем предпросмотр видео…" : videoPreviewStatus === "unsupported" ? "Браузер не смог прочитать длительность. Попробуй MP4 (H.264 + AAC) или другое видео." : "Не удалось показать это видео в браузере. Файл может использовать неподдерживаемый кодек; попробуй MP4 (H.264 + AAC)."}</div></div>}
+            </> : <div className="dravex-source-video-wrap"><video className="dravex-preview" src={videoUrl} controls playsInline preload="metadata" onLoadedMetadata={(event) => { const video = event.currentTarget; setVideoPreviewStatus(Number.isFinite(video.duration) && video.duration > 0 ? "ready" : "unsupported"); }} onError={() => setVideoPreviewStatus("error")} /><div className={`dravex-video-status ${videoPreviewStatus === "error" || videoPreviewStatus === "unsupported" ? "is-warning" : ""}`} role="status">{videoPreviewStatus === "ready" ? "Видео загружено · предпросмотр готов" : videoPreviewStatus === "loading" ? "Загружаем предпросмотр видео…" : videoPreviewStatus === "unsupported" ? "Браузер не смог прочитать длительность. Попробуй MP4 (H.264 + AAC) или другое видео." : "Браузер не может декодировать исходное видео. AI-анализ и монтаж могут не сработать. Конвертируй файл в MP4 с видео H.264 и аудио AAC (одно расширение .mp4 не гарантирует совместимость), затем загрузи его снова."}</div></div>}
             <div className="dravex-file-row"><div><strong>{isImageMode ? `${mediaFiles.length} фотографий добавлено` : videoFile?.name}</strong><span>{(mediaFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} МБ</span></div><button type="button" onClick={() => { mediaSelectionMode.current = "replace"; videoInput.current?.click(); }}>Заменить</button></div>
           </div>
         )}

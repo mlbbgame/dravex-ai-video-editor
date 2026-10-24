@@ -6,7 +6,7 @@ import {
   type TimelineSource,
 } from "./timeline-contract";
 import { getColorGradeFilter, getSpeedRampRate } from "./motion-engine";
-import { chooseSupportedWebmMimeType, getExportProfile } from "./export-profile";
+import { chooseSupportedWebmMimeType, getExportProfile, WEBM_MIME_CANDIDATES } from "./export-profile";
 
 export type VideoSegment = {
   kind?: "video";
@@ -81,6 +81,12 @@ export function getCameraMotionProfile(
 
 export type SourceAudioMode = "auto" | "keep" | "mute";
 
+export function getSafeAudioTrackVolume(volume?: number): number {
+  // Invalid values can otherwise propagate NaN into the timeline validator and
+  // abort a valid export. Use the same default as an omitted music-volume setting.
+  return Number.isFinite(volume) ? Math.max(0, Math.min(1, volume as number)) : 0.65;
+}
+
 export function getSourceAudioGain(mode: SourceAudioMode, volume: number, hasMusic: boolean): number {
   if (mode === "mute") return 0;
   const safeVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.8;
@@ -107,6 +113,7 @@ type SequenceOptions = {
   suppressAudio?: boolean;
   targetDurationSeconds?: number;
   onProgress?: (progress: number) => void;
+  onStage?: (stage: "preparing-media" | "preparing-audio" | "rendering" | "finalizing") => void;
   audioContext?: AudioContext;
 };
 
@@ -132,6 +139,49 @@ type LoadedImage = {
 };
 
 type LoadedSegment = LoadedVideo | LoadedImage;
+
+/**
+ * Limit simultaneous media decodes to protect mobile browsers from allocating
+ * too many decoded frames/bitmaps at once. Tasks still settle in input order via
+ * Promise.all at the call site; the limiter only controls when each task starts.
+ */
+export function createMediaLoadLimiter(maxConcurrent: number) {
+  const limit = Number.isFinite(maxConcurrent) ? Math.max(1, Math.floor(maxConcurrent)) : 1;
+  let active = 0;
+  const queue: Array<() => void> = [];
+  return async function run<T>(task: () => Promise<T>): Promise<T> {
+    if (active >= limit) {
+      // A released slot is handed directly to the next waiter. Do not decrement
+      // and then increment around the wake-up: that microtask gap can admit a new
+      // task while a queued task is also waking, exceeding the mobile decode cap.
+      await new Promise<void>((resolve) => queue.push(resolve));
+    } else {
+      active += 1;
+    }
+    try {
+      return await task();
+    } finally {
+      const nextWaitingTask = queue.shift();
+      if (nextWaitingTask) nextWaitingTask();
+      else active -= 1;
+    }
+  };
+}
+
+export const MAX_CONCURRENT_MEDIA_LOADS = 3;
+
+/** Keep progress moving during media preparation and monotonic when frame rendering begins. */
+export function getMediaPreparationProgress(loadedCount: number, totalCount: number): number {
+  if (!Number.isFinite(totalCount) || totalCount <= 0 || !Number.isFinite(loadedCount)) return 0;
+  const fraction = Math.max(0, Math.min(1, loadedCount / totalCount));
+  return Math.min(10, Math.max(0, Math.round(fraction * 10)));
+}
+
+export function getRenderProgressPercent(completedSeconds: number, totalDuration: number): number {
+  if (!Number.isFinite(completedSeconds) || !Number.isFinite(totalDuration) || totalDuration <= 0) return 10;
+  const fraction = Math.max(0, Math.min(1, completedSeconds / totalDuration));
+  return Math.min(99, Math.max(10, Math.round(10 + fraction * 89)));
+}
 
 export type SourceFrameRect = { x: number; y: number; width: number; height: number };
 export type FrameFit = "contain" | "cover";
@@ -173,13 +223,42 @@ export function getRenderFrameInterval(frameRate = 24): number {
   return 1000 / Math.min(60, Math.max(1, frameRate));
 }
 
+const RENDER_FRAME_WATCHDOG_MS = 10_000;
+
+/**
+ * Wait for a paced animation frame, but never leave an export pending forever
+ * if the browser stops delivering animation frames (for example, a throttled
+ * mobile tab). The render lifecycle catches this error and releases recorder,
+ * stream, audio, and decoded-media resources.
+ */
 function waitForRenderFrame(lastFrameAt: number, intervalMs: number): Promise<number> {
-  return new Promise((resolve) => {
-    const check = (timestamp: number) => {
-      if (timestamp - lastFrameAt >= intervalMs) resolve(timestamp);
-      else requestAnimationFrame(check);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let animationFrameId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-    requestAnimationFrame(check);
+    const finish = (timestamp?: number) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (timestamp === undefined) {
+        reject(new Error("Отрисовка кадров остановилась более чем на 10 секунд. Верни DRAVEX на экран и повтори экспорт; если ошибка повторится, попробуй более короткий ролик."));
+      } else {
+        resolve(timestamp);
+      }
+    };
+    const timeoutId = window.setTimeout(() => finish(), RENDER_FRAME_WATCHDOG_MS);
+    const check = (timestamp: number) => {
+      if (settled) return;
+      if (timestamp - lastFrameAt >= intervalMs) {
+        finish(timestamp);
+      } else {
+        animationFrameId = requestAnimationFrame(check);
+      }
+    };
+    animationFrameId = requestAnimationFrame(check);
   });
 }
 
@@ -259,7 +338,7 @@ function findEbmlElement(
  * report video.duration === Infinity and prevents reliable seeking. Add or update
  * the Matroska Duration value without re-encoding the recorded frames.
  */
-async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
+export async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
   if (!blob.type.includes("webm") || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return blob;
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const segmentStart = (() => {
@@ -302,12 +381,26 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
   }
 
   const durationValue = durationSeconds * 1_000_000_000 / timecodeScale;
+  // A finite input duration can still overflow during nanosecond conversion. Never
+  // write Infinity/NaN into WebM metadata: preserve the recorder's original blob.
+  if (!Number.isFinite(durationValue) || durationValue <= 0) return blob;
   if (durationElement) {
-    const patched = bytes.slice();
+    // `bytes` is already an isolated ArrayBuffer copy from blob.arrayBuffer().
+    // Mutate it directly instead of cloning the entire encoded video again: on
+    // long/high-resolution Android exports, this duplicate can cause a memory spike.
+    const patched = bytes;
     const view = new DataView(patched.buffer, patched.byteOffset, patched.byteLength);
-    if (durationElement.size === 4) view.setFloat32(durationElement.dataStart, durationValue, false);
-    else if (durationElement.size === 8) view.setFloat64(durationElement.dataStart, durationValue, false);
-    else return blob;
+    if (durationElement.size === 4) {
+      // WebM Duration may use a 32-bit float. A finite JavaScript number can
+      // still overflow Float32 and silently become Infinity, breaking seeking
+      // on the exported file. Preserve the recorder blob if the value cannot
+      // be represented as a finite Float32.
+      const float32Duration = Math.fround(durationValue);
+      if (!Number.isFinite(float32Duration) || float32Duration <= 0) return blob;
+      view.setFloat32(durationElement.dataStart, float32Duration, false);
+    } else if (durationElement.size === 8) {
+      view.setFloat64(durationElement.dataStart, durationValue, false);
+    } else return blob;
     return new Blob([patched], { type: blob.type });
   }
 
@@ -317,8 +410,8 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
   durationBytes[2] = 0x88;
   new DataView(durationBytes.buffer).setFloat64(3, durationValue, false);
 
-  const infoId = bytes.slice(info.start, info.start + info.idLength);
-  const infoContent = bytes.slice(info.dataStart, info.dataEnd);
+  const infoId = bytes.subarray(info.start, info.start + info.idLength);
+  const infoContent = bytes.subarray(info.dataStart, info.dataEnd);
   const newInfoSize = infoContent.length + durationBytes.length;
   const encodedInfoSize = encodeEbmlSize(newInfoSize, info.sizeLength);
   const newInfo = new Uint8Array(infoId.length + encodedInfoSize.length + newInfoSize);
@@ -328,25 +421,34 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
   newInfo.set(durationBytes, infoId.length + encodedInfoSize.length + infoContent.length);
 
   const infoDelta = newInfo.length - (info.dataEnd - info.start);
-  let patched = new Uint8Array(bytes.length + infoDelta);
-  patched.set(bytes.slice(0, info.start), 0);
-  patched.set(newInfo, info.start);
-  patched.set(bytes.slice(info.dataEnd), info.start + newInfo.length);
-
-  if (!segmentSize.unknown) {
-    const encodedSegmentSize = encodeEbmlSize(segmentSize.value + infoDelta, segmentSize.length);
-    const oldSizeEnd = segmentStart + 4 + segmentSize.length;
-    if (encodedSegmentSize.length === segmentSize.length) {
-      patched.set(encodedSegmentSize, segmentStart + 4);
-    } else {
-      const resized = new Uint8Array(patched.length + encodedSegmentSize.length - segmentSize.length);
-      resized.set(patched.slice(0, segmentStart + 4), 0);
-      resized.set(encodedSegmentSize, segmentStart + 4);
-      resized.set(patched.slice(oldSizeEnd), segmentStart + 4 + encodedSegmentSize.length);
-      patched = resized;
-    }
+  // Do not allocate a second full-size byte array for long exports. On Android,
+  // a 4K WebM may already occupy hundreds of megabytes; assembling Blob parts
+  // around the small Info element avoids another full-video copy during metadata
+  // repair while keeping the original encoded media bytes unchanged.
+  if (segmentSize.unknown) {
+    return new Blob([
+      bytes.subarray(0, info.start),
+      newInfo,
+      bytes.subarray(info.dataEnd),
+    ], { type: blob.type });
   }
-  return new Blob([patched], { type: blob.type });
+
+  const encodedSegmentSize = encodeEbmlSize(segmentSize.value + infoDelta, segmentSize.length);
+  const oldSizeEnd = segmentStart + 4 + segmentSize.length;
+  if (encodedSegmentSize.length === segmentSize.length) {
+    // Patch only the small Segment size field; the remaining media is shared as
+    // Blob parts rather than copied into another full-length Uint8Array.
+    bytes.set(encodedSegmentSize, segmentStart + 4);
+    return new Blob([bytes.subarray(0, info.start), newInfo, bytes.subarray(info.dataEnd)], { type: blob.type });
+  }
+
+  return new Blob([
+    bytes.subarray(0, segmentStart + 4),
+    encodedSegmentSize,
+    bytes.subarray(oldSizeEnd, info.start),
+    newInfo,
+    bytes.subarray(info.dataEnd),
+  ], { type: blob.type });
 }
 
 /** Unlock Web Audio synchronously inside a user gesture before video analysis awaits. */
@@ -366,8 +468,33 @@ export function hasUsableImageDimensions(width: number, height: number): boolean
   return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
 }
 
+/** Video decoders may expose malformed NaN/Infinity dimensions for damaged media. */
+export function hasUsableVideoDimensions(width: number, height: number): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+}
+
 export function hasUsableAudioDuration(duration: number): boolean {
   return Number.isFinite(duration) && duration > 0;
+}
+
+/** Audio and video elements can briefly expose unresolved metadata before durationchange. */
+export function isPendingAudioDuration(duration: number): boolean {
+  return Number.isNaN(duration) || duration === Number.POSITIVE_INFINITY;
+}
+
+/** Browsers may expose NaN before metadata settles and Infinity for WebM without a duration element. */
+export function isPendingVideoDuration(duration: number): boolean {
+  return Number.isNaN(duration) || duration === Number.POSITIVE_INFINITY;
+}
+
+/** Reject zero, non-finite, or overflowed summed durations before allocating the renderer. */
+export function isUsableRenderDuration(duration: number): boolean {
+  return Number.isFinite(duration) && duration > 0;
+}
+
+/** MediaRecorder is unreliable for effectively empty timelines, even when the value is positive. */
+export function isUsableFinalRenderDuration(duration: number): boolean {
+  return Number.isFinite(duration) && duration >= 0.1;
 }
 
 export type VideoTrimRange = { start: number; end: number; duration: number };
@@ -396,6 +523,28 @@ export function resolveVideoTrimRange(sourceDuration: number, trimStart: number,
   return { start, end, duration };
 }
 
+/** Best-effort cleanup must never hide the original decode/render error or block releasing other media. */
+function releaseVideoElement(video: HTMLVideoElement): void {
+  try { video.pause(); } catch { /* Continue releasing the remaining media resources. */ }
+  try { video.removeAttribute("src"); } catch { /* The element may already be detached or partially disposed. */ }
+  try { video.load(); } catch { /* Some mobile browsers throw while resetting a failed decoder. */ }
+}
+
+function releaseAudioElement(audio: HTMLAudioElement): void {
+  try { audio.pause(); } catch { /* Continue releasing the remaining media resources. */ }
+  try { audio.removeAttribute("src"); } catch { /* The element may already be detached or partially disposed. */ }
+  try { audio.load(); } catch { /* Preserve the primary export error if decoder cleanup fails. */ }
+}
+
+function releaseImageElement(image: HTMLImageElement): void {
+  image.onload = null;
+  image.onerror = null;
+  // Assigning an empty src can trigger a navigation/document request in some
+  // browsers. Removing the attribute releases the decoded bitmap without
+  // accidentally starting another fetch while Android is already memory-bound.
+  try { image.removeAttribute("src"); } catch { /* Ignore cleanup failures while unwinding a failed export. */ }
+}
+
 function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -406,25 +555,26 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     const cleanup = () => {
       window.clearTimeout(timeoutId);
       video.removeEventListener("loadedmetadata", loaded);
+      video.removeEventListener("durationchange", loaded);
       video.removeEventListener("error", failed);
     };
     const loaded = () => {
+      // WebM duration can initially be Infinity while the browser is still
+      // resolving metadata. Wait for durationchange instead of rejecting a
+      // valid source immediately; the existing watchdog still bounds the wait.
+      if (isPendingVideoDuration(video.duration)) return;
       // A metadata event alone is not enough: malformed/unsupported files can
       // report loadedmetadata with unusable dimensions or a non-finite duration.
       // Reject them here so the montage planner never receives NaN/Infinity.
       if (!Number.isFinite(video.duration) || video.duration <= 0) {
         cleanup();
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
+        releaseVideoElement(video);
         reject(new Error(`У видео «${segment.name}» не удалось определить длительность. Попробуй MP4 (H.264) или другой файл.`));
         return;
       }
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+      if (!hasUsableVideoDimensions(video.videoWidth, video.videoHeight)) {
         cleanup();
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
+        releaseVideoElement(video);
         reject(new Error(`У видео «${segment.name}» не удалось определить размер кадра. Попробуй MP4 (H.264) или другой файл.`));
         return;
       }
@@ -433,22 +583,28 @@ function loadVideo(segment: VideoSegment): Promise<HTMLVideoElement> {
     };
     const failed = () => {
       cleanup();
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
       reject(new Error(`Не удалось прочитать видео «${segment.name}». Попробуй MP4 (H.264) или WebM.`));
     };
     timeoutId = window.setTimeout(() => {
       cleanup();
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
+      releaseVideoElement(video);
       reject(new Error(`Видео «${segment.name}» не открылось за 20 секунд. Попробуй MP4 (H.264) или более короткий файл.`));
     }, 20_000);
-    video.addEventListener("loadedmetadata", loaded, { once: true });
+    video.addEventListener("loadedmetadata", loaded);
+    video.addEventListener("durationchange", loaded);
     video.addEventListener("error", failed, { once: true });
-    video.src = segment.url;
-    video.load();
+    try {
+      video.src = segment.url;
+      video.load();
+    } catch {
+      cleanup();
+      // Use the guarded release helper here too: a browser may throw while
+      // pausing/resetting a failed decoder, and cleanup must not mask the
+      // actionable source-loading error or leave the promise unsettled.
+      releaseVideoElement(video);
+      reject(new Error(`Не удалось открыть видео «${segment.name}». Попробуй MP4 (H.264) или другой файл.`));
+    }
   });
 }
 
@@ -458,9 +614,7 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
     let settled = false;
     const timeoutId = window.setTimeout(() => {
       finish();
-      image.onload = null;
-      image.onerror = null;
-      image.src = "";
+      releaseImageElement(image);
       reject(new Error(`Фото «${segment.name}» не загрузилось за 20 секунд. Попробуй уменьшить размер файла или выбрать другое фото.`));
     }, 20_000);
     const finish = () => {
@@ -471,17 +625,29 @@ function loadImage(segment: ImageSegment): Promise<HTMLImageElement> {
     };
     image.onload = () => {
       if (!finish()) return;
+      // Detach callbacks once the image settles. This prevents stale handlers
+      // retaining project closures after a successful decode or a rejected file.
+      image.onload = null;
+      image.onerror = null;
       if (!hasUsableImageDimensions(image.naturalWidth, image.naturalHeight)) {
-        image.src = "";
+        releaseImageElement(image);
         reject(new Error(`У фото «${segment.name}» не удалось определить размер изображения. Попробуй другое фото.`));
         return;
       }
       resolve(image);
     };
     image.onerror = () => {
-      if (finish()) reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
+      if (!finish()) return;
+      releaseImageElement(image);
+      reject(new Error(`Не удалось прочитать фото «${segment.name}».`));
     };
-    image.src = segment.url;
+    try {
+      image.src = segment.url;
+    } catch {
+      if (!finish()) return;
+      releaseImageElement(image);
+      reject(new Error(`Не удалось открыть фото «${segment.name}».`));
+    }
   });
 }
 
@@ -500,36 +666,45 @@ function loadAudio(segment: AudioSegment): Promise<HTMLAudioElement> {
       return true;
     };
     const loaded = () => {
+      if (isPendingAudioDuration(audio.duration)) {
+        // Like video elements, audio elements can briefly expose NaN before
+        // durationchange settles metadata. Do not reject a valid track early.
+        // The existing timeout still bounds files whose metadata never settles.
+        return;
+      }
       if (!hasUsableAudioDuration(audio.duration)) {
-        if (Number.isNaN(audio.duration) || audio.duration <= 0) {
-          if (finish()) {
-            audio.pause();
-            audio.removeAttribute("src");
-            audio.load();
-            reject(new Error(`У аудио «${segment.name}» не удалось определить длительность. Попробуй другой аудиофайл.`));
-          }
+        if (finish()) {
+          releaseAudioElement(audio);
+          reject(new Error(`У аудио «${segment.name}» не удалось определить длительность. Попробуй другой аудиофайл.`));
         }
-        // Infinity can be reported temporarily by some browsers while metadata
-        // is incomplete. Wait for durationchange or the existing timeout.
         return;
       }
       if (finish()) resolve(audio);
     };
     const failed = () => {
-      if (finish()) reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
+      if (!finish()) return;
+      // Release the decoder and backing URL on media errors too. Android Chrome
+      // can otherwise retain failed audio elements until the whole page is closed.
+      releaseAudioElement(audio);
+      reject(new Error(`Не удалось прочитать аудио «${segment.name}».`));
     };
     const timeoutId = window.setTimeout(() => {
       if (!finish()) return;
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
+      releaseAudioElement(audio);
       reject(new Error(`Аудио «${segment.name}» не загрузилось за 20 секунд. Попробуй другой аудиофайл.`));
     }, 20_000);
     audio.addEventListener("loadedmetadata", loaded);
     audio.addEventListener("durationchange", loaded);
     audio.addEventListener("error", failed, { once: true });
-    audio.src = segment.url;
-    audio.load();
+    try {
+      audio.src = segment.url;
+      audio.load();
+    } catch {
+      if (finish()) {
+        releaseAudioElement(audio);
+        reject(new Error(`Не удалось открыть аудио «${segment.name}».`));
+      }
+    }
   });
 }
 
@@ -561,21 +736,48 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, sourceAudioMode = "auto", sourceAudioVolume = 0.8, targetDurationSeconds, onProgress, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
+/** Pick a repeatable but varied transition family for each cut. */
+export function getTransitionSequenceType(
+  style: SequenceRenderStyle,
+  transitionMode: "auto" | "cinematic" | "action",
+  cutIndex: number,
+): number {
+  if (!Number.isFinite(cutIndex) || cutIndex < 1) return 0;
+  const index = Math.floor(cutIndex - 1);
+  const actionTransitions = [0, 3, 4, 5, 7];
+  // Cinematic edits retain soft dissolves as their signature, with occasional
+  // restrained punch and directional reveals to avoid a repetitive two-cut loop.
+  const cinematicTransitions = [8, 0, 8, 1, 8, 2];
+  const calmTransitions = [8, 0, 1, 8, 2, 0];
+  const animeTransitions = [0, 3, 4, 7, 5];
+  const glitchTransitions = [0, 3, 5, 7, 4];
+  if (transitionMode === "cinematic") return cinematicTransitions[index % cinematicTransitions.length];
+  if (transitionMode === "action") return actionTransitions[index % actionTransitions.length];
+  if (style === "cinematic" || style === "story") return calmTransitions[index % calmTransitions.length];
+  if (style === "glitch") return glitchTransitions[index % glitchTransitions.length];
+  if (style === "anime") return animeTransitions[index % animeTransitions.length];
+  return actionTransitions[index % actionTransitions.length];
+}
+
+export async function renderVideoSequence({ segments, audioTracks = [], title, aspectRatio, framingMode = "auto", quality = "720p", style = "cinematic", effectStrength = "balanced", transitionMode = "auto", suppressEffects = false, suppressFlashes = false, suppressShake = false, suppressTransitions = false, suppressAudio = false, sourceAudioMode = "auto", sourceAudioVolume = 0.8, targetDurationSeconds, onProgress, onStage, audioContext: preparedAudioContext }: SequenceOptions): Promise<Blob> {
   if (!segments.length) throw new Error("Import at least one video clip or image before rendering.");
   if (typeof MediaRecorder === "undefined") throw new Error("This browser does not support video recording. Try a recent version of Chrome.");
   // Prefer VP8 on mobile: some Android encoders claim VP9 support but return an empty recording.
   const mimeType = chooseSupportedWebmMimeType((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error("Этот браузер не поддерживает экспорт WebM. Открой DRAVEX в актуальном Chrome.");
 
+  // Keep users informed while media metadata is being loaded before frame progress begins.
+  onStage?.("preparing-media");
   // Reuse one media element per source URL. Long highlight edits may contain many trims from the same source.
   const videoCache = new Map<string, Promise<HTMLVideoElement>>();
-  const loaded: LoadedSegment[] = await Promise.all(segments.map(async (segment): Promise<LoadedSegment> => {
+  const limitMediaLoad = createMediaLoadLimiter(MAX_CONCURRENT_MEDIA_LOADS);
+  let loadedMediaCount = 0;
+  const segmentLoads = segments.map((segment) => limitMediaLoad(async (): Promise<LoadedSegment> => {
     if (segment.kind === "image") {
       const image = await loadImage(segment);
       const requestedTransition = segment.transitionOutSeconds;
       const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
-      const effects = Array.isArray(segment.effects) ? segment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+      const effects = Array.isArray(segment.effects) ? segment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) : undefined;
       return { kind: "image", name: segment.name, image, duration: getSafeImageDuration(segment.duration), transitionOutSeconds, effects };
     }
     const videoSegment = segment as VideoSegment;
@@ -591,11 +793,57 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const speedFactor = Number.isFinite(requestedSpeed) ? Math.max(0.25, Math.min(4, requestedSpeed as number)) : 1;
     const requestedTransition = videoSegment.transitionOutSeconds;
     const transitionOutSeconds = Number.isFinite(requestedTransition) ? Math.max(0, Math.min(2, requestedTransition as number)) : undefined;
-    const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette"].includes(effect)) : undefined;
+    const effects = Array.isArray(videoSegment.effects) ? videoSegment.effects.filter((effect) => ["flash", "glitch-slices", "speed-lines", "vignette", "light-leak", "chromatic-shift", "letterbox"].includes(effect)) : undefined;
     return { kind: "video", name: segment.name, video, start: trim.start, end: trim.end, duration: trim.duration / speedFactor, speedFactor, transitionOutSeconds, effects };
+  }).then((item) => {
+    loadedMediaCount += 1;
+    onProgress?.(getMediaPreparationProgress(loadedMediaCount, segments.length));
+    return item;
   }));
+  let loaded: LoadedSegment[];
+  try {
+    loaded = await Promise.all(segmentLoads);
+  } catch (error) {
+    // Promise.all rejects as soon as one source fails, but other sources may still
+    // finish decoding. Wait for them and release every successfully loaded element
+    // so a failed import does not leave video decoders or image memory alive on mobile.
+    const results = await Promise.allSettled(segmentLoads);
+    const videos = new Set<HTMLVideoElement>();
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const item = result.value;
+      if (item.kind === "video") videos.add(item.video);
+      else {
+        releaseImageElement(item.image);
+      }
+    }
+    // A video may have decoded successfully and then failed trim validation
+    // before its segment promise could return a LoadedSegment. The cache owns
+    // those source elements too, so release every successfully resolved source.
+    const cachedVideoResults = await Promise.allSettled(videoCache.values());
+    for (const result of cachedVideoResults) {
+      if (result.status === "fulfilled") videos.add(result.value);
+    }
+    for (const video of videos) {
+      releaseVideoElement(video);
+    }
+    throw error;
+  }
   const sourceDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  if (sourceDuration <= 0) throw new Error("The selected trim ranges are empty.");
+  if (!isUsableRenderDuration(sourceDuration)) {
+    // Corrupt/extreme media metadata can overflow the summed timeline. Release
+    // every decoded source before rejecting so mobile decoders/bitmaps are not
+    // retained after an invalid-duration export attempt.
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    for (const video of uniqueVideos) {
+      releaseVideoElement(video);
+    }
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      releaseImageElement(item.image);
+    }
+    throw new Error("Длительность монтажного плана некорректна. Проверь исходные файлы и попробуй более короткий ролик.");
+  }
   // Keep every imported visual in the chosen order while fitting an overlong sequence to the target length.
   if (targetDurationSeconds && Number.isFinite(targetDurationSeconds) && targetDurationSeconds > 0) {
     if (sourceDuration > targetDurationSeconds) {
@@ -611,10 +859,65 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   }
   const totalDuration = loaded.reduce((sum, item) => sum + item.duration, 0);
-  const loadedAudio = await Promise.all(audioTracks.map(async (segment) => ({
+  if (!isUsableFinalRenderDuration(totalDuration)) {
+    // The requested target can be positive but too short to encode reliably.
+    // Release decoded sources before rejecting so a malformed target cannot leave
+    // media decoders/bitmaps alive on Android after a failed export attempt.
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    for (const video of uniqueVideos) {
+      releaseVideoElement(video);
+    }
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      releaseImageElement(item.image);
+    }
+    throw new Error("Длительность итогового монтажа меньше 0,1 секунды или некорректна. Увеличь длительность ролика и попробуй снова.");
+  }
+  onStage?.("preparing-audio");
+  const audioLoads = audioTracks.map(async (segment) => ({
     segment,
     audio: await loadAudio(segment)
-  })));
+  }));
+  let loadedAudio: Array<{ segment: AudioSegment; audio: HTMLAudioElement }>;
+  try {
+    loadedAudio = await Promise.all(audioLoads);
+  } catch (error) {
+    // Audio setup can fail after video/image decoding has succeeded. Release both
+    // completed audio elements and the already-loaded visual sources before exiting.
+    const audioResults = await Promise.allSettled(audioLoads);
+    for (const result of audioResults) {
+      if (result.status !== "fulfilled") continue;
+      releaseAudioElement(result.value.audio);
+    }
+    const videos = new Set<HTMLVideoElement>();
+    for (const item of loaded) {
+      if (item.kind === "video") videos.add(item.video);
+      else {
+        releaseImageElement(item.image);
+      }
+    }
+    for (const video of videos) {
+      releaseVideoElement(video);
+    }
+    throw error;
+  }
+
+  // Release decoded media on every pre-recorder validation failure. On mobile,
+  // detached media elements can retain decoder and memory resources until unload.
+  const releaseLoadedMedia = (contextToClose?: AudioContext | null) => {
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    for (const video of uniqueVideos) {
+      releaseVideoElement(video);
+    }
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      releaseImageElement(item.image);
+    }
+    for (const { audio } of loadedAudio) {
+      releaseAudioElement(audio);
+    }
+    if (contextToClose && contextToClose !== preparedAudioContext) void contextToClose.close().catch(() => {});
+  };
 
   // Validate the actual, metadata-resolved render sequence before allocating the
   // canvas/recorder. This checks the plan the browser will really render, not
@@ -641,7 +944,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         timelineStart,
         timelineEnd,
         sourceRange: { start: item.start, end: item.end },
-        playbackRate: 1,
+        playbackRate: item.speedFactor,
       };
     }
 
@@ -666,7 +969,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       timelineStart: 0,
       timelineEnd: totalDuration,
       sourceRange: { start: 0, end: audio.duration },
-      gain: Math.max(0, Math.min(1, segment.volume ?? 0.65)),
+      gain: getSafeAudioTrackVolume(segment.volume),
       fadeInSeconds: Math.min(0.65, totalDuration * 0.15),
       fadeOutSeconds: Math.min(0.9, totalDuration * 0.2),
       loop: true,
@@ -686,87 +989,169 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
   };
   const timelineValidation = validateEditTimeline(timeline, timelineSources);
   if (!timelineValidation.valid) {
+    releaseLoadedMedia();
     throw new Error(`Некорректный монтажный план: ${timelineValidation.errors.join(" ")}`);
   }
 
   const { width, height, frameRate, videoBitsPerSecond } = getExportProfile(aspectRatio, quality);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not initialize the video renderer.");
+  // On memory-constrained Android devices, allocating a large 4K canvas can
+  // throw instead of returning a null 2D context. Treat both outcomes as a
+  // recoverable export setup failure and release already-decoded media.
+  let canvas: HTMLCanvasElement;
+  let context: CanvasRenderingContext2D | null;
+  try {
+    canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    context = canvas.getContext("2d");
+  } catch (error) {
+    releaseLoadedMedia();
+    const detail = error instanceof Error ? error.message : "ошибка выделения памяти";
+    throw new Error(`Не удалось подготовить холст ${width}×${height} для экспорта (${detail}). Попробуй 720p или закрой другие приложения и повтори экспорт.`);
+  }
+  if (!context) {
+    releaseLoadedMedia();
+    throw new Error(`Не удалось создать холст ${width}×${height} для экспорта. Попробуй 720p или закрой другие приложения и повтори экспорт.`);
+  }
 
-  const videoStream = canvas.captureStream(frameRate);
+  let videoStream: MediaStream;
+  try {
+    videoStream = canvas.captureStream(frameRate);
+  } catch (error) {
+    releaseLoadedMedia();
+    const detail = error instanceof Error ? error.message : "неизвестная ошибка захвата холста";
+    throw new Error(`Не удалось подготовить видеопоток (${detail}). Обнови Chrome и попробуй экспорт в 720p.`);
+  }
   // Do not create an AudioContext for a no-music export. On some Android
   // Chrome devices, adding an otherwise-unused Web Audio track can prevent
   // MediaRecorder from emitting video data. The no-music path records video-only.
   // Preserve source-video audio by default; when a music track is added, duck the original audio underneath it.
   const hasSourceVideo = !suppressAudio && sourceAudioMode !== "mute" && loaded.some((item) => item.kind === "video");
-  const audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined" ? preparedAudioContext ?? new AudioContext() : null;
-  if (hasSourceVideo && !audioContext) {
-    throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
-  }
-  const audioDestination = audioContext?.createMediaStreamDestination();
+  let audioContext: AudioContext | null = null;
   const musicGainNodes = new Map<HTMLAudioElement, GainNode>();
   const sourceVideoGainNodes = new Map<HTMLVideoElement, GainNode>();
-  if (audioContext && audioDestination) {
-    const connectedVideoElements = new Set<HTMLVideoElement>();
-    for (const item of loaded) {
-      if (item.kind !== "video" || connectedVideoElements.has(item.video)) continue;
-      connectedVideoElements.add(item.video);
-      const source = audioContext.createMediaElementSource(item.video);
-      const sourceGain = audioContext.createGain();
-      // Fade each clip's original audio at cut boundaries to reduce clicks and pops.
-      sourceGain.gain.value = 0;
-      source.connect(sourceGain);
-      sourceGain.connect(audioDestination);
-      sourceVideoGainNodes.set(item.video, sourceGain);
+  let audioDestination: MediaStreamAudioDestinationNode | null = null;
+  try {
+    audioContext = (loadedAudio.length > 0 || hasSourceVideo) && typeof AudioContext !== "undefined"
+      ? preparedAudioContext ?? new AudioContext()
+      : null;
+    if (hasSourceVideo && !audioContext) {
+      throw new Error("Не удалось подготовить звук исходного видео. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
     }
-    for (const item of loadedAudio) {
-      const source = audioContext.createMediaElementSource(item.audio);
-      const gain = audioContext.createGain();
-      // Fade automation is scheduled once the render starts to avoid abrupt music edges.
-      gain.gain.value = 0;
-      source.connect(gain);
-      gain.connect(audioDestination);
-      item.audio.loop = true;
-      musicGainNodes.set(item.audio, gain);
+    audioDestination = audioContext?.createMediaStreamDestination() ?? null;
+    if (audioContext && audioDestination) {
+      const connectedVideoElements = new Set<HTMLVideoElement>();
+      for (const item of loaded) {
+        if (item.kind !== "video" || connectedVideoElements.has(item.video)) continue;
+        connectedVideoElements.add(item.video);
+        const source = audioContext.createMediaElementSource(item.video);
+        const sourceGain = audioContext.createGain();
+        // Fade each clip's original audio at cut boundaries to reduce clicks and pops.
+        sourceGain.gain.value = 0;
+        source.connect(sourceGain);
+        sourceGain.connect(audioDestination);
+        sourceVideoGainNodes.set(item.video, sourceGain);
+      }
+      for (const item of loadedAudio) {
+        const source = audioContext.createMediaElementSource(item.audio);
+        const gain = audioContext.createGain();
+        // Fade automation is scheduled once the render starts to avoid abrupt music edges.
+        gain.gain.value = 0;
+        source.connect(gain);
+        gain.connect(audioDestination);
+        item.audio.loop = true;
+        musicGainNodes.set(item.audio, gain);
+      }
     }
-  }
-  if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
-    throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
+    if (loadedAudio.length > 0 && (!audioContext || !audioDestination)) {
+      throw new Error("Не удалось подготовить аудиодорожку. Открой DRAVEX в актуальном Chrome и повтори экспорт.");
+    }
+  } catch (error) {
+    videoStream.getTracks().forEach((track) => track.stop());
+    releaseLoadedMedia(audioContext);
+    if (error instanceof Error && (error.message.startsWith("Не удалось подготовить звук") || error.message.startsWith("Не удалось подготовить аудио"))) {
+      throw error;
+    }
+    const detail = error instanceof Error ? error.message : "неизвестная ошибка аудиосистемы";
+    throw new Error(`Не удалось настроить аудиосистему экспорта (${detail}). Попробуй отключить музыку или перезапустить экспорт.`);
   }
   const stream = new MediaStream([
     ...videoStream.getVideoTracks(),
     ...(audioDestination?.stream.getAudioTracks() ?? [])
   ]);
   if (!stream.getVideoTracks().some((track) => track.readyState === "live")) {
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    releaseLoadedMedia(audioContext);
     throw new Error("Не удалось запустить видеопоток с холста. Перезагрузи страницу и попробуй ещё раз.");
   }
   if (loadedAudio.length > 0 && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    releaseLoadedMedia(audioContext);
     throw new Error("Музыкальная дорожка не подключилась к экспорту. Музыка не будет молча пропущена — обнови страницу и попробуй ещё раз.");
   }
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
   const chunks: BlobPart[] = [];
+  let recorderResourcesCleaned = false;
+  const cleanupRecorderResources = () => {
+    if (recorderResourcesCleaned) return;
+    recorderResourcesCleaned = true;
+    stream.getTracks().forEach((track) => track.stop());
+    videoStream.getTracks().forEach((track) => track.stop());
+    const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
+    uniqueVideos.forEach((video) => {
+      releaseVideoElement(video);
+    });
+    // Release decoded image resources on successful exports and recorder errors
+    // too. Previously this cleanup covered videos/audio only, leaving detached
+    // HTMLImageElements referenced until the render promise and closures were
+    // collected; on Android this can retain sizable decoded bitmaps after export.
+    for (const item of loaded) {
+      if (item.kind !== "image") continue;
+      releaseImageElement(item.image);
+    }
+    loadedAudio.forEach(({ audio }) => {
+      releaseAudioElement(audio);
+    });
+    if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
+  };
+  let recorder: MediaRecorder | null = null;
+  let recorderMimeType = mimeType;
+  let lastRecorderError: unknown = null;
+  // isTypeSupported() is only a capability hint: Android/browser encoder setup
+  // can still reject a codec at construction time. Try the remaining supported
+  // WebM variants before failing the whole export.
+  const recorderMimeCandidates = [
+    mimeType,
+    ...WEBM_MIME_CANDIDATES.filter((candidate) => {
+      if (candidate === mimeType) return false;
+      try { return MediaRecorder.isTypeSupported(candidate); } catch { return false; }
+    }),
+  ];
+  for (const candidate of recorderMimeCandidates) {
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: candidate, videoBitsPerSecond });
+      recorderMimeType = candidate;
+      break;
+    } catch (error) {
+      lastRecorderError = error;
+    }
+  }
+  if (!recorder) {
+    // Release every stream, decoder and owned AudioContext before surfacing the error.
+    cleanupRecorderResources();
+    const detail = lastRecorderError instanceof Error ? lastRecorderError.message : "неизвестная ошибка кодека";
+    throw new Error(`Не удалось запустить запись видео (${detail}). Освободи память телефона, обнови страницу и повтори экспорт.`);
+  }
   const result = new Promise<Blob>((resolve, reject) => {
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-    recorder.onerror = () => reject(new Error("The browser stopped recording unexpectedly."));
+    recorder.onerror = () => {
+      cleanupRecorderResources();
+      reject(new Error("Chrome остановил запись неожиданно. Проверь, что видео открывается в браузере, затем обнови DRAVEX и повтори экспорт. Если ошибка повторится, попробуй более короткий ролик."));
+    };
     recorder.onstop = async () => {
-      stream.getTracks().forEach((track) => track.stop());
-      videoStream.getTracks().forEach((track) => track.stop());
-      const uniqueVideos = new Set(loaded.filter((item): item is LoadedVideo => item.kind === "video").map((item) => item.video));
-      uniqueVideos.forEach((video) => {
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-      });
-      loadedAudio.forEach(({ audio }) => {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      });
-      if (audioContext && audioContext !== preparedAudioContext) void audioContext.close();
-      const blob = new Blob(chunks, { type: mimeType });
+      cleanupRecorderResources();
+      const blob = new Blob(chunks, { type: recorderMimeType });
       if (blob.size) {
         try {
           resolve(await finalizeWebmDuration(blob, totalDuration));
@@ -776,11 +1161,12 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         }
       } else {
         const videoTrackState = videoStream.getVideoTracks().map((track) => track.readyState).join(",") || "нет";
-        reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${mimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
+        reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${recorderMimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
       }
     };
   });
 
+  onStage?.("rendering");
   const previousFrameCanvas = document.createElement("canvas");
   previousFrameCanvas.width = width;
   previousFrameCanvas.height = height;
@@ -806,24 +1192,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     const transitionWindow = !suppressTransitions && cutIndex > 0 && hasPreviousFrame && cutProgress >= 0 && cutProgress < transitionDuration;
     const transitionProgress = transitionWindow ? Math.max(0, Math.min(1, cutProgress / transitionDuration)) : 1;
     // Native-canvas transition families; no extra library or network asset is required.
-    const actionTransitions = [0, 3, 4, 5, 7];
-    // Auto mode follows the edit's visual language instead of cycling through every
-    // transition at random: calm edits stay clean, action edits use short impact reveals.
-    const calmTransitions = [8, 0, 8, 0];
-    const animeTransitions = [0, 3, 4, 7];
-    const glitchTransitions = [0, 3, 5, 7];
-    const transitionIndex = Math.max(0, cutIndex - 1);
-    const transitionType = transitionMode === "cinematic"
-      ? (cutIndex % 2 === 0 ? 8 : 0)
-      : transitionMode === "action"
-        ? actionTransitions[transitionIndex % actionTransitions.length]
-        : style === "cinematic" || style === "story"
-          ? calmTransitions[transitionIndex % calmTransitions.length]
-          : style === "glitch"
-            ? glitchTransitions[transitionIndex % glitchTransitions.length]
-            : style === "anime"
-              ? animeTransitions[transitionIndex % animeTransitions.length]
-              : actionTransitions[transitionIndex % actionTransitions.length];
+    const transitionType = getTransitionSequenceType(style, transitionMode, cutIndex);
     context.fillStyle = "#090b12";
     context.fillRect(0, 0, width, height);
     // Keep the outgoing shot underneath the incoming shot so transitions never reveal a black gap.
@@ -1030,6 +1399,35 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
       context.fillStyle = vignette;
       context.fillRect(0, 0, width, height);
     }
+    // Optional cinematic overlays use native canvas only and remain per-clip allowlisted.
+    if (!suppressEffects && effectEnabled("light-leak", style === "cinematic" && cutProgress < 0.42) && cutProgress >= 0 && cutProgress < 0.42) {
+      const leakProgress = 1 - cutProgress / 0.42;
+      const leak = context.createLinearGradient(0, 0, width * 0.82, height * 0.72);
+      leak.addColorStop(0, `rgba(255,155,72,${0.22 * leakProgress * strengthScale})`);
+      leak.addColorStop(0.38, `rgba(255,92,54,${0.09 * leakProgress * strengthScale})`);
+      leak.addColorStop(1, "rgba(255,92,54,0)");
+      context.fillStyle = leak;
+      context.fillRect(0, 0, width, height);
+    }
+    if (!suppressEffects && effectEnabled("chromatic-shift", style === "glitch" && cutProgress < 0.18) && cutProgress >= 0 && cutProgress < 0.18) {
+      const shiftAlpha = Math.min(0.16, (1 - cutProgress / 0.18) * 0.12 * strengthScale);
+      context.save();
+      context.globalAlpha = shiftAlpha;
+      context.globalCompositeOperation = "screen";
+      context.beginPath();
+      context.rect(0, height * 0.16, width, height * 0.68);
+      context.clip();
+      context.drawImage(source, drawX + width * 0.006, drawY, drawWidth, drawHeight);
+      context.fillStyle = "rgba(255,35,90,0.32)";
+      context.fillRect(0, height * 0.16, width, height * 0.68);
+      context.restore();
+    }
+    if (!suppressEffects && effectEnabled("letterbox", style === "cinematic")) {
+      const barHeight = Math.max(2, Math.round(height * 0.045));
+      context.fillStyle = "rgba(0,0,0,0.88)";
+      context.fillRect(0, 0, width, barHeight);
+      context.fillRect(0, height - barHeight, width, barHeight);
+    }
     const cleanTitle = title.trim().replace(/\s+/g, " ").slice(0, 48);
     if (cleanTitle) {
       const fontSize = Math.max(24, Math.round(width * 0.045));
@@ -1059,16 +1457,21 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
   };
 
-  if (audioContext?.state === "suspended") await audioContext.resume();
-  recorder.start(1000);
+  let recordingStarted = false;
   let completed = 0;
   try {
+    // Resume/start can throw on mobile even when MediaRecorder construction worked.
+    // Keep both operations inside the guarded lifecycle so startup failures release
+    // canvas tracks, decoded media, and any AudioContext owned by this render.
+    if (audioContext?.state === "suspended") await audioContext.resume();
+    recorder.start(1000);
+    recordingStarted = true;
     if (audioContext && loadedAudio.length) {
       const audioStart = audioContext.currentTime;
       await Promise.all(loadedAudio.map(async ({ audio, segment }) => {
         audio.currentTime = 0;
         const gain = musicGainNodes.get(audio);
-        const targetVolume = Math.max(0, Math.min(1, segment.volume ?? 0.65));
+        const targetVolume = getSafeAudioTrackVolume(segment.volume);
         if (gain) {
           gain.gain.cancelScheduledValues(audioStart);
           const fadeInSeconds = Math.min(0.65, totalDuration * 0.15);
@@ -1097,7 +1500,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
           const elapsedSeconds = (lastFrameAt - segmentStartedAt) / 1000;
           const segmentProgress = Math.min(1, elapsedSeconds / item.duration);
           draw(item.image, segmentProgress, elapsedSeconds, cutIndex);
-          onProgress?.(Math.min(99, Math.round(((completed + segmentProgress * item.duration) / totalDuration) * 100)));
+          onProgress?.(getRenderProgressPercent(completed + segmentProgress * item.duration, totalDuration));
         }
         savePreviousFrame();
         completed += item.duration;
@@ -1141,7 +1544,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         const rampRate = getSpeedRampRate(style, clipProgress, cutIndex);
         video.playbackRate = trimBoundaryReached ? 1 : Math.max(0.25, Math.min(4, rampRate * speedFactor));
         draw(video, clipProgress, elapsedSeconds, cutIndex);
-        onProgress?.(Math.min(99, Math.round(((completed + clipProgress * duration) / totalDuration) * 100)));
+        onProgress?.(getRenderProgressPercent(completed + clipProgress * duration, totalDuration));
       }
       // The gain automation was scheduled against the clip duration so the fade-out
       // finishes at the cut without extending the rendered timeline.
@@ -1155,6 +1558,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     await new Promise((resolve) => window.setTimeout(resolve, 500));
 
+    onStage?.("finalizing");
     // Flush the final encoded data before stopping; some Android browsers otherwise
     // stop before delivering the last (or only) dataavailable chunk.
     if (recorder.state === "recording" && typeof recorder.requestData === "function") {
@@ -1175,11 +1579,41 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     }
     recorder.stop();
   } catch (error) {
-    if (recorder.state !== "inactive") recorder.stop();
+    if (recorder.state !== "inactive") {
+      try { recorder.stop(); } catch { /* cleanup below is still required */ }
+    }
+    cleanupRecorderResources();
+    if (!recordingStarted) {
+      const detail = error instanceof Error ? error.message : "неизвестная ошибка запуска";
+      throw new Error(`Не удалось начать запись экспорта (${detail}). Освободи память телефона, обнови страницу и повтори попытку.`);
+    }
     throw error;
   }
 
-  const blob = await result;
-  onProgress?.(100);
-  return blob;
+  // Android MediaRecorder can occasionally remain active without dispatching
+  // the final "stop" event. Bound finalization so the UI never waits forever.
+  let finalizationTimeoutId = 0;
+  try {
+    const blob = await Promise.race([
+      result,
+      new Promise<Blob>((_, reject) => {
+        finalizationTimeoutId = window.setTimeout(() => {
+          // Stop a recorder that ignored its normal finalization path before
+          // releasing the stream. Ending the tracks alone is not enough on every
+          // Android Chrome build; an active encoder can otherwise retain memory.
+          if (recorder.state !== "inactive") {
+            try { recorder.stop(); } catch { /* The stream cleanup below is still required. */ }
+          }
+          // Share the idempotent cleanup with recorder error/stop handlers.
+          // A late "stop" event after the watchdog must not clean resources twice.
+          cleanupRecorderResources();
+          reject(new Error("Chrome не завершил запись ролика за 15 секунд. Монтаж не был сохранён. Обнови страницу и попробуй экспорт ещё раз; если ошибка повторится, попробуй более короткий ролик."));
+        }, 15_000);
+      })
+    ]);
+    onProgress?.(100);
+    return blob;
+  } finally {
+    window.clearTimeout(finalizationTimeoutId);
+  }
 }
