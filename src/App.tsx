@@ -23,17 +23,29 @@ async function readVideoDimensions(url: string): Promise<{ width: number; height
   video.preload = "metadata";
   video.muted = true;
   video.src = url;
+  let timeoutId: number | undefined;
   try {
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Unable to read video metadata for AI Director validation."));
-    });
+    await Promise.race([
+      new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error("Unable to read video metadata for AI Director validation."));
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(
+          () => reject(new Error("Timed out reading video dimensions for AI Director validation.")),
+          8_000
+        );
+      }),
+    ]);
     if (!Number.isFinite(video.videoWidth) || video.videoWidth <= 0
       || !Number.isFinite(video.videoHeight) || video.videoHeight <= 0) {
       throw new Error("Video dimensions are invalid.");
     }
     return { width: video.videoWidth, height: video.videoHeight };
   } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    video.onloadedmetadata = null;
+    video.onerror = null;
     video.removeAttribute("src");
     video.load();
   }
