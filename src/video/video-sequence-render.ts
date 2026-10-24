@@ -339,7 +339,7 @@ function findEbmlElement(
  * the Matroska Duration value without re-encoding the recorded frames.
  */
 export async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promise<Blob> {
-  if (!blob.type.includes("webm") || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return blob;
+  if (!blob.type.includes("webm") || !Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 86_400) return blob;
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const segmentStart = (() => {
     for (let index = 0; index + 4 <= bytes.length; index += 1) {
