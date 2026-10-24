@@ -302,6 +302,10 @@ async function finalizeWebmDuration(blob: Blob, durationSeconds: number): Promis
   }
 
   const durationValue = durationSeconds * 1_000_000_000 / timecodeScale;
+  // EBML Duration is IEEE-754 float32 or float64. Never rewrite a valid file
+  // with Infinity/NaN when a finite JS duration overflows its encoded width.
+  if (!Number.isFinite(durationValue)) return blob;
+  if (durationElement?.size === 4 && Math.abs(durationValue) > 3.4028234663852886e38) return blob;
   if (durationElement) {
     const patched = bytes.slice();
     const view = new DataView(patched.buffer, patched.byteOffset, patched.byteLength);
