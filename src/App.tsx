@@ -1100,7 +1100,7 @@ export default function App() {
         // Keep reasonCode within the diagnostic schema; phase carries the finer distinction.
         reasonCode: operationPhase === "render" ? "render-error" : "analysis-unavailable",
         phase: operationPhase,
-        mediaKind: isImageMode ? "images" : "video",
+        mediaKind: isImageMode ? "images" : isMixedMode ? "mixed" : "video",
         mediaCount: mediaFiles.length,
         quality
       });
