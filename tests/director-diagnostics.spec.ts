@@ -93,3 +93,20 @@ test("diagnostics preserve mixed video and photo media kind", () => {
     phase: "analysis",
   });
 });
+
+
+test("music analysis failures have a distinct diagnostic reason code", () => {
+  const event = createDirectorDiagnostic("montage-failed", {
+    mediaKind: "video",
+    mediaCount: 1,
+    reasonCode: "music-analysis-error",
+    phase: "music-analysis",
+  }, "2026-10-24T12:00:00.000Z");
+
+  expect(event.details).toEqual({
+    mediaKind: "video",
+    mediaCount: 1,
+    reasonCode: "music-analysis-error",
+    phase: "music-analysis",
+  });
+});
