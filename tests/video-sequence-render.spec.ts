@@ -610,3 +610,25 @@ test("WebM duration finalization preserves the original blob when Float32 durati
 
   await expect(finalizeWebmDuration(source, 1e36)).resolves.toBe(source);
 });
+
+test("WebM duration finalization preserves unknown-size Segment headers and encoded media bytes", async () => {
+  // Matroska streams may use an unknown Segment size (all data bits set).
+  // Duration insertion must not rewrite that sentinel as a finite byte count.
+  const cluster = new Uint8Array([0x1f, 0x43, 0xb6, 0x75, 0x84, 0xde, 0xad, 0xbe, 0xef]);
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0xff, // Segment with unknown size
+    0x15, 0x49, 0xa9, 0x66, 0x87, // Info, 7 bytes
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    ...cluster,
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+  const finalized = await finalizeWebmDuration(source, 6.25);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  const hex = Array.from(result, (value) => value.toString(16).padStart(2, "0")).join("");
+
+  expect(result[4]).toBe(0xff);
+  expect(hex).toContain("448988");
+  expect(Array.from(result.slice(-cluster.length))).toEqual(Array.from(cluster));
+  expect(finalized.size).toBe(fixture.length + 11);
+});
+
