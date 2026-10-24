@@ -38,6 +38,14 @@ test("duration tolerance uses the greater of the explicit tolerance and five per
   expect(isRenderedDurationWithinTolerance(106, 100)).toBe(false);
 });
 
+test("invalid duration tolerances fall back to the conservative default", () => {
+  // A 5-second clip uses the 0.75-second default because the 5% floor is only 0.25s.
+  expect(isRenderedDurationWithinTolerance(5.7, 5, Number.NaN)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(5.76, 5, Number.NaN)).toBe(false);
+  expect(isRenderedDurationWithinTolerance(4.3, 5, Number.POSITIVE_INFINITY)).toBe(true);
+  expect(isRenderedDurationWithinTolerance(4.24, 5, -1)).toBe(false);
+});
+
 test("duration tolerance is inclusive at its exact proportional boundary", () => {
   // For a 30-second clip, the 5% floor (1.5s) is larger than the explicit 0.75s tolerance.
   expect(isRenderedDurationWithinTolerance(31.5, 30, 0.75)).toBe(true);
