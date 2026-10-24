@@ -13,9 +13,9 @@ permissions:
   id-token: write
 
 concurrency:
-  # Keep test-preview runs separate from the primary site's Pages deployment.
-  # The artifact still includes the current main build at the root.
-  group: dravex-test-preview-pages
+  # GitHub Pages allows only one active deployment for this site.
+  # Share the primary workflow's lock, but queue rather than cancel deployments.
+  group: pages
   cancel-in-progress: false
 
 jobs:
