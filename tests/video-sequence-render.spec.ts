@@ -570,3 +570,27 @@ test("WebM duration finalization expands the Segment size field when inserted me
   expect(Array.from(result.slice(-clusterPayload.length))).toEqual(Array.from(clusterPayload));
 });
 
+
+
+test("WebM duration finalization updates existing 64-bit Duration metadata without changing the media payload", async () => {
+  // Segment > Info > TimecodeScale + an existing Float64 Duration + Cluster.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x97, // Segment payload: 23 bytes
+    0x15, 0x49, 0xa9, 0x66, 0x92, // Info payload: 18 bytes
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40, // TimecodeScale = 1,000,000ns
+    0x44, 0x89, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Duration placeholder
+    0x1f, 0x43, 0xb6, 0x75, 0x80, // Cluster
+  ]);
+  const originalCluster = Array.from(fixture.slice(-5));
+  const source = new Blob([fixture], { type: "video/webm" });
+  const finalized = await finalizeWebmDuration(source, 12.5);
+  const result = new Uint8Array(await finalized.arrayBuffer());
+  const durationOffset = result.findIndex((value, index) =>
+    value === 0x44 && result[index + 1] === 0x89 && result[index + 2] === 0x88
+  );
+
+  expect(finalized.size).toBe(fixture.length);
+  expect(durationOffset).toBeGreaterThanOrEqual(0);
+  expect(new DataView(result.buffer, result.byteOffset, result.byteLength).getFloat64(durationOffset + 3, false)).toBeCloseTo(12500, 6);
+  expect(Array.from(result.slice(-5))).toEqual(originalCluster);
+});
