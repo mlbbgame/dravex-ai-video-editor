@@ -10,24 +10,62 @@ export type OutputQualityReport = {
   severity: "ok" | "warning";
 };
 
+/** Media events can fire between assigning a Blob URL and attaching listeners. */
+export function hasReachedMediaReadyState(successEvent: string, readyState: number): boolean {
+  if (!Number.isFinite(readyState)) return false;
+  if (successEvent === "loadedmetadata") return readyState >= 1;
+  if (successEvent === "loadeddata") return readyState >= 2;
+  return false;
+}
+
 const waitForMediaEvent = (video: HTMLVideoElement, successEvent: string): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => { cleanup(); reject(new Error("Истекло время ожидания декодирования видео.")); }, 12000);
-    const onSuccess = () => { cleanup(); resolve(); };
-    const onError = () => { cleanup(); reject(new Error("Браузер не смог декодировать экспортированное видео.")); };
+    let settled = false;
+    let timeoutId = 0;
     const cleanup = () => {
-      window.clearTimeout(timeout);
+      if (timeoutId) window.clearTimeout(timeoutId);
       video.removeEventListener(successEvent, onSuccess);
       video.removeEventListener("error", onError);
     };
-    video.addEventListener(successEvent, onSuccess, { once: true });
-    video.addEventListener("error", onError, { once: true });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onSuccess = () => finish();
+    const onError = () => finish(new Error("Браузер не смог декодировать экспортированное видео."));
+    video.addEventListener(successEvent, onSuccess);
+    video.addEventListener("error", onError);
+    if (hasReachedMediaReadyState(successEvent, video.readyState)) {
+      finish();
+      return;
+    }
+    timeoutId = window.setTimeout(
+      () => finish(new Error("Истекло время ожидания декодирования видео.")),
+      12000,
+    );
   });
 
 const seekTo = async (video: HTMLVideoElement, time: number) => {
-  if (Math.abs(video.currentTime - time) < 0.025) return;
+  if (!Number.isFinite(time) || time < 0 || !Number.isFinite(video.duration) || time >= video.duration) {
+    throw new Error("Выбрана недопустимая точка для проверки видео.");
+  }
+  if (Math.abs(video.currentTime - time) < 0.025) {
+    if (video.readyState >= 2) return;
+    await waitForMediaEvent(video, "loadeddata");
+    return;
+  }
+  // Register the bounded wait before seeking. If currentTime throws synchronously,
+  // the wait still has a timeout and cleans up its listeners.
   const seeked = waitForMediaEvent(video, "seeked");
-  video.currentTime = time;
+  try {
+    video.currentTime = time;
+  } catch (error) {
+    await seeked.catch(() => undefined);
+    throw new Error("Не удалось перейти к кадру экспортированного видео.");
+  }
   await seeked;
 };
 
