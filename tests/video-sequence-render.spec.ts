@@ -257,6 +257,23 @@ test("mobile media decoding has a conservative concurrency cap", () => {
   expect(MAX_CONCURRENT_MEDIA_LOADS).toBeLessThanOrEqual(4);
 });
 
+test("media load limiter recovers from a synchronous task throw without blocking queued decodes", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  let recoveredTaskStarted = false;
+
+  const failedTask = limitMediaLoad(() => {
+    throw new Error("synchronous decoder setup failure");
+  });
+  const recoveredTask = limitMediaLoad(async () => {
+    recoveredTaskStarted = true;
+    return "decoded";
+  });
+
+  await expect(failedTask).rejects.toThrow("synchronous decoder setup failure");
+  await expect(recoveredTask).resolves.toBe("decoded");
+  expect(recoveredTaskStarted).toBe(true);
+});
+
 test("media load limiter releases its slot after rejection so queued work can continue", async () => {
   const limitMediaLoad = createMediaLoadLimiter(1);
   let secondTaskStarted = false;
