@@ -159,3 +159,54 @@ test("malformed highlight candidates cannot poison otherwise valid montage varia
     }
   }
 });
+
+import { selectDiverseHighlightMoments } from "../src/video/montage-selection";
+
+test("diverse selector keeps valid source ranges chronological and non-overlapping", () => {
+  const duration = 24;
+  const candidates: HighlightMoment[] = [];
+  for (let time = 0.5; time < duration; time += 0.5) {
+    const motion = time > 10 && time < 15 ? 0.98 : 0.25;
+    candidates.push({
+      time,
+      start: Math.max(0, time - 0.2),
+      end: Math.min(duration, time + 0.2),
+      score: motion,
+      motion,
+      contrast: 0.5,
+    });
+  }
+  // Bad timestamps/ranges should be ignored instead of contaminating the output.
+  candidates.push(
+    { time: Number.NaN, start: 1, end: 2, score: 1, motion: 1, contrast: 1 },
+    { time: 23, start: 22, end: 25, score: 1, motion: 1, contrast: 1 },
+  );
+
+  const selected = selectDiverseHighlightMoments(candidates, 8, duration, "velocity", 1.2);
+  expect(selected.length).toBeGreaterThan(0);
+  expect(selected.length).toBeLessThanOrEqual(8);
+  expect(selected.every((item) =>
+    Number.isFinite(item.time) &&
+    item.start >= 0 &&
+    item.end <= duration &&
+    item.start <= item.time &&
+    item.time <= item.end
+  )).toBe(true);
+
+  for (let index = 1; index < selected.length; index += 1) {
+    expect(selected[index].time).toBeGreaterThan(selected[index - 1].time);
+    expect(selected[index].start).toBeGreaterThanOrEqual(selected[index - 1].end + 0.079);
+    expect(Math.abs(selected[index].time - selected[index - 1].time)).toBeGreaterThanOrEqual(1.2);
+  }
+});
+
+test("diverse selector returns no cuts for invalid duration or an unusable candidate set", () => {
+  const candidate: HighlightMoment = {
+    time: 1, start: 0.5, end: 1.5, score: 0.8, motion: 0.4, contrast: 0.6,
+  };
+  expect(selectDiverseHighlightMoments([candidate], 4, 0, "cinematic")).toEqual([]);
+  expect(selectDiverseHighlightMoments([], 4, 10, "cinematic")).toEqual([]);
+  expect(selectDiverseHighlightMoments([
+    { ...candidate, time: 8, start: 0.5, end: 1.5 },
+  ], 4, 10, "cinematic")).toEqual([]);
+});
