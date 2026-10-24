@@ -6,7 +6,7 @@ import {
   type TimelineSource,
 } from "./timeline-contract";
 import { getColorGradeFilter, getSpeedRampRate } from "./motion-engine";
-import { chooseSupportedWebmMimeType, getExportProfile } from "./export-profile";
+import { chooseSupportedWebmMimeType, getExportProfile, WEBM_MIME_CANDIDATES } from "./export-profile";
 
 export type VideoSegment = {
   kind?: "video";
@@ -1115,15 +1115,32 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     });
     if (audioContext && audioContext !== preparedAudioContext) void audioContext.close().catch(() => {});
   };
-  let recorder: MediaRecorder;
-  try {
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
-  } catch (error) {
-    // MediaRecorder construction can fail on mobile even after isTypeSupported()
-    // reports success (for example, when the encoder is temporarily unavailable).
+  let recorder: MediaRecorder | null = null;
+  let recorderMimeType = mimeType;
+  let lastRecorderError: unknown = null;
+  // isTypeSupported() is only a capability hint: Android/browser encoder setup
+  // can still reject a codec at construction time. Try the remaining supported
+  // WebM variants before failing the whole export.
+  const recorderMimeCandidates = [
+    mimeType,
+    ...WEBM_MIME_CANDIDATES.filter((candidate) => {
+      if (candidate === mimeType) return false;
+      try { return MediaRecorder.isTypeSupported(candidate); } catch { return false; }
+    }),
+  ];
+  for (const candidate of recorderMimeCandidates) {
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: candidate, videoBitsPerSecond });
+      recorderMimeType = candidate;
+      break;
+    } catch (error) {
+      lastRecorderError = error;
+    }
+  }
+  if (!recorder) {
     // Release every stream, decoder and owned AudioContext before surfacing the error.
     cleanupRecorderResources();
-    const detail = error instanceof Error ? error.message : "неизвестная ошибка кодека";
+    const detail = lastRecorderError instanceof Error ? lastRecorderError.message : "неизвестная ошибка кодека";
     throw new Error(`Не удалось запустить запись видео (${detail}). Освободи память телефона, обнови страницу и повтори экспорт.`);
   }
   const result = new Promise<Blob>((resolve, reject) => {
@@ -1134,7 +1151,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
     };
     recorder.onstop = async () => {
       cleanupRecorderResources();
-      const blob = new Blob(chunks, { type: mimeType });
+      const blob = new Blob(chunks, { type: recorderMimeType });
       if (blob.size) {
         try {
           resolve(await finalizeWebmDuration(blob, totalDuration));
@@ -1144,7 +1161,7 @@ export async function renderVideoSequence({ segments, audioTracks = [], title, a
         }
       } else {
         const videoTrackState = videoStream.getVideoTracks().map((track) => track.readyState).join(",") || "нет";
-        reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${mimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
+        reject(new Error(`Chrome завершил запись без видеоданных (кодек: ${recorderMimeType}; состояние записи: ${recorder.state}; видеодорожка: ${videoTrackState}). Обнови страницу и попробуй снова. Если ошибка повторится, пришли мне этот текст полностью.`));
       }
     };
   });
