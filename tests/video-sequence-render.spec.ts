@@ -594,3 +594,19 @@ test("WebM duration finalization updates existing 64-bit Duration metadata witho
   expect(new DataView(result.buffer, result.byteOffset, result.byteLength).getFloat64(durationOffset + 3, false)).toBeCloseTo(12500, 6);
   expect(Array.from(result.slice(-5))).toEqual(originalCluster);
 });
+
+
+test("WebM duration finalization preserves the original blob when Float32 duration would overflow", async () => {
+  // Existing Duration is a 32-bit float. 1e36 seconds is finite in JavaScript,
+  // but its converted WebM time value cannot be represented as a finite Float32.
+  const fixture = new Uint8Array([
+    0x18, 0x53, 0x80, 0x67, 0x91,
+    0x15, 0x49, 0xa9, 0x66, 0x87,
+    0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40,
+    0x44, 0x89, 0x84, 0x00, 0x00, 0x00, 0x00,
+    0x1f, 0x43, 0xb6, 0x75, 0x80,
+  ]);
+  const source = new Blob([fixture], { type: "video/webm" });
+
+  await expect(finalizeWebmDuration(source, 1e36)).resolves.toBe(source);
+});
