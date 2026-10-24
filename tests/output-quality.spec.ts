@@ -1,5 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { assertNonEmptyRenderedBlob, getInspectionSampleInterval, getOutputInspectionTimes, getOutputQualitySeverity, hasExpectedOutputDimensions, hasReachedMediaReadyState, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+import { assertNonEmptyRenderedBlob, getInspectionSampleInterval, getOutputInspectionTimes, getOutputQualitySeverity, hasExpectedOutputDimensions, hasReachedMediaReadyState, hasUsableVideoMetadata, isRenderedDurationWithinTolerance, shouldCompareFrameSamples, shouldWaitForDecodedFrame } from "../src/video/output-quality";
+
+test("video metadata requires finite positive duration and dimensions", () => {
+  expect(hasUsableVideoMetadata(9, 1920, 1080)).toBe(true);
+  expect(hasUsableVideoMetadata(Number.POSITIVE_INFINITY, 1920, 1080)).toBe(false);
+  expect(hasUsableVideoMetadata(Number.NaN, 1920, 1080)).toBe(false);
+  expect(hasUsableVideoMetadata(0, 1920, 1080)).toBe(false);
+  expect(hasUsableVideoMetadata(9, 0, 1080)).toBe(false);
+  expect(hasUsableVideoMetadata(9, 1920, Number.POSITIVE_INFINITY)).toBe(false);
+});
 
 test("export quality is OK when no suspicious frames are detected", () => {
   expect(getOutputQualitySeverity([], [])).toBe("ok");
