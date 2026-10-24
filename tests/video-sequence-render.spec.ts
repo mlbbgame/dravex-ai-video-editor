@@ -662,3 +662,24 @@ test("WebM duration finalization preserves the original blob when a finite durat
   const source = new Blob([fixture], { type: "video/webm" });
   await expect(finalizeWebmDuration(source, 3.5e35)).resolves.toBe(source);
 });
+
+
+test("media load limiter releases its slot after a task fails so queued exports cannot deadlock", async () => {
+  const limitMediaLoad = createMediaLoadLimiter(1);
+  let announceStarted!: () => void;
+  const started = new Promise<void>((resolve) => { announceStarted = resolve; });
+  let rejectFirst!: (error: Error) => void;
+  const firstGate = new Promise<number>((_resolve, reject) => { rejectFirst = reject; });
+
+  const first = limitMediaLoad(async () => {
+    announceStarted();
+    return firstGate;
+  });
+  const second = limitMediaLoad(async () => 42);
+
+  await started;
+  rejectFirst(new Error("simulated decoder failure"));
+
+  await expect(first).rejects.toThrow("simulated decoder failure");
+  await expect(second).resolves.toBe(42);
+});
